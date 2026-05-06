@@ -1,0 +1,22 @@
+# Maven
+target/
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local docker data
+docker/data/
+
+# Local config overrides
+*.local.yaml
