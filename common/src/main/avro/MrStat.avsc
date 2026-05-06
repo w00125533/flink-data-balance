@@ -1,0 +1,33 @@
+{
+  "namespace": "com.fdb.common.avro",
+  "type": "record",
+  "name": "MrStat",
+  "doc": "话统记录, 每小区每 10 秒一条",
+  "fields": [
+    { "name": "siteId",              "type": "string" },
+    { "name": "cellId",              "type": "string" },
+    { "name": "windowStartTs",       "type": "long" },
+    { "name": "windowEndTs",         "type": "long" },
+    { "name": "prbUsageDl",          "type": "float" },
+    { "name": "prbUsageUl",          "type": "float" },
+    { "name": "activeUsers",         "type": "int" },
+    { "name": "avgRsrp",             "type": "float" },
+    { "name": "avgRsrq",             "type": "float" },
+    { "name": "avgSinr",             "type": "float" },
+    { "name": "avgCqi",              "type": "float" },
+    { "name": "avgMcs",              "type": "float" },
+    { "name": "avgBler",             "type": "float" },
+    { "name": "throughputDlMbps",    "type": "float" },
+    { "name": "throughputUlMbps",    "type": "float" },
+    { "name": "droppedConnections",  "type": "int" },
+    { "name": "handoverSuccess",     "type": "int" },
+    { "name": "handoverFailure",     "type": "int" },
+    { "name": "prachAttempt",        "type": "int" },
+    { "name": "prachFailure",        "type": "int" },
+    { "name": "rrcEstabAttempt",     "type": "int" },
+    { "name": "rrcEstabSuccess",     "type": "int" },
+    { "name": "avgLatencyMs",        "type": "float" },
+    { "name": "packetLossRate",      "type": "float" },
+    { "name": "numerology",          "type": ["null", "int"], "default": null }
+  ]
+}
