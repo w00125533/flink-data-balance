@@ -1,0 +1,41 @@
+{
+  "namespace": "com.fdb.common.avro",
+  "type": "record",
+  "name": "CmConfig",
+  "doc": "小区配置数据, 按需更新, compact topic",
+  "fields": [
+    { "name": "siteId",                "type": "string" },
+    { "name": "cellId",                "type": "string" },
+    { "name": "effectiveTs",           "type": "long" },
+    { "name": "version",               "type": "long",  "doc": "单调递增" },
+    { "name": "cellType",              "type": { "type": "enum", "name": "CellType",
+       "symbols": ["LTE","NR_NSA","NR_SA"] } },
+    { "name": "bandwidthMhz",          "type": "int" },
+    { "name": "frequencyBand",         "type": "string" },
+    { "name": "arfcn",                 "type": "int" },
+    { "name": "maxPowerDbm",           "type": "float" },
+    { "name": "azimuth",               "type": "int", "doc": "0-359 度" },
+    { "name": "centerLat",             "type": "double" },
+    { "name": "centerLon",             "type": "double" },
+    { "name": "coverageRadiusM",       "type": "int" },
+    { "name": "pci",                   "type": "int" },
+    { "name": "tac",                   "type": "int" },
+    { "name": "eci",                   "type": "long" },
+    { "name": "mcc",                   "type": "string" },
+    { "name": "mnc",                   "type": "string" },
+    { "name": "numerology",            "type": ["null", "int"], "default": null },
+    { "name": "mimoMode",              "type": ["null", { "type": "enum", "name": "MimoMode",
+       "symbols": ["SISO","MIMO_2x2","MIMO_4x4","MIMO_8x8"] }], "default": null },
+    { "name": "antennaPorts",          "type": "int" },
+    { "name": "nssai", "type": { "type": "array", "items": {
+        "type": "record", "name": "NssaiEntry",
+        "fields": [
+          { "name": "sst", "type": "int" },
+          { "name": "sd",  "type": "string" }
+        ] } } },
+    { "name": "tddSubFrameAssignment", "type": ["null", "int"],   "default": null },
+    { "name": "referenceSignalPower",  "type": ["null", "float"], "default": null },
+    { "name": "neighborCells",         "type": { "type": "array", "items": "string" } },
+    { "name": "tombstone",             "type": "boolean", "default": false }
+  ]
+}
