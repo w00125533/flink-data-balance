@@ -63,12 +63,18 @@ services:
       POSTGRES_DB: metastore
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U hive -d metastore"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
 
   hive-metastore:
     image: apache/hive:4.0.0
     container_name: fdb-hive-metastore
     depends_on:
-      - hms-postgres
+      hms-postgres:
+        condition: service_healthy
     ports:
       - "9083:9083"
     environment:

@@ -26,5 +26,15 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
+echo "[dev-up] Waiting for Hive Metastore to be ready (up to 90s)..."
+for i in $(seq 1 45); do
+  STATUS=$(docker inspect -f '{{.State.Status}}' fdb-hive-metastore 2>/dev/null || echo "")
+  if [ "$STATUS" = "running" ]; then
+    echo "[dev-up] Hive Metastore OK"
+    break
+  fi
+  sleep 2
+done
+
 echo "[dev-up] All dependencies ready. kafka-ui: http://localhost:8080"
 docker compose -f docker/docker-compose.yml ps
