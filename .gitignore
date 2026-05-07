@@ -16,8 +16,9 @@ logs/
 Thumbs.db
 .DS_Store
 
-# Local docker data
+# Local docker data + libs
 docker/data/
+docker/lib/
 
 # Local config overrides
 *.local.yaml

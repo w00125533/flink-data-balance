@@ -79,3 +79,5 @@ services:
         -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://hms-postgres:5432/metastore
         -Djavax.jdo.option.ConnectionUserName=hive
         -Djavax.jdo.option.ConnectionPassword=hivepwd
+    volumes:
+      - ./lib/postgresql-42.7.3.jar:/opt/hive/lib/postgresql-42.7.3.jar
