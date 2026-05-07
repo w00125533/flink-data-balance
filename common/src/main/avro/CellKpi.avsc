@@ -1,0 +1,24 @@
+{
+  "namespace": "com.fdb.common.avro",
+  "type": "record",
+  "name": "CellKpi",
+  "doc": "小区级 KPI 输出, 多窗口参数化",
+  "fields": [
+    { "name": "windowStartTs",          "type": "long" },
+    { "name": "windowEndTs",            "type": "long" },
+    { "name": "windowKind",             "type": { "type": "enum", "name": "WindowKind",
+       "symbols": ["MIN_1","MIN_5","MIN_15","HOUR_1"] } },
+    { "name": "siteId",                 "type": "string" },
+    { "name": "cellId",                 "type": "string" },
+    { "name": "gridId",                 "type": "string" },
+    { "name": "numChrEvents",           "type": "long" },
+    { "name": "numUsers",               "type": "long",  "doc": "HLL 近似" },
+    { "name": "avgRsrp",                "type": "float" },
+    { "name": "avgSinr",                "type": "float" },
+    { "name": "avgPrbUsageDl",          "type": "float" },
+    { "name": "throughputDlMbpsAvg",    "type": "float" },
+    { "name": "dropRate",               "type": "float" },
+    { "name": "hoSuccessRate",          "type": "float" },
+    { "name": "attachSuccessRate",      "type": "float" }
+  ]
+}

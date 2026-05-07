@@ -1,0 +1,9 @@
+kafka:
+  bootstrap: default-broker:9092
+  topic: chr-events
+mysql:
+  url: jdbc:mysql://default:3306/fdb
+  user: default-user
+nested:
+  deeply:
+    value: original

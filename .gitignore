@@ -1,6 +1,7 @@
 # Maven
 target/
 *.iml
+dependency-reduced-pom.xml
 
 # IDE
 .idea/
@@ -20,3 +21,9 @@ docker/data/
 
 # Local config overrides
 *.local.yaml
+
+# Claude Code
+.claude/
+
+# Notes
+*.txt

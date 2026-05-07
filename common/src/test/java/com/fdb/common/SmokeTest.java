@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SmokeTest {
 
     @Test
-    void java_runtime_is_21_or_higher() {
+    void java_runtime_is_17_or_higher() {
         int major = Runtime.version().feature();
-        assertThat(major).isGreaterThanOrEqualTo(21);
+        assertThat(major).isGreaterThanOrEqualTo(17);
     }
 }

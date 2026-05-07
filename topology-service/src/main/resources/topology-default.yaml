@@ -1,0 +1,25 @@
+seed: 42
+sites:
+  count: 3000
+  cellsPerSite:
+    min: 3
+    max: 9
+  region:
+    latRange: [39.7, 40.2]
+    lonRange: [116.0, 116.8]
+  hotZones:
+    - name: zone-cbd-1
+      center: [39.91, 116.40]
+      radiusKm: 3
+      siteWeightMultiplier: 5.0
+    - name: zone-res-1
+      center: [40.05, 116.30]
+      radiusKm: 4
+      siteWeightMultiplier: 2.5
+cellDefaults:
+  cellType: NR_SA
+  bandwidthMhzCandidates: [20, 40, 100]
+  frequencyBands: ["n78", "n41", "n28"]
+  maxPowerDbm: 49.0
+  numerology: 1
+  mimoMode: MIMO_4x4

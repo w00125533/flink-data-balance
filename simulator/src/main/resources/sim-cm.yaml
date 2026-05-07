@@ -1,0 +1,9 @@
+kafka:
+  bootstrap: localhost:9092
+  topic: cm-config
+  topologyTopic: topology
+
+updates:
+  intervalMin: 30
+  changeRate: 0.005
+  tombstoneProb: 0.05

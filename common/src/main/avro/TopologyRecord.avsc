@@ -1,0 +1,27 @@
+{
+  "namespace": "com.fdb.common.avro",
+  "type": "record",
+  "name": "TopologyRecord",
+  "doc": "站点/小区拓扑记录, 由 topology-service 发布到 compact topic",
+  "fields": [
+    { "name": "siteId",           "type": "string" },
+    { "name": "cellId",           "type": "string" },
+    { "name": "siteLat",          "type": "double" },
+    { "name": "siteLon",          "type": "double" },
+    { "name": "cellType",         "type": { "type": "enum", "name": "TopoCellType",
+       "symbols": ["LTE","NR_NSA","NR_SA"] } },
+    { "name": "cellIndex",        "type": "int", "doc": "小区编号, 从 1 开始" },
+    { "name": "pci",              "type": "int", "doc": "物理小区 ID" },
+    { "name": "tac",              "type": "int" },
+    { "name": "eci",              "type": "long", "doc": "E-UTRAN Cell Identifier" },
+    { "name": "mcc",              "type": "string" },
+    { "name": "mnc",              "type": "string" },
+    { "name": "frequencyBand",    "type": "string" },
+    { "name": "arfcn",            "type": "int", "doc": "绝对射频信道号" },
+    { "name": "bandwidthMhz",     "type": "int" },
+    { "name": "azimuth",          "type": "int", "doc": "0-359 度" },
+    { "name": "coverageRadiusM",  "type": "int" },
+    { "name": "maxPowerDbm",      "type": "float" },
+    { "name": "version",          "type": "long", "doc": "单调递增, 用于拓扑变更检测" }
+  ]
+}

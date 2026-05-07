@@ -1,0 +1,5 @@
+kafka:
+  bootstrap: file-broker:9092
+nested:
+  deeply:
+    value: from-file

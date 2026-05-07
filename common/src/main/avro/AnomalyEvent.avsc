@@ -1,0 +1,23 @@
+{
+  "namespace": "com.fdb.common.avro",
+  "type": "record",
+  "name": "AnomalyEvent",
+  "doc": "用户级异常事件输出",
+  "fields": [
+    { "name": "detectionTs",  "type": "long" },
+    { "name": "eventTs",      "type": "long" },
+    { "name": "imsi",         "type": "string" },
+    { "name": "siteId",       "type": "string" },
+    { "name": "cellId",       "type": "string" },
+    { "name": "gridId",       "type": "string" },
+    { "name": "latitude",     "type": "double" },
+    { "name": "longitude",    "type": "double" },
+    { "name": "anomalyType",  "type": { "type": "enum", "name": "AnomalyType",
+       "symbols": ["LOW_SIGNAL","ATTACH_FAILURE_BURST","HANDOVER_FAIL_PATTERN",
+                   "CONFIG_MISMATCH","COVERAGE_HOLE"] } },
+    { "name": "severity",     "type": { "type": "enum", "name": "Severity",
+       "symbols": ["LOW","MEDIUM","HIGH"] } },
+    { "name": "ruleVersion",  "type": "string" },
+    { "name": "contextJson",  "type": "string" }
+  ]
+}
