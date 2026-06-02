@@ -2,19 +2,26 @@ package com.fdb.job;
 
 import com.fdb.common.avro.CellKpi;
 import com.fdb.common.avro.WindowKind;
+import com.fdb.common.summary.SummarySwitch;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CellKpiWindowFunction
     extends ProcessWindowFunction<EnrichedChr, CellKpi, String, TimeWindow> {
 
+    private static final Logger log = LoggerFactory.getLogger(CellKpiWindowFunction.class);
+
     private final WindowKind windowKind;
     private final KpiAggregator aggregator;
+    private final boolean summaryEnabled;
 
     public CellKpiWindowFunction(WindowKind windowKind) {
         this.windowKind = windowKind;
         this.aggregator = new KpiAggregator(windowKind);
+        this.summaryEnabled = SummarySwitch.enabled();
     }
 
     @Override
@@ -29,6 +36,13 @@ public class CellKpiWindowFunction
         acc.windowStartTs = ctx.window().getStart();
         acc.windowEndTs = ctx.window().getEnd();
 
-        out.collect(aggregator.getResult(acc));
+        CellKpi result = aggregator.getResult(acc);
+        if (summaryEnabled) {
+            log.info(SummarySwitch.format("flink-kpi", windowKind + ".cell", cellId));
+            log.info(SummarySwitch.format("flink-kpi", windowKind + ".num_chr_events", result.getNumChrEvents()));
+            log.info(SummarySwitch.format("flink-kpi", windowKind + ".window_ts",
+                result.getWindowStartTs() + ".." + result.getWindowEndTs()));
+        }
+        out.collect(result);
     }
 }

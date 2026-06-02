@@ -61,14 +61,34 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
 
     @Override
     public void processElement(HeartbeatPayload hb, Context ctx, Collector<RoutingEntry> out) throws Exception {
-        heartbeatState.put(hb.getSubtaskId(), hb);
-        updateOverloadTracking(hb, ctx.timerService().currentProcessingTime());
+        HeartbeatPayload merged = mergeHeartbeat(heartbeatState.get(hb.getSubtaskId()), hb);
+        heartbeatState.put(hb.getSubtaskId(), merged);
+        updateOverloadTracking(merged, ctx.timerService().currentProcessingTime());
 
         if (lastTimerTime == 0) {
             ctx.timerService().registerProcessingTimeTimer(
                 ctx.timerService().currentProcessingTime() + EVALUATION_INTERVAL_MS);
             lastTimerTime = ctx.timerService().currentProcessingTime();
         }
+    }
+
+    private HeartbeatPayload mergeHeartbeat(HeartbeatPayload previous, HeartbeatPayload incoming) {
+        if (previous == null || incoming.getTimestamp() / 5_000 != previous.getTimestamp() / 5_000) return incoming;
+        double[] left = previous.getVbucketEps();
+        double[] right = incoming.getVbucketEps();
+        double[] merged = new double[Math.max(left == null ? 0 : left.length, right == null ? 0 : right.length)];
+        if (left != null) for (int i = 0; i < left.length; i++) merged[i] += left[i];
+        if (right != null) for (int i = 0; i < right.length; i++) merged[i] += right[i];
+        boolean incomingHotter = incoming.getEps() >= hotspotEps(previous);
+        return new HeartbeatPayload(incoming.getSubtaskId(), previous.getEps() + incoming.getEps(), merged,
+            incoming.getTimestamp(), incomingHotter ? incoming.getHotspotSiteId() : previous.getHotspotSiteId(),
+            incomingHotter ? incoming.getHotspotVbucketId() : previous.getHotspotVbucketId());
+    }
+
+    private double hotspotEps(HeartbeatPayload heartbeat) {
+        if (heartbeat.getVbucketEps() == null || heartbeat.getHotspotVbucketId() < 0
+                || heartbeat.getHotspotVbucketId() >= heartbeat.getVbucketEps().length) return heartbeat.getEps();
+        return heartbeat.getVbucketEps()[heartbeat.getHotspotVbucketId()];
     }
 
     private void updateOverloadTracking(HeartbeatPayload hb, long now) throws Exception {

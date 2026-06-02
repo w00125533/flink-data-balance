@@ -1,6 +1,7 @@
 package com.fdb.simulator;
 
 import com.fdb.common.avro.*;
+import com.fdb.common.summary.SummarySwitch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,15 +21,22 @@ public class CmSimulator {
     }
 
     public void run() throws Exception {
-        String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
-        String topic = "cm-config";
+        SimulatorConfig simConfig = SimulatorConfig.load("sim-cm.yaml", configPath);
+        String bootstrap = simConfig.bootstrap();
+        String topic = simConfig.topic("cm-config");
 
         TopologyClient topology = new TopologyClient(bootstrap, "sim-cm");
-        topology.start("topology");
+        topology.start(simConfig.topologyTopic());
         topology.awaitReady(Duration.ofSeconds(30));
 
-        List<TopologyRecord> cells = topology.getAllCells();
+        List<TopologyRecord> cells = new ArrayList<>(topology.getAllCells());
         log.info("Loaded {} cells from topology for CM simulator", cells.size());
+        boolean summaryEnabled = SummarySwitch.enabled();
+        if (summaryEnabled) {
+            long sites = cells.stream().map(c -> c.getSiteId().toString()).distinct().count();
+            log.info(SummarySwitch.format("sim-cm", "loaded_sites", sites));
+            log.info(SummarySwitch.format("sim-cm", "loaded_cells", cells.size()));
+        }
 
         try (KafkaPublisher<CmConfig> publisher = new KafkaPublisher<>(bootstrap, topic, CmConfig.class)) {
             long version = 1;
@@ -40,14 +48,18 @@ public class CmSimulator {
             }
             publisher.flush();
             log.info("Baseline CM config published");
+            if (summaryEnabled) {
+                log.info(SummarySwitch.format("sim-cm", "baseline_records_published", cells.size()));
+                log.info(SummarySwitch.format("sim-cm", "baseline_version", version));
+            }
 
             version++;
 
             while (!Thread.currentThread().isInterrupted()) {
-                long intervalMs = 30_000 + rng.nextInt(60_000);
+                long intervalMs = simConfig.getLong("updates.intervalMin", 30) * 60_000;
                 Thread.sleep(intervalMs);
 
-                int numChanges = Math.max(1, cells.size() / 200);
+                int numChanges = Math.max(1, (int) (cells.size() * simConfig.getDouble("updates.changeRate", 0.005)));
                 Collections.shuffle(cells.subList(0, Math.min(cells.size(), numChanges * 10)), rng);
 
                 int changed = 0;
@@ -60,7 +72,7 @@ public class CmSimulator {
                 publisher.flush();
                 version++;
 
-                if (rng.nextInt(20) == 0 && changed > 0) {
+                if (rng.nextDouble() < simConfig.getDouble("updates.tombstoneProb", 0.05) && changed > 0) {
                     TopologyRecord cell = cells.get(rng.nextInt(cells.size()));
                     CmConfig tombstone = CmConfig.newBuilder()
                         .setSiteId(cell.getSiteId().toString())
@@ -88,9 +100,16 @@ public class CmSimulator {
                         .build();
                     publisher.publish(cell.getCellId().toString(), tombstone);
                     log.info("Published tombstone for {}", cell.getCellId());
+                    if (summaryEnabled) {
+                        log.info(SummarySwitch.format("sim-cm", "tombstone_published", cell.getCellId()));
+                    }
                 }
 
                 log.info("Published {} CM config updates (version {})", changed, version - 1);
+                if (summaryEnabled) {
+                    log.info(SummarySwitch.format("sim-cm", "updates_published_last_batch", changed));
+                    log.info(SummarySwitch.format("sim-cm", "latest_version", version - 1));
+                }
             }
         }
     }

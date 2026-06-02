@@ -9,6 +9,8 @@ public class HeartbeatPayload implements Serializable {
     private double eps;
     private double[] vbucketEps;
     private long timestamp;
+    private String hotspotSiteId;
+    private int hotspotVbucketId = -1;
 
     public HeartbeatPayload() {}
 
@@ -17,6 +19,13 @@ public class HeartbeatPayload implements Serializable {
         this.eps = eps;
         this.vbucketEps = vbucketEps;
         this.timestamp = timestamp;
+    }
+
+    public HeartbeatPayload(int subtaskId, double eps, double[] vbucketEps, long timestamp,
+                            String hotspotSiteId, int hotspotVbucketId) {
+        this(subtaskId, eps, vbucketEps, timestamp);
+        this.hotspotSiteId = hotspotSiteId;
+        this.hotspotVbucketId = hotspotVbucketId;
     }
 
     public int getSubtaskId() { return subtaskId; }
@@ -30,6 +39,8 @@ public class HeartbeatPayload implements Serializable {
 
     public long getTimestamp() { return timestamp; }
     public void setTimestamp(long ts) { this.timestamp = ts; }
+    public String getHotspotSiteId() { return hotspotSiteId; }
+    public int getHotspotVbucketId() { return hotspotVbucketId; }
 
     @Override
     public String toString() {
@@ -44,6 +55,7 @@ public class HeartbeatPayload implements Serializable {
                 sb.append(',').append((long) v);
             }
         }
+        if (hotspotSiteId != null) sb.append(",site=").append(hotspotSiteId).append(",vb=").append(hotspotVbucketId);
         return sb.toString();
     }
 
@@ -53,9 +65,20 @@ public class HeartbeatPayload implements Serializable {
         hb.subtaskId = Integer.parseInt(parts[0]);
         hb.eps = Double.parseDouble(parts[1]);
         hb.timestamp = Long.parseLong(parts[2]);
-        if (parts.length > 3) {
-            hb.vbucketEps = new double[parts.length - 3];
-            for (int i = 3; i < parts.length; i++) {
+        int numericEnd = parts.length;
+        for (int i = 3; i < parts.length; i++) {
+            if (parts[i].startsWith("site=")) {
+                hb.hotspotSiteId = parts[i].substring("site=".length());
+                if (i + 1 < parts.length && parts[i + 1].startsWith("vb=")) {
+                    hb.hotspotVbucketId = Integer.parseInt(parts[i + 1].substring("vb=".length()));
+                }
+                numericEnd = i;
+                break;
+            }
+        }
+        if (numericEnd > 3) {
+            hb.vbucketEps = new double[numericEnd - 3];
+            for (int i = 3; i < numericEnd; i++) {
                 hb.vbucketEps[i - 3] = Long.parseLong(parts[i]);
             }
         }

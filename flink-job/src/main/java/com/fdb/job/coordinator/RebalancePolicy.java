@@ -101,10 +101,13 @@ public class RebalancePolicy {
 
     private List<HotspotSite> findHotspots(HeartbeatPayload hb, int subtaskId) {
         if (hb.getVbucketEps() == null) return List.of();
+        if (hb.getHotspotSiteId() != null && hb.getHotspotVbucketId() >= 0) {
+            double eps = hb.getHotspotVbucketId() < hb.getVbucketEps().length
+                ? hb.getVbucketEps()[hb.getHotspotVbucketId()] : hb.getEps();
+            return List.of(new HotspotSite(hb.getHotspotSiteId(), hb.getHotspotVbucketId(), eps));
+        }
 
         double[] eps = hb.getVbucketEps();
-        int numVBuckets = eps.length;
-        int subtaskVbCount = numVBuckets / Math.max(1, hb.getEps() > 0 ? heartbeatsCount() : 1);
 
         List<HotspotSite> candidates = new ArrayList<>();
         for (int vb = 0; vb < eps.length; vb++) {

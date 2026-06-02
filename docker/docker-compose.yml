@@ -87,3 +87,59 @@ services:
         -Djavax.jdo.option.ConnectionPassword=hivepwd
     volumes:
       - ./lib/postgresql-42.7.3.jar:/opt/hive/lib/postgresql-42.7.3.jar
+      - ./data/warehouse:/warehouse
+
+  hive-server:
+    image: apache/hive:4.0.0
+    container_name: fdb-hive-server
+    profiles: ["e2e"]
+    depends_on:
+      - hive-metastore
+    ports:
+      - "10000:10000"
+    environment:
+      SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: -Dhive.metastore.uris=thrift://hive-metastore:9083
+    volumes:
+      - ./data/warehouse:/warehouse
+
+  jobmanager:
+    image: flink:1.20.3-scala_2.12-java17
+    container_name: fdb-flink-jobmanager
+    profiles: ["e2e"]
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FDB_KAFKA_BOOTSTRAP=kafka:29092
+      - FDB_MYSQL_URL=jdbc:mysql://mysql:3306/fdb
+      - FDB_MYSQL_USER=fdb
+      - FDB_MYSQL_PASSWORD=fdbpwd
+      - FDB_HIVE_WAREHOUSE=file:///warehouse
+      - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
+      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
+      - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
+    volumes:
+      - ./data/warehouse:/warehouse
+      - ../flink-job/target:/opt/fdb
+
+  taskmanager:
+    image: flink:1.20.3-scala_2.12-java17
+    container_name: fdb-flink-taskmanager
+    profiles: ["e2e"]
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FDB_KAFKA_BOOTSTRAP=kafka:29092
+      - FDB_MYSQL_URL=jdbc:mysql://mysql:3306/fdb
+      - FDB_MYSQL_USER=fdb
+      - FDB_MYSQL_PASSWORD=fdbpwd
+      - FDB_HIVE_WAREHOUSE=file:///warehouse
+      - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
+      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
+      - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
+    volumes:
+      - ./data/warehouse:/warehouse

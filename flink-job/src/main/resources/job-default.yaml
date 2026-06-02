@@ -1,0 +1,8 @@
+rules:
+  lowSignal:
+    rsrpThreshold: -110
+    sinrThreshold: -3
+  attachFailureBurst:
+    threshold: 10
+  coverageHole:
+    threshold: 50

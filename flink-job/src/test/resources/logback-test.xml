@@ -1,0 +1,4 @@
+<configuration>
+  <root level="WARN"/>
+  <logger name="org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer" level="WARN"/>
+</configuration>

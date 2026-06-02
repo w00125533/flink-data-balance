@@ -14,9 +14,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.stream.Collectors;
 
 public class TopologyClient implements AutoCloseable {
 
@@ -24,14 +24,15 @@ public class TopologyClient implements AutoCloseable {
 
     private final KafkaConsumer<String, TopologyRecord> consumer;
     private final Map<String, List<TopologyRecord>> siteToCells = new ConcurrentHashMap<>();
-    private final List<TopologyRecord> allCells = new CopyOnWriteArrayList<>();
+    private final Map<String, TopologyRecord> cellsById = new ConcurrentHashMap<>();
     private volatile boolean running = true;
+    private volatile long lastRecordAt = 0;
     private Thread pollThread;
 
     public TopologyClient(String bootstrapServers, String groupId) {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId + "-" + UUID.randomUUID());
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
         this.consumer = new KafkaConsumer<>(props, new StringDeserializer(),
@@ -45,8 +46,19 @@ public class TopologyClient implements AutoCloseable {
                 ConsumerRecords<String, TopologyRecord> records = consumer.poll(Duration.ofSeconds(1));
                 records.forEach(record -> {
                     TopologyRecord tr = record.value();
-                    allCells.add(tr);
-                    siteToCells.computeIfAbsent(tr.getSiteId().toString(), k -> new CopyOnWriteArrayList<>()).add(tr);
+                    String cellId = tr.getCellId().toString();
+                    String siteId = tr.getSiteId().toString();
+                    TopologyRecord previous = cellsById.put(cellId, tr);
+                    if (previous != null && !previous.getSiteId().toString().equals(siteId)) {
+                        siteToCells.computeIfPresent(previous.getSiteId().toString(), (ignored, cells) -> {
+                            cells.removeIf(cell -> cell.getCellId().toString().equals(cellId));
+                            return cells;
+                        });
+                    }
+                    siteToCells.computeIfAbsent(siteId, ignored -> new CopyOnWriteArrayList<>())
+                        .removeIf(cell -> cell.getCellId().toString().equals(cellId));
+                    siteToCells.get(siteId).add(tr);
+                    lastRecordAt = System.currentTimeMillis();
                 });
             }
         }, "topology-client");
@@ -55,16 +67,18 @@ public class TopologyClient implements AutoCloseable {
     }
 
     public List<TopologyRecord> getAllCells() {
-        return List.copyOf(allCells);
+        return List.copyOf(cellsById.values());
     }
 
     public List<TopologyRecord> getCellsForSite(String siteId) {
         return siteToCells.getOrDefault(siteId, List.of());
     }
 
-    public int getCellCount() { return allCells.size(); }
+    public int getCellCount() { return cellsById.size(); }
 
-    public boolean isReady() { return !allCells.isEmpty(); }
+    public boolean isReady() {
+        return !cellsById.isEmpty() && System.currentTimeMillis() - lastRecordAt >= 1000;
+    }
 
     public void awaitReady(Duration timeout) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeout.toMillis();

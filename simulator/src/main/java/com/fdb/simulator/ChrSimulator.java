@@ -1,6 +1,7 @@
 package com.fdb.simulator;
 
 import com.fdb.common.avro.*;
+import com.fdb.common.summary.SummarySwitch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,20 +28,33 @@ public class ChrSimulator {
     }
 
     public void run() throws Exception {
-        String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
-        String topic = "chr-events";
+        SimulatorConfig config = SimulatorConfig.load("sim-chr.yaml", configPath);
+        String bootstrap = config.bootstrap();
+        String topic = config.topic("chr-events");
 
         TopologyClient topology = new TopologyClient(bootstrap, "sim-chr");
-        topology.start("topology");
+        topology.start(config.topologyTopic());
         topology.awaitReady(java.time.Duration.ofSeconds(30));
 
         List<TopologyRecord> cells = topology.getAllCells();
         log.info("Loaded {} cells from topology", cells.size());
 
         Map<String, List<String>> cellUsers = assignUsers(cells);
-        long baseEps = 5000;
+        boolean summaryEnabled = SummarySwitch.enabled();
+        if (summaryEnabled) {
+            int assignedUsers = cellUsers.values().stream().mapToInt(List::size).sum();
+            long sites = cells.stream().map(c -> c.getSiteId().toString()).distinct().count();
+            log.info(SummarySwitch.format("sim-chr", "loaded_sites", sites));
+            log.info(SummarySwitch.format("sim-chr", "loaded_cells", cells.size()));
+            log.info(SummarySwitch.format("sim-chr", "assigned_users", assignedUsers));
+        }
+        long baseEps = config.getLong("rate.eps", 5000);
         long totalCells = cells.size();
         double lambdaPerCell = (double) baseEps / totalCells;
+        if (summaryEnabled) {
+            log.info(SummarySwitch.format("sim-chr", "configured_base_eps", baseEps));
+            log.info(SummarySwitch.format("sim-chr", "lambda_per_cell", String.format("%.3f", lambdaPerCell)));
+        }
 
         try (KafkaPublisher<ChrEvent> publisher = new KafkaPublisher<>(bootstrap, topic, ChrEvent.class)) {
             long startTime = System.currentTimeMillis();
@@ -59,14 +73,20 @@ public class ChrSimulator {
                         if (users == null || users.isEmpty()) continue;
 
                         String imsi = users.get(rng.nextInt(users.size()));
-                        ChrEvent event = generateEvent(cell, imsi, now);
+                        ChrEvent event = generateEvent(cell, imsi, now,
+                            config.getDouble("rate.outOfOrderProb", 0.05),
+                            config.getLong("rate.maxOutOfOrderLagMs", 5000));
                         publisher.publish(cell.getSiteId().toString(), event);
                         counter++;
 
                         if (counter % 10000 == 0) {
                             publisher.flush();
-                            log.info("Published {} CHR events (EPS: {})", counter,
-                                counter / ((System.currentTimeMillis() - startTime) / 1000.0 + 1));
+                            double eps = counter / ((System.currentTimeMillis() - startTime) / 1000.0 + 1);
+                            log.info("Published {} CHR events (EPS: {})", counter, eps);
+                            if (summaryEnabled) {
+                                log.info(SummarySwitch.format("sim-chr", "events_published", counter));
+                                log.info(SummarySwitch.format("sim-chr", "observed_eps", String.format("%.1f", eps)));
+                            }
                         }
                     }
                 }
@@ -118,7 +138,8 @@ public class ChrSimulator {
         return staticWeight * diurnalWeight * noise;
     }
 
-    private ChrEvent generateEvent(TopologyRecord cell, String imsi, long now) {
+    private ChrEvent generateEvent(TopologyRecord cell, String imsi, long now,
+                                   double outOfOrderProbability, long maxOutOfOrderLagMs) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
             cell.getSiteLat() + rng.nextGaussian() * 0.001,
             cell.getSiteLon() + rng.nextGaussian() * 0.001);
@@ -135,7 +156,8 @@ public class ChrSimulator {
         ChrEventType[] eventTypes = ChrEventType.values();
         ChrEventType eventType = eventTypes[rng.nextInt(eventTypes.length)];
 
-        int outOfOrderLag = rng.nextInt(100) < 5 ? rng.nextInt(5000) + 100 : 0;
+        int outOfOrderLag = rng.nextDouble() < outOfOrderProbability
+            ? rng.nextInt((int) Math.max(1, maxOutOfOrderLagMs)) + 100 : 0;
 
         return ChrEvent.newBuilder()
             .setChrId(UUID.randomUUID().toString())

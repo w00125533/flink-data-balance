@@ -41,7 +41,7 @@ public final class ConfigLoader {
             }
         }
 
-        if (overlayFile != null) {
+        if (overlayFile != null && Files.exists(overlayFile)) {
             try (InputStream in = Files.newInputStream(overlayFile)) {
                 Object loaded = new Yaml().load(in);
                 if (loaded instanceof Map<?, ?> map) {
@@ -155,6 +155,32 @@ public final class ConfigLoader {
                 throw new IllegalArgumentException("missing required config key: " + dottedPath);
             }
             return v;
+        }
+
+        public int getInt(String dottedPath, int defaultValue) {
+            Object v = resolve(dottedPath);
+            return v == null ? defaultValue : Integer.parseInt(String.valueOf(v));
+        }
+
+        public long getLong(String dottedPath, long defaultValue) {
+            Object v = resolve(dottedPath);
+            return v == null ? defaultValue : Long.parseLong(String.valueOf(v));
+        }
+
+        public double getDouble(String dottedPath, double defaultValue) {
+            Object v = resolve(dottedPath);
+            return v == null ? defaultValue : Double.parseDouble(String.valueOf(v));
+        }
+
+        public boolean getBoolean(String dottedPath, boolean defaultValue) {
+            Object v = resolve(dottedPath);
+            return v == null ? defaultValue : Boolean.parseBoolean(String.valueOf(v));
+        }
+
+        @SuppressWarnings("unchecked")
+        public <T> T get(String dottedPath, T defaultValue) {
+            Object v = resolve(dottedPath);
+            return v == null ? defaultValue : (T) v;
         }
 
         public Map<String, Object> raw() { return root; }

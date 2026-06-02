@@ -12,19 +12,22 @@ public final class JdbcSinks {
     private JdbcSinks() {}
 
     private static final String DEFAULT_URL = "jdbc:mysql://localhost:3306/fdb";
-    private static final String DEFAULT_USER = "root";
-    private static final String DEFAULT_PASSWORD = "fdb123";
+    private static final String DEFAULT_USER = "fdb";
+    private static final String DEFAULT_PASSWORD = "fdbpwd";
 
     private static String jdbcUrl() {
-        return System.getenv().getOrDefault("FDB_JDBC_URL", DEFAULT_URL);
+        return System.getenv().getOrDefault("FDB_MYSQL_URL",
+            System.getenv().getOrDefault("FDB_JDBC_URL", DEFAULT_URL));
     }
 
     private static String jdbcUser() {
-        return System.getenv().getOrDefault("FDB_JDBC_USER", DEFAULT_USER);
+        return System.getenv().getOrDefault("FDB_MYSQL_USER",
+            System.getenv().getOrDefault("FDB_JDBC_USER", DEFAULT_USER));
     }
 
     private static String jdbcPassword() {
-        return System.getenv().getOrDefault("FDB_JDBC_PASSWORD", DEFAULT_PASSWORD);
+        return System.getenv().getOrDefault("FDB_MYSQL_PASSWORD",
+            System.getenv().getOrDefault("FDB_JDBC_PASSWORD", DEFAULT_PASSWORD));
     }
 
     private static JdbcConnectionOptions connOpts() {
@@ -73,13 +76,15 @@ public final class JdbcSinks {
     public static JdbcSink<CellKpi> cellKpiSink() {
         return JdbcSink.<CellKpi>builder()
             .withQueryStatement(
-                "INSERT INTO cell_kpi_1m (window_start_ts, window_end_ts, window_kind, site_id, cell_id, " +
+                "INSERT INTO cell_kpi (window_start_ts, window_end_ts, window_kind, site_id, cell_id, " +
                 "grid_id, num_chr_events, num_users, avg_rsrp, avg_sinr, avg_prb_usage_dl, " +
                 "throughput_dl_mbps_avg, drop_rate, ho_success_rate, attach_success_rate) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE num_chr_events=VALUES(num_chr_events), avg_rsrp=VALUES(avg_rsrp), " +
                 "avg_sinr=VALUES(avg_sinr), avg_prb_usage_dl=VALUES(avg_prb_usage_dl), " +
-                "drop_rate=VALUES(drop_rate), attach_success_rate=VALUES(attach_success_rate)",
+                "num_users=VALUES(num_users), throughput_dl_mbps_avg=VALUES(throughput_dl_mbps_avg), " +
+                "drop_rate=VALUES(drop_rate), ho_success_rate=VALUES(ho_success_rate), " +
+                "attach_success_rate=VALUES(attach_success_rate)",
                 (ps, kpi) -> {
                     ps.setLong(1, kpi.getWindowStartTs());
                     ps.setLong(2, kpi.getWindowEndTs());

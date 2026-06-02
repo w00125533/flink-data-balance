@@ -3,6 +3,7 @@ package com.fdb.job;
 import com.fdb.common.kafka.AvroSerde;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
@@ -30,6 +31,6 @@ public class FlinkAvroDeserializer<T extends SpecificRecord>
 
     @Override
     public TypeInformation<T> getProducedType() {
-        return TypeInformation.of(type);
+        return new GenericTypeInfo<>(type);
     }
 }

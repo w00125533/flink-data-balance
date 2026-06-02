@@ -1,6 +1,7 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.*;
+import com.fdb.common.geo.Geohash;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -26,7 +27,6 @@ class FlinkJobE2ETest {
     void anomaly_pipeline_detects_all_rules() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        env.getConfig().enableForceKryo();
 
         List<ChrEvent> chrEvents = buildChrEvents();
         List<CmConfig> cmConfigs = buildCmConfigs();
@@ -71,7 +71,7 @@ class FlinkJobE2ETest {
         assertThat(attachBurst).as("ATTACH_FAILURE_BURST").isPositive();
         assertThat(hoPattern).as("HANDOVER_FAIL_PATTERN").isPositive();
         assertThat(configMismatch).as("CONFIG_MISMATCH").isEqualTo(1);
-        assertThat(coverageHole).as("COVERAGE_HOLE").isPositive();
+        assertThat(coverageHole).as("COVERAGE_HOLE is emitted by the grid pipeline").isZero();
     }
 
     // ─────────────────────────────────────────────────
@@ -104,9 +104,29 @@ class FlinkJobE2ETest {
         assertThat(result.getNumChrEvents()).isEqualTo(2);
         assertThat(result.getAvgRsrp()).isEqualTo(-90f);
         assertThat(result.getAvgSinr()).isEqualTo(10f);
-        assertThat(result.getDropRate()).isEqualTo(0.5f);
+        assertThat(result.getDropRate()).isZero();
         assertThat(result.getAvgPrbUsageDl()).isEqualTo(0.6f);
-        assertThat(result.getAttachSuccessRate()).isEqualTo(0.5f);
+        assertThat(result.getAttachSuccessRate()).isZero();
+        assertThat(result.getNumUsers()).isEqualTo(1);
+        assertThat(result.getThroughputDlMbpsAvg()).isEqualTo(50f);
+    }
+
+    @Test
+    void coverage_hole_pipeline_groups_by_grid() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        List<EnrichedChr> events = new ArrayList<>();
+        for (int i = 0; i < 50; i++) events.add(enrichedChrWith(-115f, -5f, 0, null));
+        List<AnomalyEvent> anomalies = new ArrayList<>();
+        try (CloseableIterator<AnomalyEvent> it = env
+                .fromCollection(events, new GenericTypeInfo<>(EnrichedChr.class))
+                .keyBy(ec -> Geohash.encode(ec.chrEvent().getLatitude(), ec.chrEvent().getLongitude(), 6))
+                .process(new CoverageHoleDetector(RuleConfig.defaults()), new GenericTypeInfo<>(AnomalyEvent.class))
+                .executeAndCollect()) {
+            while (it.hasNext()) anomalies.add(it.next());
+        }
+        assertThat(anomalies).extracting(AnomalyEvent::getAnomalyType)
+            .containsExactly(AnomalyType.COVERAGE_HOLE);
     }
 
     // ─────────────────────────────────────────────────

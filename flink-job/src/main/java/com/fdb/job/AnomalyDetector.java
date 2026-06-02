@@ -24,15 +24,11 @@ public class AnomalyDetector
 
     private static final Logger log = LoggerFactory.getLogger(AnomalyDetector.class);
 
-    private static final float RSRP_THRESHOLD = -110f;
-    private static final float SINR_THRESHOLD = -3f;
-    private static final int ATTACH_FAIL_BURST_THRESHOLD = 10;
+    private final RuleConfig rules;
     private static final int ATTACH_FAIL_WINDOW_BUCKET_MS = 60_000;
     private static final double HO_FAILURE_RATE_THRESHOLD = 0.30;
     private static final int HO_MIN_ATTEMPTS = 20;
     private static final int HO_SLIDING_WINDOW_BUCKETS = 5;
-    private static final int COVERAGE_HOLE_THRESHOLD = 50;
-    private static final long COVERAGE_HOLE_WINDOW_MS = 300_000;
 
     // ── Rule 2: Attach failure burst ──
     private transient MapState<Long, Integer> attachFailWindow;
@@ -44,8 +40,10 @@ public class AnomalyDetector
     private transient ValueState<Boolean> configMismatchFlagged;
 
     // ── Rule 5: Coverage hole ──
-    private transient MapState<Long, Integer> lowSignalBucket;
-    private transient ValueState<Long> coverageHoleBucket;
+
+    public AnomalyDetector() { this(RuleConfig.defaults()); }
+
+    public AnomalyDetector(RuleConfig rules) { this.rules = rules; }
 
     @Override
     public void open(Configuration parameters) {
@@ -58,11 +56,6 @@ public class AnomalyDetector
         configMismatchFlagged = getRuntimeContext().getState(
             new ValueStateDescriptor<>("config-mismatch-flagged", Boolean.class));
 
-        lowSignalBucket = getRuntimeContext().getMapState(
-            new MapStateDescriptor<>("low-signal-bucket", Long.class, Integer.class));
-
-        coverageHoleBucket = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("coverage-hole-bucket", Long.class));
     }
 
     @Override
@@ -82,8 +75,6 @@ public class AnomalyDetector
         // Rule 4: CONFIG_MISMATCH
         detectConfigMismatch(enriched, gridId, out);
 
-        // Rule 5: COVERAGE_HOLE
-        detectCoverageHole(enriched, gridId, out);
     }
 
     // ──────────────────────────────────────────────
@@ -94,7 +85,7 @@ public class AnomalyDetector
         var chr = enriched.chrEvent();
         if (chr.getRsrp() == null || chr.getSinr() == null) return;
 
-        if (chr.getRsrp() < RSRP_THRESHOLD || chr.getSinr() < SINR_THRESHOLD) {
+        if (chr.getRsrp() < rules.rsrpThreshold() || chr.getSinr() < rules.sinrThreshold()) {
             out.collect(buildAnomaly(chr, gridId, AnomalyType.LOW_SIGNAL, Severity.LOW,
                 String.format("{\"rsrp\":%s,\"sinr\":%s}", chr.getRsrp(), chr.getSinr())));
         }
@@ -113,8 +104,11 @@ public class AnomalyDetector
         Integer count = attachFailWindow.get(bucket);
         int newCount = (count == null ? 0 : count) + 1;
         attachFailWindow.put(bucket, newCount);
+        List<Long> staleBuckets = new ArrayList<>();
+        for (Long existing : attachFailWindow.keys()) if (existing < bucket - 1) staleBuckets.add(existing);
+        for (Long stale : staleBuckets) attachFailWindow.remove(stale);
 
-        if (newCount >= ATTACH_FAIL_BURST_THRESHOLD) {
+        if (newCount >= rules.attachFailBurstThreshold()) {
             out.collect(buildAnomaly(chr, gridId, AnomalyType.ATTACH_FAILURE_BURST, Severity.HIGH,
                 String.format("{\"failures_in_minute\":%d}", newCount)));
         }
@@ -184,35 +178,9 @@ public class AnomalyDetector
 
         if (!mismatches.isEmpty()) {
             configMismatchFlagged.update(true);
-            out.collect(buildAnomaly(chr, gridId, AnomalyType.CONFIG_MISMATCH, Severity.MEDIUM,
+            out.collect(buildAnomaly(chr, gridId, AnomalyType.CONFIG_MISMATCH, Severity.HIGH,
                 String.format("{\"mismatch_fields\":\"%s\"}", String.join(",", mismatches))));
             log.info("CONFIG_MISMATCH cell={} mismatches={}", chr.getCellId(), mismatches);
-        }
-    }
-
-    // ──────────────────────────────────────────────
-    // Rule 5: COVERAGE_HOLE
-    // ──────────────────────────────────────────────
-
-    private void detectCoverageHole(EnrichedChr enriched, String gridId, Collector<AnomalyEvent> out) throws Exception {
-        var chr = enriched.chrEvent();
-        if (chr.getRsrp() == null) return;
-        if (!(chr.getRsrp() < RSRP_THRESHOLD)) return;
-
-        long bucket = chr.getEventTs() / COVERAGE_HOLE_WINDOW_MS;
-        Long alreadyEmitted = coverageHoleBucket.value();
-        if (alreadyEmitted != null && alreadyEmitted == bucket) return;
-
-        Integer count = lowSignalBucket.get(bucket);
-        int newCount = (count == null ? 0 : count) + 1;
-        lowSignalBucket.put(bucket, newCount);
-
-        if (newCount >= COVERAGE_HOLE_THRESHOLD) {
-            coverageHoleBucket.update(bucket);
-            out.collect(buildAnomaly(chr, gridId, AnomalyType.COVERAGE_HOLE, Severity.HIGH,
-                String.format("{\"low_signal_count\":%d,\"window_ms\":%d}",
-                    newCount, COVERAGE_HOLE_WINDOW_MS)));
-            log.info("COVERAGE_HOLE cell={} grid={} count={}", chr.getCellId(), gridId, newCount);
         }
     }
 
@@ -220,7 +188,7 @@ public class AnomalyDetector
     // Helper
     // ──────────────────────────────────────────────
 
-    private AnomalyEvent buildAnomaly(
+    static AnomalyEvent buildAnomaly(
             com.fdb.common.avro.ChrEvent chr, String gridId,
             AnomalyType type, Severity severity, String contextJson) {
         return AnomalyEvent.newBuilder()

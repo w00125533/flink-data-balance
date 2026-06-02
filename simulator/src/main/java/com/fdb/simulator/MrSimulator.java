@@ -2,6 +2,7 @@ package com.fdb.simulator;
 
 import com.fdb.common.avro.MrStat;
 import com.fdb.common.avro.TopologyRecord;
+import com.fdb.common.summary.SummarySwitch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,30 +22,50 @@ public class MrSimulator {
     }
 
     public void run() throws Exception {
-        String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
-        String topic = "mr-stats";
+        SimulatorConfig config = SimulatorConfig.load("sim-mr.yaml", configPath);
+        String bootstrap = config.bootstrap();
+        String topic = config.topic("mr-stats");
 
         TopologyClient topology = new TopologyClient(bootstrap, "sim-mr");
-        topology.start("topology");
+        topology.start(config.topologyTopic());
         topology.awaitReady(Duration.ofSeconds(30));
 
         List<TopologyRecord> cells = topology.getAllCells();
         log.info("Loaded {} cells from topology for MR simulator", cells.size());
+        boolean summaryEnabled = SummarySwitch.enabled();
+        if (summaryEnabled) {
+            long sites = cells.stream().map(c -> c.getSiteId().toString()).distinct().count();
+            log.info(SummarySwitch.format("sim-mr", "loaded_sites", sites));
+            log.info(SummarySwitch.format("sim-mr", "loaded_cells", cells.size()));
+        }
 
         try (KafkaPublisher<MrStat> publisher = new KafkaPublisher<>(bootstrap, topic, MrStat.class)) {
-            long startTime = System.currentTimeMillis();
-
             while (!Thread.currentThread().isInterrupted()) {
                 long wallNow = System.currentTimeMillis();
                 long windowEnd = alignTo10s(wallNow);
                 long windowStart = windowEnd - 10_000;
+                int published = 0;
+                long activeUsers = 0;
+                double prbUsageDl = 0.0;
 
                 for (TopologyRecord cell : cells) {
                     MrStat stat = generateMrStat(cell, windowStart, windowEnd);
                     publisher.publish(cell.getSiteId().toString(), stat);
+                    if (summaryEnabled) {
+                        published++;
+                        activeUsers += stat.getActiveUsers();
+                        prbUsageDl += stat.getPrbUsageDl();
+                    }
                 }
 
                 publisher.flush();
+                if (summaryEnabled && published > 0) {
+                    log.info(SummarySwitch.format("sim-mr", "records_published_last_window", published));
+                    log.info(SummarySwitch.format("sim-mr", "avg_active_users_last_window", activeUsers / published));
+                    log.info(SummarySwitch.format("sim-mr", "avg_prb_usage_dl_last_window",
+                        String.format("%.3f", prbUsageDl / published)));
+                    log.info(SummarySwitch.format("sim-mr", "window_ts", windowStart + ".." + windowEnd));
+                }
 
                 long nextBoundary = windowEnd + 10_000;
                 long sleepMs = nextBoundary - System.currentTimeMillis();

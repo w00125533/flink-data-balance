@@ -33,7 +33,7 @@ public class KafkaTopologyPublisher {
         log.info("Publishing {} topology records to topic '{}'", records.size(), topic);
         int count = 0;
         for (TopologyRecord record : records) {
-            producer.send(new ProducerRecord<>(topic, record.getSiteId().toString(), record),
+            producer.send(new ProducerRecord<>(topic, record.getCellId().toString(), record),
                 (meta, ex) -> {
                     if (ex != null) {
                         log.error("Failed to publish topology for {}", record.getCellId(), ex);

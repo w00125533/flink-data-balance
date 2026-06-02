@@ -108,6 +108,10 @@ public class TopologyGenerator {
             return new double[]{lat, lon};
         }
 
+        double maxWeight = hotZones.stream()
+            .mapToDouble(TopologyConfig.HotZoneConfig::getSiteWeightMultiplier)
+            .max().orElse(1.0);
+
         for (int attempt = 0; attempt < 200; attempt++) {
             double lat = latLo + rng.nextDouble() * (latHi - latLo);
             double lon = lonLo + rng.nextDouble() * (lonHi - lonLo);
@@ -122,7 +126,7 @@ public class TopologyGenerator {
                 }
             }
 
-            if (weight >= 1.0 || rng.nextDouble() < weight) {
+            if (rng.nextDouble() < weight / maxWeight) {
                 return new double[]{lat, lon};
             }
         }
