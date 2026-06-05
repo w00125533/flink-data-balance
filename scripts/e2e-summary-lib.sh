@@ -7,30 +7,122 @@ summary_enabled() {
   esac
 }
 
+e2e_run_id() {
+  if [ -n "${FDB_E2E_RUN_ID:-}" ]; then
+    printf '%s\n' "$FDB_E2E_RUN_ID"
+    return 0
+  fi
+  date -u '+%Y%m%d-%H%M%S'
+}
+
+e2e_runs_root() {
+  printf '%s\n' "${FDB_E2E_RUNS_DIR:-docker/data/observability-runs}"
+}
+
+e2e_run_dir() {
+  printf '%s/%s\n' "$(e2e_runs_root)" "$(e2e_run_id)"
+}
+
+e2e_run_summary_file() {
+  printf '%s/logs-summary.log\n' "$(e2e_run_dir)"
+}
+
+e2e_run_meta_file() {
+  printf '%s/meta.json\n' "$(e2e_run_dir)"
+}
+
+e2e_keep_running_on_success() {
+  case "${FDB_E2E_KEEP_RUNNING_ON_SUCCESS:-}" in
+    1|true|TRUE|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+observability_grafana_url() {
+  printf '%s\n' "${FDB_GRAFANA_URL:-$(observability_grafana_base_url)/d/fdb-streaming-observability/flink-data-balance-streaming-observability?orgId=1&refresh=10s}"
+}
+
+observability_grafana_base_url() {
+  printf 'http://localhost:%s\n' "${FDB_GRAFANA_PORT:-3000}"
+}
+
+observability_prometheus_url() {
+  printf '%s\n' "${FDB_PROMETHEUS_URL:-http://localhost:${FDB_PROMETHEUS_PORT:-9090}}"
+}
+
+observability_api_url() {
+  printf '%s\n' "${FDB_OBSERVABILITY_URL:-http://localhost:18080}"
+}
+
+observability_links() {
+  printf '[e2e] Grafana dashboard | %s\n' "$(observability_grafana_url)"
+  printf '[e2e] Prometheus | %s\n' "$(observability_prometheus_url)"
+  printf '[e2e] Observability API metrics | %s/metrics\n' "$(observability_api_url)"
+}
+
 summary_file() {
-  printf '%s\n' "${FDB_E2E_SUMMARY_FILE:-logs-summary.log}"
+  printf '%s\n' "${FDB_E2E_SUMMARY_FILE:-$(e2e_run_summary_file)}"
 }
 
 summary_emit() {
   local line=$1
   printf '%s\n' "$line"
-  summary_enabled || return 0
-
   local file
   file="$(summary_file)"
+  local dir
+  dir="$(dirname "$file")"
+  [ "$dir" = "." ] || mkdir -p "$dir"
   printf '%s\n' "$line" >> "$file"
 }
 
 summary_init() {
-  summary_enabled || return 0
-
   local file
   file="$(summary_file)"
   local dir
   dir="$(dirname "$file")"
   [ "$dir" = "." ] || mkdir -p "$dir"
   : > "$file"
+  mkdir -p "$(e2e_run_dir)"
+  cat > "$(e2e_run_meta_file)" <<EOF
+{
+  "runId": "$(e2e_run_id)",
+  "status": "running",
+  "startedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "completedAt": null,
+  "summaryFile": "$(basename "$file")"
+}
+EOF
   summary_emit "[summary] Output | file | $file"
+  summary_emit "[summary] Execution | run id | $(e2e_run_id)"
+}
+
+summary_finalize() {
+  local status=$1
+  local status_text="success"
+  if [ "$status" -ne 0 ]; then
+    status_text="failed"
+  fi
+  mkdir -p "$(e2e_run_dir)"
+  cat > "$(e2e_run_meta_file)" <<EOF
+{
+  "runId": "$(e2e_run_id)",
+  "status": "$status_text",
+  "startedAt": "$(summary_started_at)",
+  "completedAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "summaryFile": "$(basename "$(summary_file)")"
+}
+EOF
+  summary_line "Execution" "status" "$status_text"
+}
+
+summary_started_at() {
+  local meta
+  meta="$(e2e_run_meta_file)"
+  if [ -f "$meta" ]; then
+    sed -n 's/.*"startedAt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$meta" | head -1
+  else
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+  fi
 }
 
 summary_line() {
@@ -98,6 +190,23 @@ summary_code_logs() {
     done
 }
 
+summary_sink_performance() {
+  summary_enabled || return 0
+  local output
+  output="$(docker logs fdb-flink-taskmanager 2>/dev/null |
+    grep '\[summary-code\] sink=' |
+    sed 's/^.*\[summary-code\]/[summary-code]/' |
+    tail -n "${FDB_E2E_SINK_SUMMARY_LINES:-40}" || true)"
+  if [ -z "$output" ]; then
+    summary_line "Sink Performance" "code summaries" "none"
+    return 0
+  fi
+  printf '%s\n' "$output" |
+    while IFS= read -r line; do
+      summary_line "Sink Performance" "code" "$line"
+    done
+}
+
 summary_kafka_topic() {
   summary_enabled || return 0
   local topic=$1
@@ -149,10 +258,79 @@ summary_parquet_kpi() {
   summary_command "Parquet KPI" "partition samples" "find '$root' -name '*.parquet' -type f -printf '%h\n' | sed \"s#^$root/##\" | sort -u | head -5"
 }
 
+summary_iceberg_kpi() {
+  summary_enabled || return 0
+  local root=${1:-docker/data/warehouse/iceberg/fdb/cell_kpi}
+  local data_root="$root/data"
+  local metadata_root="$root/metadata"
+  if [ ! -d "$root" ]; then
+    summary_line "Iceberg KPI" "data files" "0"
+    summary_line "Iceberg KPI" "data bytes" "0"
+    summary_line "Iceberg KPI" "partitions" "0"
+    summary_line "Iceberg KPI" "metadata json" "0"
+    summary_line "Iceberg KPI" "snapshots" "0"
+    return 0
+  fi
+
+  local data_files
+  local data_bytes
+  local partitions
+  local metadata_json
+  local latest_metadata
+  local snapshots
+  data_files="$(find "$data_root" -name '*.parquet' -type f 2>/dev/null | wc -l | tr -d ' ')"
+  data_bytes="$(find "$data_root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
+  partitions="$(find "$data_root" -name '*.parquet' -type f -printf '%h\n' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+  metadata_json="$(find "$metadata_root" -name '*.metadata.json' -type f 2>/dev/null | wc -l | tr -d ' ')"
+  latest_metadata="$(find "$metadata_root" -name '*.metadata.json' -type f 2>/dev/null | sort | tail -1)"
+  if [ -n "$latest_metadata" ]; then
+    snapshots="$(grep -o '"snapshot-id"[[:space:]]*:[[:space:]]*[0-9]*' "$latest_metadata" 2>/dev/null | wc -l | tr -d ' ' || true)"
+  else
+    snapshots="0"
+  fi
+
+  summary_line "Iceberg KPI" "data files" "$data_files"
+  summary_line "Iceberg KPI" "data bytes" "$data_bytes"
+  summary_line "Iceberg KPI" "partitions" "$partitions"
+  summary_line "Iceberg KPI" "metadata json" "$metadata_json"
+  summary_line "Iceberg KPI" "snapshots" "$snapshots"
+  summary_command "Iceberg KPI" "partition samples" "find '$data_root' -name '*.parquet' -type f -printf '%h\n' | sed \"s#^$data_root/##\" | sort -u | head -5"
+}
+
+summary_hive_iceberg_compare() {
+  summary_enabled || return 0
+  local hive_root=${1:-docker/data/warehouse/cell_kpi}
+  local iceberg_root=${2:-docker/data/warehouse/iceberg/fdb/cell_kpi/data}
+  local hive_files
+  local hive_bytes
+  local iceberg_files
+  local iceberg_bytes
+  hive_files="$(find "$hive_root" -name '*.parquet' -type f 2>/dev/null | wc -l | tr -d ' ')"
+  hive_bytes="$(find "$hive_root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
+  iceberg_files="$(find "$iceberg_root" -name '*.parquet' -type f 2>/dev/null | wc -l | tr -d ' ')"
+  iceberg_bytes="$(find "$iceberg_root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
+  summary_line "Hive/Iceberg Compare" "hive_files" "$hive_files"
+  summary_line "Hive/Iceberg Compare" "iceberg_files" "$iceberg_files"
+  summary_line "Hive/Iceberg Compare" "hive_bytes" "$hive_bytes"
+  summary_line "Hive/Iceberg Compare" "iceberg_bytes" "$iceberg_bytes"
+}
+
 summary_flink_job() {
   summary_enabled || return 0
   summary_command "Flink" "jobs" "docker exec fdb-flink-jobmanager ./bin/flink list | grep -E ' : .* : ' | sed 's/^[[:space:]]*//'"
   summary_command "Flink" "latest completed checkpoints" "docker logs fdb-flink-jobmanager 2>&1 | grep 'Completed checkpoint' | tail -3 | sed 's/^.*Completed checkpoint /checkpoint /'"
+}
+
+summary_observability() {
+  summary_enabled || return 0
+  summary_line "Observability" "grafana dashboard" "$(observability_grafana_url)"
+  summary_line "Observability" "prometheus" "$(observability_prometheus_url)"
+  summary_line "Observability" "api metrics" "$(observability_api_url)/metrics"
+  summary_kafka_topic "fdb-stage-metrics"
+  summary_command "Observability" "prometheus fdb_stage_out_eps series" \
+    "curl -fsS '$(observability_prometheus_url)/api/v1/query?query=fdb_stage_out_eps' | grep -o '\"metric\"' | wc -l | tr -d ' '"
+  summary_command "Observability" "prometheus nonzero stage eps series" \
+    "curl -fsS '$(observability_prometheus_url)/api/v1/query?query=fdb_stage_out_eps%20%3E%200' | grep -o '\"metric\"' | wc -l | tr -d ' '"
 }
 
 summary_hive_kpi() {

@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "observability-api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["observability-api:18080"]
+
+  - job_name: "flink-jobmanager"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["jobmanager:9249"]
+
+  - job_name: "flink-taskmanager"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["taskmanager:9249"]

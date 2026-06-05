@@ -28,3 +28,6 @@ docker/lib/
 
 # Notes
 *.txt
+
+# Local analysis artifacts
+graphify-out/

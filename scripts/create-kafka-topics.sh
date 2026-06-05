@@ -35,6 +35,7 @@ create_topic topology          4 compact
 # Load balancing control flow
 create_topic lb-heartbeat      1 delete  3600000       # 1h
 create_topic lb-routing        1 compact
+create_topic fdb-stage-metrics 1 delete  3600000       # 1h
 
 # Flink output
 create_topic anomaly-events   16 delete  604800000     # 7d

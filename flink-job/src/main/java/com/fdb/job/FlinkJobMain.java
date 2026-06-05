@@ -19,6 +19,7 @@ import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.table.data.RowData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.fdb.common.geo.Geohash;
@@ -39,6 +40,7 @@ public class FlinkJobMain {
         env.enableCheckpointing(resolveCheckpointIntervalMs(System.getenv(), System.getProperties()));
         env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(System.getenv(), System.getProperties()));
         env.setParallelism(resolveParallelism(System.getenv(), System.getProperties()));
+        IcebergConfig icebergConfig = resolveIcebergConfig(System.getenv(), System.getProperties());
 
         // ── Main pipeline: CHR + MR + CM ──
 
@@ -70,17 +72,23 @@ public class FlinkJobMain {
             WatermarkStrategy.<ChrEvent>forBoundedOutOfOrderness(Duration.ofSeconds(20))
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((event, ts) -> event.getEventTs()),
-            "chr-source");
+            "chr-source")
+            .process(new StageMetricsProbe<>("chr-source", "CHR Source", "healthy", 5_000L))
+            .name("chr-source-metrics");
 
         DataStream<MrStat> mrStream = env.fromSource(mrSource,
             WatermarkStrategy.<MrStat>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
-            "mr-source");
+            "mr-source")
+            .process(new StageMetricsProbe<>("mr-source", "MR Source", "healthy", 5_000L))
+            .name("mr-source-metrics");
 
         DataStream<CmConfig> cmStream = env.fromSource(cmSource,
             WatermarkStrategy.<CmConfig>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
-            "cm-source");
+            "cm-source")
+            .process(new StageMetricsProbe<>("cm-source", "CM Source", "healthy", 5_000L))
+            .name("cm-source-metrics");
 
         // ── Enrichment pipeline: unify CHR + MR + CM → enrich → detect anomalies + KPI ──
 
@@ -97,7 +105,9 @@ public class FlinkJobMain {
             .returns(new GenericTypeInfo<>(InputEnvelope.class))
             .name("to-cm-env");
 
-        DataStream<InputEnvelope> mergedInput = chrEnv.union(mrEnv, cmEnv);
+        DataStream<InputEnvelope> mergedInput = chrEnv.union(mrEnv, cmEnv)
+            .process(new StageMetricsProbe<>("kafka", "Kafka Topics", "healthy", 5_000L))
+            .name("kafka-topics-metrics");
 
         KafkaSource<String> routingSource = KafkaSource.<String>builder()
             .setBootstrapServers(bootstrap).setTopics("lb-routing")
@@ -111,6 +121,9 @@ public class FlinkJobMain {
             .keyBy(RoutedEnvelope::vbucketId)
             .process(new VBucketLoadMeter(), new GenericTypeInfo<>(RoutedEnvelope.class))
             .name("vbucket-load-meter");
+        DataStream<RoutedEnvelope> assigned = metered
+            .process(new StageMetricsProbe<>("assigner", "VBucket Assigner", "healthy", 5_000L))
+            .name("vbucket-assigner-metrics");
 
         KafkaSink<String> heartbeatKafkaSink = KafkaSink.<String>builder()
             .setBootstrapServers(bootstrap)
@@ -120,11 +133,14 @@ public class FlinkJobMain {
         metered.getSideOutput(VBucketLoadMeter.HEARTBEATS)
             .sinkTo(heartbeatKafkaSink).name("lb-heartbeat-sink");
 
-        SingleOutputStreamOperator<EnrichedChr> enriched = metered
+        SingleOutputStreamOperator<EnrichedChr> enrichedRaw = assigned
             .keyBy(RoutedEnvelope::stateKey)
             .process(new EnrichmentProcessFunction(), new GenericTypeInfo<>(EnrichedChr.class))
             .name("enrichment")
             .uid("enrichment");
+        DataStream<EnrichedChr> enriched = enrichedRaw
+            .process(new StageMetricsProbe<>("enrichment", "Enrichment Process", "healthy", 5_000L))
+            .name("enrichment-metrics");
 
         KafkaSink<ChrEvent> chrDlqSink = KafkaSink.<ChrEvent>builder()
             .setBootstrapServers(bootstrap)
@@ -133,7 +149,7 @@ public class FlinkJobMain {
                 .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(ChrEvent.class))
                 .build())
             .build();
-        enriched.getSideOutput(EnrichmentProcessFunction.CHR_DLQ)
+        enrichedRaw.getSideOutput(EnrichmentProcessFunction.CHR_DLQ)
             .sinkTo(chrDlqSink).name("chr-dlq-sink");
 
         // ── Anomaly detection ──
@@ -162,7 +178,10 @@ public class FlinkJobMain {
         anomalies.sinkTo(anomalySink)
             .name("anomaly-kafka-sink");
 
-        anomalies.sinkTo(JdbcSinks.anomalySink())
+        anomalies
+            .process(new StageMetricsProbe<>("mysql-sink", "MySQL Sink", "healthy", 5_000L))
+            .name("mysql-anomaly-sink-metrics")
+            .sinkTo(JdbcSinks.anomalySink())
             .name("anomaly-jdbc-sink");
 
         // ── KPI aggregation (1-minute window) ──
@@ -188,8 +207,22 @@ public class FlinkJobMain {
         cellKpi1m.sinkTo(JdbcSinks.cellKpiSink())
             .name("cell-kpi-jdbc-sink");
 
-        cellKpi1m.sinkTo(HiveSinks.cellKpiSink("MIN_1"))
+        cellKpi1m
+            .process(new SinkPerformanceProbe("hive-cell-kpi-1m", 100), new GenericTypeInfo<>(CellKpi.class))
+            .name("cell-kpi-hive-probe")
+            .sinkTo(HiveSinks.cellKpiSink("MIN_1"))
             .name("cell-kpi-hive-sink");
+
+        if (icebergConfig.enabled()) {
+            DataStream<RowData> icebergKpi1m = cellKpi1m
+                .process(new SinkPerformanceProbe("iceberg-cell-kpi-1m", 100), new GenericTypeInfo<>(CellKpi.class))
+                .name("cell-kpi-iceberg-probe")
+                .map(new CellKpiIcebergMapper())
+                .returns(new GenericTypeInfo<>(RowData.class))
+                .name("cell-kpi-iceberg-map");
+            IcebergSinks.appendCellKpiSink(icebergKpi1m, icebergConfig)
+                .name("cell-kpi-iceberg-sink");
+        }
 
         DataStream<CellKpi> cellKpi5m = enriched
             .keyBy(ec -> ec.chrEvent().getCellId().toString())
@@ -208,7 +241,22 @@ public class FlinkJobMain {
 
         cellKpi5m.sinkTo(cellKpi5mSink).name("cell-kpi-5m-kafka-sink");
         cellKpi5m.sinkTo(JdbcSinks.cellKpiSink()).name("cell-kpi-5m-jdbc-sink");
-        cellKpi5m.sinkTo(HiveSinks.cellKpiSink("MIN_5")).name("cell-kpi-5m-hive-sink");
+        cellKpi5m
+            .process(new SinkPerformanceProbe("hive-cell-kpi-5m", 100), new GenericTypeInfo<>(CellKpi.class))
+            .name("cell-kpi-5m-hive-probe")
+            .sinkTo(HiveSinks.cellKpiSink("MIN_5"))
+            .name("cell-kpi-5m-hive-sink");
+
+        if (icebergConfig.enabled()) {
+            DataStream<RowData> icebergKpi5m = cellKpi5m
+                .process(new SinkPerformanceProbe("iceberg-cell-kpi-5m", 100), new GenericTypeInfo<>(CellKpi.class))
+                .name("cell-kpi-5m-iceberg-probe")
+                .map(new CellKpiIcebergMapper())
+                .returns(new GenericTypeInfo<>(RowData.class))
+                .name("cell-kpi-5m-iceberg-map");
+            IcebergSinks.appendCellKpiSink(icebergKpi5m, icebergConfig)
+                .name("cell-kpi-5m-iceberg-sink");
+        }
 
         // ── Coordinator pipeline: lb-heartbeat → LoadCoordinator → lb-routing ──
 
@@ -231,7 +279,9 @@ public class FlinkJobMain {
             .keyBy(hb -> "coordinator")
             .process(new LoadCoordinator(), new GenericTypeInfo<>(RoutingEntry.class))
             .name("load-coordinator")
-            .setParallelism(1);
+            .setParallelism(1)
+            .process(new StageMetricsProbe<>("load-coordinator", "Load Coordinator", "healthy", 5_000L))
+            .name("load-coordinator-metrics");
 
         KafkaSink<String> routingSink = KafkaSink.<String>builder()
             .setBootstrapServers(bootstrap)
@@ -290,5 +340,9 @@ public class FlinkJobMain {
             return "file:///tmp/fdb-checkpoints";
         }
         return configured.trim();
+    }
+
+    static IcebergConfig resolveIcebergConfig(Map<String, String> env, Properties properties) {
+        return IcebergConfig.resolve(env, properties);
     }
 }

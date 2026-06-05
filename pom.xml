@@ -15,6 +15,7 @@
         <module>topology-service</module>
         <module>simulator</module>
         <module>flink-job</module>
+        <module>observability-api</module>
     </modules>
 
     <properties>
@@ -26,11 +27,13 @@
         <flink.connector.jdbc.version>3.3.0-1.20</flink.connector.jdbc.version>
         <parquet.version>1.15.2</parquet.version>
         <hadoop.version>3.3.6</hadoop.version>
+        <iceberg.version>1.11.0</iceberg.version>
         <avro.version>1.11.3</avro.version>
         <guava.version>33.0.0-jre</guava.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.13</slf4j.version>
         <logback.version>1.5.6</logback.version>
+        <jackson.version>2.17.2</jackson.version>
 
         <junit.version>5.10.2</junit.version>
         <assertj.version>3.25.3</assertj.version>
@@ -93,6 +96,16 @@
                 <version>${hadoop.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.apache.iceberg</groupId>
+                <artifactId>iceberg-flink-runtime-1.20</artifactId>
+                <version>${iceberg.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-table-common</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
                 <version>8.3.0</version>
@@ -106,6 +119,21 @@
                 <groupId>ch.qos.logback</groupId>
                 <artifactId>logback-classic</artifactId>
                 <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson.version}</version>
             </dependency>
 
             <dependency>

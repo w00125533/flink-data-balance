@@ -83,4 +83,20 @@ class FlinkJobMainTest {
             Map.of("FDB_FLINK_CHECKPOINT_DIR", " file:///env-checkpoints "), properties))
             .isEqualTo("file:///env-checkpoints");
     }
+
+    @Test
+    void resolve_iceberg_config_uses_defaults() {
+        IcebergConfig config = FlinkJobMain.resolveIcebergConfig(Map.of(), new Properties());
+
+        assertThat(config.enabled()).isTrue();
+        assertThat(config.warehouse()).isEqualTo("file:///warehouse/iceberg");
+    }
+
+    @Test
+    void resolve_iceberg_config_can_disable_sink() {
+        IcebergConfig config = FlinkJobMain.resolveIcebergConfig(
+            Map.of("FDB_ICEBERG_ENABLED", "false"), new Properties());
+
+        assertThat(config.enabled()).isFalse();
+    }
 }

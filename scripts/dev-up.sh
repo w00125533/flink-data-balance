@@ -3,8 +3,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "[dev-up] Starting local dependency containers (Kafka / MySQL / HMS / Postgres)..."
-docker compose -f docker/docker-compose.yml up -d
+echo "[dev-up] Checking shared lakehouse infrastructure..."
+if ! docker network inspect shared-data-infra >/dev/null 2>&1; then
+  echo "[dev-up] shared-data-infra network is missing."
+  echo "[dev-up] Start shared lakehouse first:"
+  echo "[dev-up]   cd ../shared-data-infra && powershell -ExecutionPolicy Bypass -File scripts/infra-up.ps1 -Profiles lakehouse"
+  exit 1
+fi
+
+echo "[dev-up] Starting local dependency containers (Kafka / MySQL / HiveServer2 / Flink runtime)..."
+docker compose -f docker/docker-compose.yml --profile e2e up -d \
+  zookeeper \
+  kafka \
+  kafka-ui \
+  mysql \
+  hive-server \
+  jobmanager \
+  taskmanager
 
 echo "[dev-up] Waiting for Kafka to be ready (up to 60s)..."
 KAFKA_READY=0
@@ -32,18 +47,17 @@ for i in $(seq 1 30); do
 done
 [ "$MYSQL_READY" = 1 ] || { echo "[dev-up] MySQL did not become ready"; exit 1; }
 
-echo "[dev-up] Waiting for Hive Metastore to be ready (up to 90s)..."
-HMS_READY=0
+echo "[dev-up] Waiting for HiveServer2 to reach shared Hive Metastore (up to 90s)..."
+HIVE_READY=0
 for i in $(seq 1 45); do
-  STATUS=$(docker inspect -f '{{.State.Status}}' fdb-hive-metastore 2>/dev/null || echo "")
-  if [ "$STATUS" = "running" ]; then
-    echo "[dev-up] Hive Metastore OK"
-    HMS_READY=1
+  if docker exec fdb-hive-server beeline -u jdbc:hive2://localhost:10000/default -e 'SELECT 1' >/dev/null 2>&1; then
+    echo "[dev-up] HiveServer2 OK"
+    HIVE_READY=1
     break
   fi
   sleep 2
 done
-[ "$HMS_READY" = 1 ] || { echo "[dev-up] Hive Metastore did not become ready"; exit 1; }
+[ "$HIVE_READY" = 1 ] || { echo "[dev-up] HiveServer2 did not become ready"; exit 1; }
 
 echo "[dev-up] Creating Kafka topics..."
 bash scripts/create-kafka-topics.sh

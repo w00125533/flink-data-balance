@@ -1,5 +1,7 @@
 package com.fdb.job.coordinator;
 
+import com.fdb.common.metrics.StageMetricSample;
+import com.fdb.job.MetricSamplePublisher;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -38,6 +40,8 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
 
     private transient RebalancePolicy policy;
     private transient String snapshotDir;
+    private transient MetricSamplePublisher metricPublisher;
+    private transient long rebalanceTotal;
 
     private transient long lastTimerTime = 0;
 
@@ -57,6 +61,7 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
         policy = new RebalancePolicy(OVERLOAD_THRESHOLD, OVERLOAD_DURATION_MS,
             NUM_HOTSPOTS, NUM_VBUCKETS);
         snapshotDir = System.getProperty("fdb.snapshot.dir", "/tmp/fdb-state");
+        metricPublisher = new MetricSamplePublisher();
     }
 
     @Override
@@ -134,6 +139,8 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
                 policy.evaluate(heartbeats, overloadTimes, now, routingVersion);
 
             if (!decisions.isEmpty()) {
+                rebalanceTotal += decisions.size();
+                publishRebalanceMetric(now);
                 log.info("Rebalance at boundary {}: {} decisions", currentBoundary, decisions.size());
                 for (var decision : decisions) {
                     RoutingEntry entry = new RoutingEntry(
@@ -156,6 +163,13 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
         }
 
         ctx.timerService().registerProcessingTimeTimer(now + EVALUATION_INTERVAL_MS);
+    }
+
+    @Override
+    public void close() {
+        if (metricPublisher != null) {
+            metricPublisher.close();
+        }
     }
 
     private double computeMedianEps() throws Exception {
@@ -219,5 +233,13 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    private void publishRebalanceMetric(long now) {
+        if (metricPublisher == null) {
+            return;
+        }
+        metricPublisher.publish(StageMetricSample.stage("load-coordinator", "Load Coordinator", "healthy",
+            0.0d, rebalanceTotal, 0L, 0L, 0L, now).withRebalanceTotal(rebalanceTotal));
     }
 }

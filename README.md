@@ -22,12 +22,56 @@ docker compose -f docker/docker-compose.yml config
 ## Infrastructure
 
 ```bash
+cd ../shared-data-infra
+powershell -ExecutionPolicy Bypass -File scripts/infra-up.ps1 -Profiles lakehouse
+
+cd ../flink-data-balance
 bash scripts/dev-up.sh
 bash scripts/dev-down.sh
 ```
 
-`dev-up.sh` starts Kafka, MySQL and Hive Metastore, creates Kafka topics and
-initializes MySQL tables.
+`dev-up.sh` expects the shared lakehouse network `shared-data-infra` to exist,
+starts project-local Kafka, MySQL, HiveServer2 and runtime services, creates
+Kafka topics and initializes MySQL tables. Hive Metastore and its Postgres
+database are provided by `../shared-data-infra`.
+
+Kafka remains project-local in this phase because the e2e scripts and summary
+helpers still use the `fdb-kafka` container and `kafka:29092` bootstrap address.
+Move Kafka to shared infrastructure only after those scripts are updated to use
+the shared `kafka:9092` endpoint.
+
+## 实时观测控制台
+
+The local observability stack adds an embedded frontend console, a lightweight
+Java observability API, Prometheus scraping and a provisioned Grafana dashboard.
+
+- Frontend: http://localhost:5173
+- Observability API: http://localhost:18080
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000
+
+Build the API jar before starting the console services:
+
+```bash
+mvn -pl observability-api package
+docker compose -f docker/docker-compose.yml up -d observability-api frontend prometheus grafana
+```
+
+The console shows CHR/MR/CM source delay, streaming stage status, VBucket
+rebalance events, and MySQL/Hive/Iceberg sink write performance summaries.
+
+Runtime metrics flow through Kafka before Prometheus scrapes them:
+
+```text
+Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> Prometheus -> Grafana/frontend
+```
+
+The Flink job emits samples for `chr-source`, `mr-source`, `cm-source`, `kafka`,
+`assigner`, `enrichment`, `load-coordinator`, `mysql-sink`, `hive-sink` and
+`iceberg-sink`. The observability API keeps the latest sample per stage and
+renders the `fdb_*` Prometheus series. The Flink containers also enable the
+Flink Prometheus reporter on port `9249` for native JobManager/TaskManager
+metrics.
 
 ## End-to-End Smoke Test
 
@@ -47,6 +91,18 @@ code-level counters and data-shape diagnostics:
 ```bash
 FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh
 ```
+
+To keep the e2e stack running after a successful run and inspect real metrics in
+Grafana, use:
+
+```bash
+FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh
+```
+
+After the script reports success, open the printed Grafana dashboard URL. The
+script also verifies that `fdb-stage-metrics` has runtime samples,
+`http://localhost:18080/metrics` exposes non-zero `fdb_*` values, and
+Prometheus can query `fdb_stage_out_eps > 0`.
 
 Accepted truthy values are `1`, `true`, `TRUE`, `yes` and `on`.
 Summary lines are printed to the console and persisted to `logs-summary.log` by

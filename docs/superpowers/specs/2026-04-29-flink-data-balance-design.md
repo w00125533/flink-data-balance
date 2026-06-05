@@ -769,6 +769,8 @@ FDB_STATE_ROOT=file:///tmp/fdb-state
 
 ## 12. 可观测性
 
+> 扩展设计：实时流处理流程图控制台、SSE 状态流、Prometheus 指标规范和 Grafana 面板详见 `docs/superpowers/specs/2026-06-03-streaming-observability-console-design.md`。
+
 ### 12.1 Metrics（Flink → Prometheus）
 
 ```
