@@ -1491,13 +1491,9 @@ Add:
 - 修改控制台时需至少运行 `mvn -pl observability-api test`、`cd frontend && npm run build`、`docker compose -f docker/docker-compose.yml config`。
 ```
 
-- [ ] **Step 3: Cross-link original spec**
+- [ ] **Step 3: Keep the main spec authoritative**
 
-In `docs/superpowers/specs/2026-04-29-flink-data-balance-design.md`, under `## 12. 可观测性`, add:
-
-```markdown
-> 扩展设计：实时流处理流程图控制台、SSE 状态流、Prometheus 指标规范和 Grafana 面板详见 `docs/superpowers/specs/2026-06-03-streaming-observability-console-design.md`。
-```
+Ensure `docs/superpowers/specs/2026-04-29-flink-data-balance-design.md` contains the full realtime observability console design under `## 12. 可观测性与实时控制台`; do not link to a separate incremental spec.
 
 - [ ] **Step 4: Commit**
 
