@@ -83,6 +83,7 @@ services:
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
     volumes:
       - ../flink-job/target:/opt/fdb
+      - ./lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
     networks:
       - default
       - shared-data-infra
@@ -110,6 +111,8 @@ services:
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
       - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
+    volumes:
+      - ./lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
     networks:
       - default
       - shared-data-infra

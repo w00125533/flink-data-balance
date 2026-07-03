@@ -37,7 +37,8 @@ observability API, frontend and Prometheus. Kafka uses the shared default
 endpoint `kafka:9092` inside Docker and `localhost:9092` from the host.
 Kafka UI is provided by the shared `observability` profile at http://localhost:8080.
 It also creates Kafka topics, initializes MySQL tables, prepares shared HDFS
-warehouse directories, and creates the shared Hive external table.
+warehouse directories, downloads the local Flink Hadoop runtime jar into the
+ignored `docker/lib` cache, and creates the shared Hive external table.
 
 ## 实时观测控制台
 

@@ -9,6 +9,8 @@ export MSYS_NO_PATHCONV=1
 SHARED_INFRA_DIR=${SHARED_INFRA_DIR:-../shared-data-infra}
 HDFS_URI=${FDB_HDFS_URI:-hdfs://namenode:8020}
 KAFKA_BOOTSTRAP=${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}
+FLINK_HADOOP_RUNTIME_ARTIFACT=${FLINK_HADOOP_RUNTIME_ARTIFACT:-org.apache.flink:flink-shaded-hadoop-2-uber:2.8.3-10.0}
+FLINK_HADOOP_RUNTIME_JAR=${FLINK_HADOOP_RUNTIME_JAR:-docker/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar}
 
 shared_streaming() {
   docker compose -f "$SHARED_INFRA_DIR/compose.yaml" -f "$SHARED_INFRA_DIR/compose.streaming.yaml" --profile streaming "$@"
@@ -16,6 +18,32 @@ shared_streaming() {
 
 shared_lakehouse() {
   docker compose -f "$SHARED_INFRA_DIR/compose.yaml" -f "$SHARED_INFRA_DIR/compose.lakehouse.yaml" --profile lakehouse --profile lakehouse-tools "$@"
+}
+
+prepare_flink_hadoop_runtime() {
+  if [ -f "$FLINK_HADOOP_RUNTIME_JAR" ]; then
+    return
+  fi
+
+  echo "[dev-up] Downloading Flink Hadoop runtime jar..."
+  mkdir -p "$(dirname "$FLINK_HADOOP_RUNTIME_JAR")"
+
+  local old_msys_no_pathconv_set=0
+  local old_msys_no_pathconv=""
+  if [ "${MSYS_NO_PATHCONV+x}" = "x" ]; then
+    old_msys_no_pathconv_set=1
+    old_msys_no_pathconv="$MSYS_NO_PATHCONV"
+    unset MSYS_NO_PATHCONV
+  fi
+
+  mvn -q dependency:copy \
+    -Dartifact="$FLINK_HADOOP_RUNTIME_ARTIFACT" \
+    -DoutputDirectory="$(dirname "$FLINK_HADOOP_RUNTIME_JAR")" \
+    -Dtransitive=false
+
+  if [ "$old_msys_no_pathconv_set" = "1" ]; then
+    export MSYS_NO_PATHCONV="$old_msys_no_pathconv"
+  fi
 }
 
 echo "[dev-up] Checking shared infrastructure..."
@@ -57,6 +85,8 @@ shared_lakehouse exec -T namenode \
   hdfs dfs -fs "$HDFS_URI" -mkdir -p /warehouse/fdb/cell_kpi /warehouse/iceberg
 shared_lakehouse exec -T namenode \
   hdfs dfs -fs "$HDFS_URI" -chmod -R 777 /warehouse/fdb /warehouse/iceberg
+
+prepare_flink_hadoop_runtime
 
 echo "[dev-up] Starting local project containers (MySQL / Flink runtime / observability)..."
 docker compose -f docker/docker-compose.yml --profile e2e up -d \

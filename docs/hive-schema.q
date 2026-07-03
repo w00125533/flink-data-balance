@@ -20,4 +20,6 @@ PARTITIONED BY (window_kind STRING, dt STRING, hour STRING)
 STORED AS PARQUET
 LOCATION 'hdfs://namenode:8020/warehouse/fdb/cell_kpi';
 
+ALTER TABLE fdb.cell_kpi SET LOCATION 'hdfs://namenode:8020/warehouse/fdb/cell_kpi';
+
 MSCK REPAIR TABLE fdb.cell_kpi;
