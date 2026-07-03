@@ -33,3 +33,4 @@ docker/lib/
 
 # Local analysis artifacts
 graphify-out/
+.worktrees/
