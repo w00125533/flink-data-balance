@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Git Bash rewrites container-internal paths and URI-like arguments unless this is disabled.
+export MSYS_NO_PATHCONV=1
+
 SHARED_INFRA_DIR=${SHARED_INFRA_DIR:-../shared-data-infra}
 HDFS_URI=${FDB_HDFS_URI:-hdfs://namenode:8020}
 KAFKA_BOOTSTRAP=${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export MSYS_NO_PATHCONV=1
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SHARED_INFRA_DIR="${SHARED_INFRA_DIR:-../shared-data-infra}"

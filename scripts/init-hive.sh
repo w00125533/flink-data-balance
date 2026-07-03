@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export MSYS_NO_PATHCONV=1
+
 SHARED_INFRA_DIR=${SHARED_INFRA_DIR:-../shared-data-infra}
 
 docker compose -f "$SHARED_INFRA_DIR/compose.yaml" -f "$SHARED_INFRA_DIR/compose.lakehouse.yaml" \
