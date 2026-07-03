@@ -23,38 +23,35 @@ docker compose -f docker/docker-compose.yml config
 
 ```bash
 cd ../shared-data-infra
-powershell -ExecutionPolicy Bypass -File scripts/infra-up.ps1 -Profiles lakehouse
+sh scripts/infra-up.sh lakehouse lakehouse-tools streaming
 
 cd ../flink-data-balance
 bash scripts/dev-up.sh
 bash scripts/dev-down.sh
 ```
 
-`dev-up.sh` expects the shared lakehouse network `shared-data-infra` to exist,
-starts project-local Kafka, MySQL, HiveServer2 and runtime services, creates
-Kafka topics and initializes MySQL tables. Hive Metastore and its Postgres
-database are provided by `../shared-data-infra`.
-
-Kafka remains project-local in this phase because the e2e scripts and summary
-helpers still use the `fdb-kafka` container and `kafka:29092` bootstrap address.
-Move Kafka to shared infrastructure only after those scripts are updated to use
-the shared `kafka:9092` endpoint.
+`dev-up.sh` expects the shared `lakehouse`, `lakehouse-tools` and `streaming`
+profiles to be running. HDFS, Hive Metastore, HiveServer2, ZooKeeper and Kafka
+come from `../shared-data-infra`; this project starts only MySQL, Flink runtime,
+observability API, frontend and Prometheus. Kafka uses the shared default
+endpoint `kafka:9092` inside Docker and `localhost:9092` from the host.
+It also creates Kafka topics, initializes MySQL tables, prepares shared HDFS
+warehouse directories, and creates the shared Hive external table.
 
 ## 实时观测控制台
 
 The local observability stack adds an embedded frontend console, a lightweight
-Java observability API, Prometheus scraping and a provisioned Grafana dashboard.
+Java observability API and Prometheus scraping.
 
 - Frontend: http://localhost:5173
 - Observability API: http://localhost:18080
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000
 
 Build the API jar before starting the console services:
 
 ```bash
 mvn -pl observability-api package
-docker compose -f docker/docker-compose.yml up -d observability-api frontend prometheus grafana
+docker compose -f docker/docker-compose.yml up -d observability-api frontend prometheus
 ```
 
 The console shows CHR/MR/CM source delay, streaming stage status, VBucket
@@ -63,7 +60,7 @@ rebalance events, and MySQL/Hive/Iceberg sink write performance summaries.
 Runtime metrics flow through Kafka before Prometheus scrapes them:
 
 ```text
-Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> Prometheus -> Grafana/frontend
+Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> Prometheus/frontend
 ```
 
 The Flink job emits samples for `chr-source`, `mr-source`, `cm-source`, `kafka`,
@@ -79,9 +76,9 @@ metrics.
 bash scripts/e2e-smoke-test.sh
 ```
 
-The script builds the project, starts the Docker `e2e` profile with Flink and
-HiveServer2, starts topology and simulators, submits the job, and checks Kafka,
-MySQL, Parquet and Hive outputs.
+The script builds the project, starts the Docker `e2e` profile with Flink,
+starts topology and simulators, submits the job, and checks shared Kafka, MySQL,
+HDFS Parquet, Iceberg and shared Hive outputs.
 
 Summary output is disabled by default so the smoke path avoids extra Docker,
 MySQL and Hive statistics queries and keeps the Java processes on their normal
@@ -92,15 +89,14 @@ code-level counters and data-shape diagnostics:
 FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh
 ```
 
-To keep the e2e stack running after a successful run and inspect real metrics in
-Grafana, use:
+To keep the e2e stack running after a successful run and inspect real metrics,
+use:
 
 ```bash
 FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh
 ```
 
-After the script reports success, open the printed Grafana dashboard URL. The
-script also verifies that `fdb-stage-metrics` has runtime samples,
+After the script reports success, the script verifies that `fdb-stage-metrics` has runtime samples,
 `http://localhost:18080/metrics` exposes non-zero `fdb_*` values, and
 Prometheus can query `fdb_stage_out_eps > 0`.
 
@@ -191,7 +187,7 @@ flowchart LR
 - Load balancing: `lb-heartbeat` must have non-zero offsets.
 - Flink checkpointing: completed checkpoints are required before FileSink
   commits final Parquet files.
-- Parquet KPI: `docker/data/warehouse/cell_kpi` must contain `.parquet` files.
+- Parquet KPI: shared HDFS `/warehouse/fdb/cell_kpi` must contain `.parquet` files.
 - Hive KPI: `MSCK REPAIR TABLE fdb.cell_kpi` must discover partitions, then
   `SELECT COUNT(*) FROM fdb.cell_kpi` must return rows.
 

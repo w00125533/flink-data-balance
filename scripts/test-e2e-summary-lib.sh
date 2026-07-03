@@ -53,15 +53,10 @@ for value in 0 false no off ""; do
 done
 
 unset FDB_E2E_KEEP_RUNNING_ON_SUCCESS || true
-unset FDB_GRAFANA_URL || true
-unset FDB_GRAFANA_PORT || true
 unset FDB_PROMETHEUS_URL || true
 unset FDB_PROMETHEUS_PORT || true
 unset FDB_OBSERVABILITY_URL || true
 links="$(observability_links)"
-if ! printf '%s\n' "$links" | grep -q 'Grafana dashboard | http://localhost:3000/d/fdb-streaming-observability'; then
-  fail "observability_links should include the default Grafana dashboard URL"
-fi
 if ! printf '%s\n' "$links" | grep -q 'Prometheus | http://localhost:9090'; then
   fail "observability_links should include the default Prometheus URL"
 fi
@@ -69,16 +64,11 @@ if ! printf '%s\n' "$links" | grep -q 'Observability API metrics | http://localh
   fail "observability_links should include the default observability API metrics URL"
 fi
 
-FDB_GRAFANA_PORT=13000
 FDB_PROMETHEUS_PORT=19090
 links="$(observability_links)"
-if ! printf '%s\n' "$links" | grep -q 'Grafana dashboard | http://localhost:13000/d/fdb-streaming-observability'; then
-  fail "observability_links should honor FDB_GRAFANA_PORT"
-fi
 if ! printf '%s\n' "$links" | grep -q 'Prometheus | http://localhost:19090'; then
   fail "observability_links should honor FDB_PROMETHEUS_PORT"
 fi
-unset FDB_GRAFANA_PORT
 unset FDB_PROMETHEUS_PORT
 
 line="$(summary_line "Kafka input" "chr-events records" "128")"

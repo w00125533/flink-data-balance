@@ -6,7 +6,6 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.parquet.avro.AvroParquetWriters;
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputFileConfig;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.DateTimeBucketAssigner;
-import java.nio.file.Paths;
 
 public final class HiveSinks {
 
@@ -20,7 +19,7 @@ public final class HiveSinks {
 
     private static String warehousePath() {
         return System.getenv().getOrDefault("FDB_HIVE_WAREHOUSE",
-            Paths.get("docker", "data", "warehouse").toAbsolutePath().toUri().toString());
+            "hdfs://namenode:8020/warehouse/fdb");
     }
 
     public static FileSink<CellKpi> cellKpiSink(String windowKind) {

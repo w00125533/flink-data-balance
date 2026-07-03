@@ -38,14 +38,6 @@ e2e_keep_running_on_success() {
   esac
 }
 
-observability_grafana_url() {
-  printf '%s\n' "${FDB_GRAFANA_URL:-$(observability_grafana_base_url)/d/fdb-streaming-observability/flink-data-balance-streaming-observability?orgId=1&refresh=10s}"
-}
-
-observability_grafana_base_url() {
-  printf 'http://localhost:%s\n' "${FDB_GRAFANA_PORT:-3000}"
-}
-
 observability_prometheus_url() {
   printf '%s\n' "${FDB_PROMETHEUS_URL:-http://localhost:${FDB_PROMETHEUS_PORT:-9090}}"
 }
@@ -55,9 +47,27 @@ observability_api_url() {
 }
 
 observability_links() {
-  printf '[e2e] Grafana dashboard | %s\n' "$(observability_grafana_url)"
   printf '[e2e] Prometheus | %s\n' "$(observability_prometheus_url)"
   printf '[e2e] Observability API metrics | %s/metrics\n' "$(observability_api_url)"
+}
+
+shared_infra_dir() {
+  printf '%s\n' "${SHARED_INFRA_DIR:-../shared-data-infra}"
+}
+
+shared_kafka_exec() {
+  docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.streaming.yaml" --profile streaming \
+    exec -T kafka "$@"
+}
+
+shared_hive_exec() {
+  docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.lakehouse.yaml" \
+    --profile lakehouse --profile lakehouse-tools exec -T hive-server "$@"
+}
+
+shared_hdfs_exec() {
+  docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.lakehouse.yaml" \
+    --profile lakehouse exec -T namenode hdfs dfs -fs "${FDB_HDFS_URI:-hdfs://namenode:8020}" "$@"
 }
 
 summary_file() {
@@ -211,7 +221,7 @@ summary_kafka_topic() {
   summary_enabled || return 0
   local topic=$1
   local offsets
-  if ! offsets="$(docker exec fdb-kafka kafka-run-class kafka.tools.GetOffsetShell --broker-list kafka:29092 --topic "$topic" 2>/dev/null)"; then
+  if ! offsets="$(shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list "${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}" --topic "$topic" 2>/dev/null)"; then
     summary_line "Kafka" "$topic records" "unavailable"
     return 0
   fi
@@ -237,10 +247,25 @@ SELECT 'distinct_site_cell_grid', CONCAT(COUNT(DISTINCT site_id), '/', COUNT(DIS
     done
 }
 
+hdfs_find_files() {
+  local root=$1
+  local name=$2
+  shared_hdfs_exec -find "$root" -name "$name" 2>/dev/null || true
+}
+
+hdfs_du_bytes() {
+  local root=$1
+  local bytes
+  bytes="$(shared_hdfs_exec -du -s "$root" 2>/dev/null | awk '{print $1}' | tail -1)"
+  printf '%s\n' "${bytes:-0}"
+}
+
 summary_parquet_kpi() {
   summary_enabled || return 0
-  local root=${1:-docker/data/warehouse/cell_kpi}
-  if [ ! -d "$root" ]; then
+  local root=${1:-/warehouse/fdb/cell_kpi}
+  local files
+  files="$(hdfs_find_files "$root" '*.parquet')"
+  if [ -z "$files" ]; then
     summary_line "Parquet KPI" "files" "0"
     summary_line "Parquet KPI" "bytes" "0"
     summary_line "Parquet KPI" "partitions" "0"
@@ -249,21 +274,23 @@ summary_parquet_kpi() {
   local file_count
   local total_bytes
   local partitions
-  file_count="$(find "$root" -name '*.parquet' -type f | wc -l | tr -d ' ')"
-  total_bytes="$(find "$root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
-  partitions="$(find "$root" -name '*.parquet' -type f -printf '%h\n' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+  file_count="$(printf '%s\n' "$files" | sed '/^$/d' | wc -l | tr -d ' ')"
+  total_bytes="$(hdfs_du_bytes "$root")"
+  partitions="$(printf '%s\n' "$files" | sed 's#/[^/]*$##' | sort -u | wc -l | tr -d ' ')"
   summary_line "Parquet KPI" "files" "$file_count"
   summary_line "Parquet KPI" "bytes" "$total_bytes"
   summary_line "Parquet KPI" "partitions" "$partitions"
-  summary_command "Parquet KPI" "partition samples" "find '$root' -name '*.parquet' -type f -printf '%h\n' | sed \"s#^$root/##\" | sort -u | head -5"
+  summary_line "Parquet KPI" "partition samples" "$(printf '%s\n' "$files" | sed 's#/[^/]*$##' | sed "s#^$root/##" | sort -u | head -5 | tr '\n' ';' | sed 's/;*$//')"
 }
 
 summary_iceberg_kpi() {
   summary_enabled || return 0
-  local root=${1:-docker/data/warehouse/iceberg/fdb/cell_kpi}
+  local root=${1:-/warehouse/iceberg/fdb/cell_kpi}
   local data_root="$root/data"
   local metadata_root="$root/metadata"
-  if [ ! -d "$root" ]; then
+  local data_files_list
+  data_files_list="$(hdfs_find_files "$data_root" '*.parquet')"
+  if [ -z "$data_files_list" ]; then
     summary_line "Iceberg KPI" "data files" "0"
     summary_line "Iceberg KPI" "data bytes" "0"
     summary_line "Iceberg KPI" "partitions" "0"
@@ -278,13 +305,13 @@ summary_iceberg_kpi() {
   local metadata_json
   local latest_metadata
   local snapshots
-  data_files="$(find "$data_root" -name '*.parquet' -type f 2>/dev/null | wc -l | tr -d ' ')"
-  data_bytes="$(find "$data_root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
-  partitions="$(find "$data_root" -name '*.parquet' -type f -printf '%h\n' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
-  metadata_json="$(find "$metadata_root" -name '*.metadata.json' -type f 2>/dev/null | wc -l | tr -d ' ')"
-  latest_metadata="$(find "$metadata_root" -name '*.metadata.json' -type f 2>/dev/null | sort | tail -1)"
+  data_files="$(printf '%s\n' "$data_files_list" | sed '/^$/d' | wc -l | tr -d ' ')"
+  data_bytes="$(hdfs_du_bytes "$data_root")"
+  partitions="$(printf '%s\n' "$data_files_list" | sed 's#/[^/]*$##' | sort -u | wc -l | tr -d ' ')"
+  metadata_json="$(hdfs_find_files "$metadata_root" '*.metadata.json' | sed '/^$/d' | wc -l | tr -d ' ')"
+  latest_metadata="$(hdfs_find_files "$metadata_root" '*.metadata.json' | sort | tail -1)"
   if [ -n "$latest_metadata" ]; then
-    snapshots="$(grep -o '"snapshot-id"[[:space:]]*:[[:space:]]*[0-9]*' "$latest_metadata" 2>/dev/null | wc -l | tr -d ' ' || true)"
+    snapshots="$(shared_hdfs_exec -cat "$latest_metadata" 2>/dev/null | grep -o '"snapshot-id"[[:space:]]*:[[:space:]]*[0-9]*' | wc -l | tr -d ' ' || true)"
   else
     snapshots="0"
   fi
@@ -294,21 +321,21 @@ summary_iceberg_kpi() {
   summary_line "Iceberg KPI" "partitions" "$partitions"
   summary_line "Iceberg KPI" "metadata json" "$metadata_json"
   summary_line "Iceberg KPI" "snapshots" "$snapshots"
-  summary_command "Iceberg KPI" "partition samples" "find '$data_root' -name '*.parquet' -type f -printf '%h\n' | sed \"s#^$data_root/##\" | sort -u | head -5"
+  summary_line "Iceberg KPI" "partition samples" "$(printf '%s\n' "$data_files_list" | sed 's#/[^/]*$##' | sed "s#^$data_root/##" | sort -u | head -5 | tr '\n' ';' | sed 's/;*$//')"
 }
 
 summary_hive_iceberg_compare() {
   summary_enabled || return 0
-  local hive_root=${1:-docker/data/warehouse/cell_kpi}
-  local iceberg_root=${2:-docker/data/warehouse/iceberg/fdb/cell_kpi/data}
+  local hive_root=${1:-/warehouse/fdb/cell_kpi}
+  local iceberg_root=${2:-/warehouse/iceberg/fdb/cell_kpi/data}
   local hive_files
   local hive_bytes
   local iceberg_files
   local iceberg_bytes
-  hive_files="$(find "$hive_root" -name '*.parquet' -type f 2>/dev/null | wc -l | tr -d ' ')"
-  hive_bytes="$(find "$hive_root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
-  iceberg_files="$(find "$iceberg_root" -name '*.parquet' -type f 2>/dev/null | wc -l | tr -d ' ')"
-  iceberg_bytes="$(find "$iceberg_root" -name '*.parquet' -type f -printf '%s\n' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
+  hive_files="$(hdfs_find_files "$hive_root" '*.parquet' | sed '/^$/d' | wc -l | tr -d ' ')"
+  hive_bytes="$(hdfs_du_bytes "$hive_root")"
+  iceberg_files="$(hdfs_find_files "$iceberg_root" '*.parquet' | sed '/^$/d' | wc -l | tr -d ' ')"
+  iceberg_bytes="$(hdfs_du_bytes "$iceberg_root")"
   summary_line "Hive/Iceberg Compare" "hive_files" "$hive_files"
   summary_line "Hive/Iceberg Compare" "iceberg_files" "$iceberg_files"
   summary_line "Hive/Iceberg Compare" "hive_bytes" "$hive_bytes"
@@ -323,7 +350,6 @@ summary_flink_job() {
 
 summary_observability() {
   summary_enabled || return 0
-  summary_line "Observability" "grafana dashboard" "$(observability_grafana_url)"
   summary_line "Observability" "prometheus" "$(observability_prometheus_url)"
   summary_line "Observability" "api metrics" "$(observability_api_url)/metrics"
   summary_kafka_topic "fdb-stage-metrics"
@@ -336,7 +362,7 @@ summary_observability() {
 summary_hive_kpi() {
   summary_enabled || return 0
   local output
-  output="$(docker exec fdb-hive-server beeline -u jdbc:hive2://localhost:10000/default --silent=true --showHeader=false \
+  output="$(shared_hive_exec beeline -u jdbc:hive2://localhost:10000/default --silent=true --showHeader=false \
     -e 'MSCK REPAIR TABLE fdb.cell_kpi; SELECT COUNT(*) FROM fdb.cell_kpi; SHOW PARTITIONS fdb.cell_kpi;' 2>/dev/null || true)"
   local count
   local partitions

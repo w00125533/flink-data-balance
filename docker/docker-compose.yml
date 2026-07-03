@@ -1,43 +1,6 @@
 name: fdb
 
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: fdb-zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: fdb-kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:v0.7.2
-    container_name: fdb-kafka-ui
-    depends_on:
-      - kafka
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-
   mysql:
     image: mysql:8.0
     container_name: fdb-mysql
@@ -52,21 +15,6 @@ services:
     volumes:
       - ./data/mysql:/var/lib/mysql
 
-  hive-server:
-    image: apache/hive:4.0.0
-    container_name: fdb-hive-server
-    profiles: ["e2e"]
-    ports:
-      - "10000:10000"
-    environment:
-      SERVICE_NAME: hiveserver2
-      SERVICE_OPTS: -Dhive.metastore.uris=thrift://hive-metastore:9083
-    volumes:
-      - ./data/warehouse:/warehouse
-    networks:
-      - default
-      - shared-data-infra
-
   observability-api:
     image: eclipse-temurin:17-jre
     container_name: fdb-observability-api
@@ -74,7 +22,7 @@ services:
     command: ["java", "-jar", "/app/observability-api.jar"]
     environment:
       FDB_OBSERVABILITY_PORT: "18080"
-      FDB_KAFKA_BOOTSTRAP: kafka:29092
+      FDB_KAFKA_BOOTSTRAP: kafka:9092
       FDB_METRICS_TOPIC: fdb-stage-metrics
       FDB_RUN_HISTORY_DIR: /observability-runs
     ports:
@@ -82,8 +30,9 @@ services:
     volumes:
       - ../observability-api/target/observability-api-0.1.0-SNAPSHOT.jar:/app/observability-api.jar:ro
       - ./data/observability-runs:/observability-runs:ro
-    depends_on:
-      - kafka
+    networks:
+      - default
+      - shared-data-infra
 
   frontend:
     image: node:20-alpine
@@ -91,7 +40,6 @@ services:
     working_dir: /app
     command: ["sh", "-c", "npm install && npm run dev"]
     environment:
-      VITE_GRAFANA_URL: "${FDB_GRAFANA_URL:-http://localhost:3000/d/fdb-streaming-observability/flink-data-balance-streaming-observability?orgId=1&refresh=10s}"
       VITE_API_PROXY_TARGET: "http://observability-api:18080"
     ports:
       - "5173:5173"
@@ -110,23 +58,6 @@ services:
     depends_on:
       - observability-api
 
-  grafana:
-    image: grafana/grafana:11.0.0
-    container_name: fdb-grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_SECURITY_ALLOW_EMBEDDING: "true"
-    ports:
-      - "${FDB_GRAFANA_PORT:-3000}:3000"
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ../docs/grafana:/var/lib/grafana/dashboards:ro
-    depends_on:
-      - prometheus
-
   jobmanager:
     image: flink:1.20.3-scala_2.12-java17
     container_name: fdb-flink-jobmanager
@@ -137,13 +68,13 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
       - "FLINK_PROPERTIES=metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249"
-      - FDB_KAFKA_BOOTSTRAP=kafka:29092
+      - FDB_KAFKA_BOOTSTRAP=kafka:9092
       - FDB_MYSQL_URL=jdbc:mysql://mysql:3306/fdb
       - FDB_MYSQL_USER=fdb
       - FDB_MYSQL_PASSWORD=fdbpwd
-      - FDB_HIVE_WAREHOUSE=file:///warehouse
+      - FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
-      - FDB_ICEBERG_WAREHOUSE=file:///warehouse/iceberg
+      - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
       - FDB_ICEBERG_CATALOG=fdb_iceberg
       - FDB_ICEBERG_DATABASE=fdb
       - FDB_ICEBERG_TABLE=cell_kpi
@@ -151,7 +82,6 @@ services:
       - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
     volumes:
-      - ./data/warehouse:/warehouse
       - ../flink-job/target:/opt/fdb
     networks:
       - default
@@ -167,21 +97,19 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
       - "FLINK_PROPERTIES=metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249"
-      - FDB_KAFKA_BOOTSTRAP=kafka:29092
+      - FDB_KAFKA_BOOTSTRAP=kafka:9092
       - FDB_MYSQL_URL=jdbc:mysql://mysql:3306/fdb
       - FDB_MYSQL_USER=fdb
       - FDB_MYSQL_PASSWORD=fdbpwd
-      - FDB_HIVE_WAREHOUSE=file:///warehouse
+      - FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
-      - FDB_ICEBERG_WAREHOUSE=file:///warehouse/iceberg
+      - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
       - FDB_ICEBERG_CATALOG=fdb_iceberg
       - FDB_ICEBERG_DATABASE=fdb
       - FDB_ICEBERG_TABLE=cell_kpi
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
       - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
-    volumes:
-      - ./data/warehouse:/warehouse
     networks:
       - default
       - shared-data-infra

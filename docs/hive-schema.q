@@ -18,6 +18,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS fdb.cell_kpi (
 )
 PARTITIONED BY (window_kind STRING, dt STRING, hour STRING)
 STORED AS PARQUET
-LOCATION 'file:///warehouse/cell_kpi';
+LOCATION 'hdfs://namenode:8020/warehouse/fdb/cell_kpi';
 
 MSCK REPAIR TABLE fdb.cell_kpi;

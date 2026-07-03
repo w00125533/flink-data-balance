@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-KAFKA_CONTAINER=${FDB_KAFKA_CONTAINER:-fdb-kafka}
-INTERNAL_BOOTSTRAP=${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:29092}
+SHARED_INFRA_DIR=${SHARED_INFRA_DIR:-../shared-data-infra}
+INTERNAL_BOOTSTRAP=${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}
+
+shared_kafka() {
+  docker compose -f "$SHARED_INFRA_DIR/compose.yaml" -f "$SHARED_INFRA_DIR/compose.streaming.yaml" --profile streaming \
+    exec -T kafka "$@"
+}
 
 create_topic() {
   local name=$1
@@ -16,7 +21,7 @@ create_topic() {
   fi
 
   echo "[create] $name partitions=$partitions cleanup=$cleanup retention=${retention_ms:-default}"
-  docker exec "$KAFKA_CONTAINER" kafka-topics \
+  shared_kafka kafka-topics \
     --bootstrap-server "$INTERNAL_BOOTSTRAP" \
     --create --if-not-exists \
     --topic "$name" \
@@ -50,5 +55,5 @@ create_topic enrichment-late   4 delete  604800000
 
 echo
 echo "[done] Current topic list:"
-docker exec "$KAFKA_CONTAINER" kafka-topics \
+shared_kafka kafka-topics \
   --bootstrap-server "$INTERNAL_BOOTSTRAP" --list | sort

@@ -4,7 +4,7 @@
 
 - 新增或修改 Docker Compose 基础设施前，必须先检查 `../shared-data-infra` 是否已经定义同类服务或 profile。
 - 如果 `../shared-data-infra` 已定义 HDFS、Hive Metastore、HiveServer2、Spark、YARN、Kafka、ZooKeeper、StarRocks、Prometheus、Grafana 等能力，不要在本工程重复新增；通过 external network、环境变量和项目级命名空间复用。
-- 当前迁移边界：Hive Metastore/HMS Postgres 使用 `../shared-data-infra`；Kafka/ZooKeeper 暂保留 project-local，因为 e2e 脚本、topic 初始化和 summary helper 仍依赖 `fdb-kafka` 与 `kafka:29092`。
+- 当前迁移边界：HDFS、Hive Metastore/HMS Postgres、HiveServer2、Kafka、ZooKeeper 使用 `../shared-data-infra`；本工程只保留项目级 MySQL、Flink runtime、observability-api、frontend 和 Prometheus。
 - 修改基础设施后，至少运行 `docker compose -f docker/docker-compose.yml --profile e2e config`。
 
 ## GitNexus 约束

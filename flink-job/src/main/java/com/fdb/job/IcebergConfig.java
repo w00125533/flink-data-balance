@@ -18,7 +18,7 @@ public record IcebergConfig(
     static IcebergConfig resolve(Map<String, String> env, Properties properties) {
         return new IcebergConfig(
             resolveBoolean(env, properties, "FDB_ICEBERG_ENABLED", "fdb.iceberg.enabled", true),
-            resolveString(env, properties, "FDB_ICEBERG_WAREHOUSE", "fdb.iceberg.warehouse", "file:///warehouse/iceberg"),
+            resolveString(env, properties, "FDB_ICEBERG_WAREHOUSE", "fdb.iceberg.warehouse", "hdfs://namenode:8020/warehouse/iceberg"),
             resolveString(env, properties, "FDB_ICEBERG_CATALOG", "fdb.iceberg.catalog", "fdb_iceberg"),
             resolveString(env, properties, "FDB_ICEBERG_DATABASE", "fdb.iceberg.database", "fdb"),
             resolveString(env, properties, "FDB_ICEBERG_TABLE", "fdb.iceberg.table", "cell_kpi"));

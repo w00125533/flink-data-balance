@@ -2,7 +2,7 @@
 
 - **创建日期**: 2026-04-29
 - **状态**: 待评审
-- **关键技术栈**: Java 21 · Flink 1.20 · Maven · Avro · Kafka · MySQL · Hive (HMS) · Iceberg · React 18 · TypeScript · Vite · Ant Design · AntV G6 · Prometheus · Grafana
+- **关键技术栈**: Java 21 · Flink 1.20 · Maven · Avro · Kafka · MySQL · Hive (HMS) · Iceberg · React 18 · TypeScript · Vite · Ant Design · AntV G6 · Prometheus
 
 ---
 
@@ -20,7 +20,7 @@
 4. **负载均衡机制**：在保留"同站点亲和"前提下，应对静态、时段漂移、突发热点叠加的负载倾斜
 5. **状态管理**：周期性导出/加载，支撑重平衡迁移与长周期持久化
 6. **下游 Sink**：MySQL（主路径）+ Hive Parquet + Iceberg KPI 并行写入与性能对比；StarRocks 作为预留扩展
-7. **实时观测控制台**：用流程图展示 CHR/MR/CM → Kafka → Flink → 负载均衡 → Sink 全链路状态，并通过 SSE、Prometheus、Grafana 呈现吞吐、时延、迁移和写入性能
+7. **实时观测控制台**：用流程图展示 CHR/MR/CM → Kafka → Flink → 负载均衡 → Sink 全链路状态，并通过 SSE、观测 API、Prometheus 和前端指标页呈现吞吐、时延、迁移和写入性能
 8. **本地开发环境**：Windows + Git Bash + Docker Desktop，端到端可跑
 
 ### 1.2 非目标
@@ -30,14 +30,14 @@
 - 不实现真实的 K8s/YARN 部署清单（项目结构预留，但本期只覆盖本地开发）
 - 不实现 ML 模型类异常检测（只做规则集，留作扩展）
 - 不把 Iceberg 作为 Hive 的替换方案；本阶段不新增 REST/Hive Catalog、Spark/Trino 查询验证、对象存储、Iceberg upsert/delete、compaction、snapshot cleanup 或生产级 benchmark 报告
-- v1 观测控制台不替代 Flink Web UI，不支持在 UI 上手动触发重平衡，不实现用户/权限/审计登录，也不提供生产级告警分派；Grafana Alerting 仅预留配置入口
+- v1 观测控制台不替代 Flink Web UI，不支持在 UI 上手动触发重平衡，不实现用户/权限/审计登录，也不提供生产级告警分派
 
 ### 1.3 关键设计原则
 
 - **YAGNI**：先实现可证明价值的 v1，复杂能力（如显式状态搬迁、ML 异常检测）作为扩展点列出
 - **小模块、清晰边界**：模拟器、拓扑服务、Flink 作业职责互不交叉
-- **倾斜可观察、可调试**：路由表用 CSV 存储和导出；Grafana dashboard 开箱呈现倾斜度
-- **本地优先，生产可演进**：所有外部依赖（Kafka/MySQL/HMS）在 Windows 本地通过 docker-compose 可起；代码侧不写死本地路径
+- **倾斜可观察、可调试**：路由表用 CSV 存储和导出；Prometheus 指标、观测 API 和前端指标页开箱呈现倾斜度
+- **本地优先，生产可演进**：共享 Kafka、ZooKeeper、HDFS、Hive 由 `../shared-data-infra` 提供；项目侧依赖通过 external network 和环境变量接入，代码侧不写死本地路径
 
 ---
 
@@ -100,9 +100,9 @@ flink-data-balance/
 ├── simulator/                         # CHR/MR/CM 三模式合一的模拟器
 ├── flink-job/                         # Flink 主作业
 ├── frontend/                          # React 观测控制台
-├── docker/                            # docker-compose: Kafka + MySQL + HMS + Postgres
+├── docker/                            # docker-compose: MySQL + Flink + observability + Prometheus
 ├── scripts/                           # 启动 / DDL / 工具脚本
-└── docs/                              # 设计文档 + Grafana dashboard JSON
+└── docs/                              # 设计文档 + Hive DDL
 ```
 
 ---
@@ -612,16 +612,16 @@ class StarRocksWarehouseSink implements WarehouseSink { ... }   // 骨架, 留�
   - `cell_kpi`: `dt, window_kind, hour`
 - 滚动策略：每 128MB 或 5min 触发，避免小文件
 - 由 Flink checkpoint 触发分区 commit
-- 当前本地实现也允许通过 Flink `FileSink` 直接写 Hive 可读 Parquet 目录，再由 Hive `MSCK REPAIR TABLE` 发现分区；KPI 目录结构保持为：
+- 当前本地实现也允许通过 Flink `FileSink` 直接写共享 HDFS 上的 Hive 可读 Parquet 目录，再由 Hive `MSCK REPAIR TABLE` 发现分区；KPI 目录结构保持为：
 
 ```text
-docker/data/warehouse/cell_kpi/window_kind=<kind>/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
+/warehouse/fdb/cell_kpi/window_kind=<kind>/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
 ```
 
-Hive 外表定义位于 `docs/hive-schema.q`，本地容器内数据位置为：
+Hive 外表定义位于 `docs/hive-schema.q`，共享 HDFS 数据位置为：
 
 ```text
-file:///warehouse/cell_kpi
+hdfs://namenode:8020/warehouse/fdb/cell_kpi
 ```
 
 #### Iceberg KPI Sink
@@ -631,7 +631,7 @@ file:///warehouse/cell_kpi
 - 使用 Iceberg Hadoop Catalog，默认 warehouse：
 
 ```text
-file:///warehouse/iceberg
+hdfs://namenode:8020/warehouse/iceberg
 ```
 
 - 默认表标识：`fdb.cell_kpi`
@@ -639,7 +639,7 @@ file:///warehouse/iceberg
 
 ```text
 FDB_ICEBERG_ENABLED=true
-FDB_ICEBERG_WAREHOUSE=file:///warehouse/iceberg
+FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
 FDB_ICEBERG_CATALOG=fdb_iceberg
 FDB_ICEBERG_DATABASE=fdb
 FDB_ICEBERG_TABLE=cell_kpi
@@ -836,7 +836,7 @@ yaml 文件 (启动参数 --config <path>)
 | `--watermark-lag` | `20s` | 乱序容忍 |
 | `--rule-config` | `rules.yaml` | 规则阈值配置 |
 | `--iceberg-enabled` | `true` | 是否启用 KPI Iceberg 并行写入 |
-| `--iceberg-warehouse` | `file:///warehouse/iceberg` | Iceberg Hadoop Catalog warehouse |
+| `--iceberg-warehouse` | `hdfs://namenode:8020/warehouse/iceberg` | Iceberg Hadoop Catalog warehouse |
 | `--iceberg-catalog` | `fdb_iceberg` | Iceberg catalog 名称 |
 | `--iceberg-database` | `fdb` | Iceberg database |
 | `--iceberg-table` | `cell_kpi` | Iceberg KPI 表名 |
@@ -849,8 +849,9 @@ FDB_MYSQL_URL=jdbc:mysql://localhost:3306/fdb
 FDB_MYSQL_USER=fdb / FDB_MYSQL_PASSWORD=...
 FDB_HMS_URI=thrift://localhost:9083
 FDB_STATE_ROOT=file:///tmp/fdb-state
+FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
 FDB_ICEBERG_ENABLED=true
-FDB_ICEBERG_WAREHOUSE=file:///warehouse/iceberg
+FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
 FDB_ICEBERG_CATALOG=fdb_iceberg
 FDB_ICEBERG_DATABASE=fdb
 FDB_ICEBERG_TABLE=cell_kpi
@@ -884,7 +885,7 @@ FDB_ICEBERG_TABLE=cell_kpi
 
 1. Flink 作业与适配层暴露 Prometheus 指标。
 2. Java 观测 API 聚合 Flink JobManager REST、Prometheus 查询结果、本地路由/迁移事件文件和 sink probe 日志。
-3. React 前端用流程图实时呈现流处理各阶段状态，并通过 Grafana 面板展示专业监控视图。
+3. React 前端用流程图实时呈现流处理各阶段状态，并通过 `/metrics` 指标页展示吞吐、延迟、迁移和 Sink 写入摘要。
 
 ### 12.1 前端控制台
 
@@ -897,7 +898,7 @@ FDB_ICEBERG_TABLE=cell_kpi
 | 流程图 / DAG | AntV G6 |
 | 轻量趋势图 | ECharts 或 Ant Design Charts |
 | 实时状态 | SSE (`EventSource`) |
-| 专业监控 | Prometheus + Grafana |
+| 专业监控 | Prometheus + 观测 API 指标页 |
 
 页面入口：
 
@@ -905,7 +906,7 @@ FDB_ICEBERG_TABLE=cell_kpi
 |---|---|---|
 | `/` | `FlowOverview` | 默认首页，展示实时流处理流程图和阶段摘要 |
 | `/migrations` | `MigrationTimeline` | 展示负载不均衡与迁移事件时间线 |
-| `/metrics` | `MetricsDashboard` | 嵌入 Grafana 面板并展示关键指标入口 |
+| `/metrics` | `MetricsDashboard` | 展示 Prometheus/API 聚合后的关键指标和 Sink 写入性能 |
 
 前端目录：
 
@@ -928,8 +929,7 @@ frontend/
     │   ├── StreamingFlowGraph.tsx
     │   ├── StageStatusPanel.tsx
     │   ├── SourceLatencyCard.tsx
-    │   ├── MigrationDiffPanel.tsx
-    │   └── GrafanaEmbedPanel.tsx
+    │   └── MigrationDiffPanel.tsx
     └── types/
         └── observability.ts
 ```
@@ -1127,14 +1127,14 @@ fdb_sink_write_rows_total{sink="mysql|hive|iceberg", window="1m|5m"}
 - WARN：死信、迟到事件、CM 缺失
 - ERROR：序列化失败、外部依赖失败
 
-### 12.7 Grafana Dashboard
+### 12.7 前端指标页
 
-提供 `docs/grafana-dashboard.json` 和 `docs/grafana/streaming-observability-dashboard.json`，开箱包含面板：
+`MetricsDashboard` 直接消费观测 API 与 Prometheus 聚合结果，不再提供或嵌入外部 dashboard。开箱包含：
 
 - CHR/MR/CM 数据源吞吐、Kafka lag、事件时间延迟
 - Flink 各阶段 in/out EPS
 - 阶段 p50/p95/p99 时延
-- subtask 负载热力图
+- subtask 负载分布
 - 倾斜度（max EPS / median EPS）与 imbalance ratio 趋势
 - 负载迁移次数、迁移耗时、迁移 vbucket 数、路由表 dirty 项
 - MySQL/Hive/Iceberg 写入行数与写入延迟对比
@@ -1142,7 +1142,7 @@ fdb_sink_write_rows_total{sink="mysql|hive|iceberg", window="1m|5m"}
 - enrichment 延迟分布、KPI 窗口处理延迟、状态快照耗时与体积
 - DLQ、异常事件按类型计数与 severity 分布
 
-Grafana 页面可在 React `/metrics` 页面中通过 iframe 或链接入口呈现；v1 默认使用链接或 iframe 配置开关，避免浏览器安全策略阻塞本地开发。
+前端 `/metrics` 页面通过表格、状态标签和轻量趋势图展示上述内容；Prometheus 保留为 scrape 与查询后端，页面不再使用 iframe、外部 dashboard 链接或 dashboard provisioning。
 
 ### 12.8 Hive / Iceberg 性能对比打点
 
@@ -1183,8 +1183,8 @@ e2e summary 新增 `Iceberg KPI` 与 `Hive/Iceberg Compare`。Hive 指标包括 
 | Iceberg sink | 校验 `CellKpi` 到 `RowData` 字段顺序、类型与分区字段派生 | Unit + Integration |
 | Lakehouse e2e | 同时验证 Hive Parquet、Hive 查询、Iceberg metadata、Iceberg data files、summary 输出 | e2e smoke |
 | Observability API | 校验 `/api/flow/*`、`/api/metrics/summary` 与 SSE 事件模型 | Unit + Integration |
-| Frontend | 流程图渲染、状态变色、迁移时间线、Grafana 链接/iframe 开关 | Component + browser smoke |
-| Metrics | Prometheus scrape 新增 `fdb_*` 指标，Grafana dashboard JSON 可导入 | e2e smoke |
+| Frontend | 流程图渲染、状态变色、迁移时间线、指标页表格和状态标签 | Component + browser smoke |
+| Metrics | Prometheus scrape 新增 `fdb_*` 指标，观测 API 能返回指标摘要 | e2e smoke |
 
 ---
 
@@ -1196,41 +1196,56 @@ e2e summary 新增 `Iceberg KPI` 与 `Hive/Iceberg Compare`。Hive 指标包括 
 - 已验证可行：docker-compose 在 Windows + Docker Desktop（WSL2 backend）下完全可用，Git Bash 直接调用 `docker` / `docker compose`
 - Windows 路径在 docker volume bind 时使用正斜杠（`./docker/data`），避免 `C:\` 形式
 
-### 14.2 docker-compose 服务（`docker/docker-compose.yml`）
+### 14.2 docker-compose 服务与共享基础设施
+
+`../shared-data-infra` 负责通用数据基础设施，本工程通过 external network `shared-data-infra` 复用，不再重复定义 ZooKeeper、Kafka、Hive Metastore、HiveServer2 或 HDFS。
+
+共享服务：
+
+| 服务 | 来源 | 默认端口 | 项目内访问 |
+|---|---|---:|---|
+| ZooKeeper | `../shared-data-infra/compose.streaming.yaml` | 2181 | Kafka 内部依赖 |
+| Kafka | `../shared-data-infra/compose.streaming.yaml` | 9092 | `kafka:9092` |
+| HDFS NameNode RPC | `../shared-data-infra/compose.lakehouse.yaml` | 8020 | `hdfs://namenode:8020` |
+| HDFS NameNode UI | `../shared-data-infra/compose.lakehouse.yaml` | 9870 | `http://namenode:9870` |
+| Hive Metastore | `../shared-data-infra/compose.lakehouse.yaml` | 9083 | `thrift://hive-metastore:9083` |
+| HiveServer2 | `../shared-data-infra/compose.lakehouse.yaml` (`lakehouse-tools`) | 10000 | `jdbc:hive2://hive-server:10000/default` |
+
+项目本地服务（`docker/docker-compose.yml`）：
 
 | 服务 | 镜像（指示） | 端口 | 用途 |
-|---|---|---|---|
-| zookeeper | confluentinc/cp-zookeeper | 2181 | Kafka 协调 |
-| kafka | confluentinc/cp-kafka | 9092 | 消息总线 |
-| kafka-ui | provectuslabs/kafka-ui | 8080 | 浏览器看 topic |
+|---|---|---:|---|
 | mysql | mysql:8 | 3306 | 数仓 sink |
-| hms-postgres | postgres:14 | 5432 | HMS 元数据后端 |
-| hive-metastore | apache/hive:standalone-metastore | 9083 | Hive 元数据服务 |
+| jobmanager | flink | 8081 | Flink Web UI 与作业入口 |
+| taskmanager | flink | - | Flink worker |
 | prometheus | prom/prometheus | 9090 | scrape Flink 与观测 exporter |
-| grafana | grafana/grafana | 3000 | 展示 dashboard |
 | observability-api | 项目镜像 | 18080 | 聚合状态 API 与 SSE |
 | frontend | Vite / Nginx | 5173 | React 观测控制台 |
 
 基础设施边界：
 
-- 已在 `../shared-data-infra` 定义的 HDFS、Hive Metastore/HMS Postgres、HiveServer2、Spark、YARN、Kafka、ZooKeeper、StarRocks、Prometheus、Grafana 等能力优先通过 external network、环境变量和项目级命名空间复用，不在本工程重复新增。
-- 当前迁移边界仍保留 project-local Kafka/ZooKeeper，因为 e2e 脚本、topic 初始化和 summary helper 依赖 `fdb-kafka` 与 `kafka:29092`。
-- Prometheus/Grafana 如使用共享实例，本工程只提供 scrape/job/dashboard 配置；如使用 e2e profile 本地实例，必须与共享端口通过 `env/ports.env` 解耦。
+- Kafka、ZooKeeper、Hive Metastore/HMS Postgres、HiveServer2 和 HDFS 下沉到 `../shared-data-infra`，使用默认端口，并通过 `shared-data-infra` 网络被本工程容器访问。
+- 本工程保留 MySQL、Flink runtime、observability-api、frontend 和 Prometheus；Prometheus 只负责本项目 scrape，不提供额外 dashboard 配置。
+- e2e 脚本、topic 初始化和 summary helper 通过共享 Kafka 容器执行命令，内部 bootstrap 固定为 `kafka:9092`；宿主机客户端使用 `localhost:9092`。
 
 本地端口约定：
 
 ```text
+Kafka              localhost:9092
+ZooKeeper          localhost:2181
+HiveServer2        localhost:10000
+HDFS NameNode UI   http://localhost:9870
 Flink Web UI       http://localhost:8081
 Observability API  http://localhost:18080
 Frontend           http://localhost:5173
 Prometheus         http://localhost:9090
-Grafana            http://localhost:3000
 ```
 
-Flink JobManager 与 TaskManager 容器必须获得相同 Iceberg 配置，并继续挂载现有 warehouse volume：
+Flink JobManager 与 TaskManager 容器必须获得相同 Iceberg/Hive 配置，并写入共享 HDFS warehouse：
 
 ```text
-./data/warehouse:/warehouse
+FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
+FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
 ```
 
 e2e 冒烟必须验证：
@@ -1253,14 +1268,13 @@ e2e 冒烟必须验证：
 ### 14.4 启动流程
 
 ```bash
-# 0. 起依赖
-./scripts/dev-up.sh                          # docker compose up -d
+# 0. 起共享依赖
+cd ../shared-data-infra
+sh scripts/infra-up.sh lakehouse lakehouse-tools streaming
+cd ../flink-data-balance
 
-# 1. 建 Kafka topic + DDL
-./scripts/create-kafka-topics.sh
-mysql -h localhost -ufdb -p < scripts/init-mysql.sql
-# Hive 表通过 Flink HiveCatalog 自动注册, 或手动:
-# hive -f scripts/init-hive.sql
+# 1. 起项目本地服务，并初始化 Kafka topic、MySQL DDL、共享 Hive 外表
+./scripts/dev-up.sh
 
 # 2. 启动应用 (顺序非强制, 但建议)
 java -jar topology-service/target/topology-service.jar &
@@ -1284,7 +1298,7 @@ flink run flink-job/target/flink-job.jar --config flink-job/conf/job.yaml
 | Iceberg 写入 | Hadoop Catalog + append-only 并行 KPI sink | 本地 demo 对比湖格式写入路径；不引入 REST/Hive Catalog 或表维护任务 |
 | Hive/Iceberg 对比 | 冒烟趋势指标 | 两条路径的可见性语义不同，不定义为严格 benchmark |
 | 观测适配层 | Java HTTP exporter | 避免为轻量聚合层引入 Python/FastAPI 运行时；Node/Vite proxy 仅用于开发期代理 |
-| Grafana 集成 | `/metrics` 页面 iframe 或链接入口 | 兼顾本地开发和浏览器安全策略；优先复用 shared-data-infra 的 Prometheus/Grafana |
+| 指标页集成 | `/metrics` 页面直接展示 API/Prometheus 指标摘要 | 避免维护外部 dashboard provisioning 和 iframe 安全策略；本项目保留 Prometheus scrape 与前端指标展示 |
 
 ### 15.1 已知验证风险
 
@@ -1325,14 +1339,14 @@ flink run flink-job/target/flink-job.jar --config flink-job/conf/job.yaml
 - [ ] Flink TaskManager 日志中能看到 Hive 与 Iceberg 两类 sink probe 的 `[summary-code]`
 - [ ] 启用 burst skew 后，Coordinator 能在 ≤ 5min 内输出新路由（CSV 可见）
 - [ ] 手动触发路由变更后，新 subtask 通过状态加载在 ≤ 30s 内进入稳态
-- [ ] Grafana dashboard 能展示倾斜度、重平衡次数、规则命中等关键指标
+- [ ] `/metrics` 指标页能展示倾斜度、重平衡次数、规则命中等关键指标
 - [ ] 打开 `http://localhost:5173` 能看到完整流处理流程图
 - [ ] CHR/MR/CM 三个数据源卡片能显示延迟、EPS 和摘要
 - [ ] 任一阶段状态异常时，流程图节点变色，并能在右侧状态面板看到原因
 - [ ] 模拟热点倾斜后，`/migrations` 能展示迁移前后负载变化与 vbucket 迁移明细
 - [ ] Prometheus 能 scrape 到新增 `fdb_*` 指标
-- [ ] Grafana 能展示吞吐、时延、迁移、checkpoint、DLQ、MySQL/Hive/Iceberg Sink 性能面板
-- [ ] Docker Compose 能一键启动前端、观测 API、Prometheus 和 Grafana，或通过 shared-data-infra 复用 Prometheus/Grafana
+- [ ] `/metrics` 指标页和 Prometheus 能展示吞吐、时延、迁移、checkpoint、DLQ、MySQL/Hive/Iceberg Sink 性能面板
+- [ ] `../shared-data-infra` 能启动 Kafka/ZooKeeper/Hive/HDFS，本工程 Docker Compose 能启动前端、观测 API、Prometheus、Flink 和 MySQL
 - [ ] 单元 + 集成测试通过
 - [ ] `docker compose -f docker/docker-compose.yml config` 通过
 - [ ] `FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh` 通过

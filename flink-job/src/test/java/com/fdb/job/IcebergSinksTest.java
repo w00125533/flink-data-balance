@@ -5,6 +5,9 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.hadoop.HadoopCatalog;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,7 +16,7 @@ class IcebergSinksTest {
     @Test
     void builds_cell_kpi_table_identifier_schema_and_partition_spec() {
         IcebergConfig config = new IcebergConfig(
-            true, "file:///warehouse/iceberg", "fdb_iceberg", "fdb", "cell_kpi");
+            true, "hdfs://namenode:8020/warehouse/iceberg", "fdb_iceberg", "fdb", "cell_kpi");
 
         TableIdentifier identifier = IcebergSinks.tableIdentifier(config);
         Schema schema = IcebergSinks.cellKpiSchema();
@@ -33,9 +36,9 @@ class IcebergSinksTest {
     }
 
     @Test
-    void hadoop_catalog_has_configuration() {
+    void hadoop_catalog_has_configuration(@TempDir Path warehouseDir) {
         IcebergConfig config = new IcebergConfig(
-            true, "file:///warehouse/iceberg", "fdb_iceberg", "fdb", "cell_kpi");
+            true, warehouseDir.toUri().toString(), "fdb_iceberg", "fdb", "cell_kpi");
 
         HadoopCatalog catalog = IcebergSinks.hadoopCatalog(config);
 

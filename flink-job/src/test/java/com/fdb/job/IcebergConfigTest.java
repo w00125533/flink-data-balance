@@ -14,7 +14,7 @@ class IcebergConfigTest {
         IcebergConfig config = IcebergConfig.resolve(Map.of(), new Properties());
 
         assertThat(config.enabled()).isTrue();
-        assertThat(config.warehouse()).isEqualTo("file:///warehouse/iceberg");
+        assertThat(config.warehouse()).isEqualTo("hdfs://namenode:8020/warehouse/iceberg");
         assertThat(config.catalogName()).isEqualTo("fdb_iceberg");
         assertThat(config.database()).isEqualTo("fdb");
         assertThat(config.table()).isEqualTo("cell_kpi");

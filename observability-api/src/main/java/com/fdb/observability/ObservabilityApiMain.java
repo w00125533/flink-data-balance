@@ -23,7 +23,7 @@ public final class ObservabilityApiMain {
   public static void main(String[] args) throws IOException {
     int port = Integer.parseInt(System.getenv().getOrDefault("FDB_OBSERVABILITY_PORT", "18080"));
     ObservabilitySnapshotService service = new ObservabilitySnapshotService();
-    String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "kafka:29092");
+    String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "kafka:9092");
     String metricsTopic = System.getenv().getOrDefault("FDB_METRICS_TOPIC", "fdb-stage-metrics");
     StageMetricKafkaConsumer metricConsumer = new StageMetricKafkaConsumer(bootstrap, metricsTopic, service);
     metricConsumer.start();

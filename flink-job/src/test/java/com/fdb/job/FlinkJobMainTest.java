@@ -89,7 +89,7 @@ class FlinkJobMainTest {
         IcebergConfig config = FlinkJobMain.resolveIcebergConfig(Map.of(), new Properties());
 
         assertThat(config.enabled()).isTrue();
-        assertThat(config.warehouse()).isEqualTo("file:///warehouse/iceberg");
+        assertThat(config.warehouse()).isEqualTo("hdfs://namenode:8020/warehouse/iceberg");
     }
 
     @Test
