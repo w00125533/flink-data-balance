@@ -62,8 +62,8 @@ pass "Project-local containers stopped and cleaned"
 
 echo ""
 echo "--- Phase 2: Start shared infra ---"
-(cd "$SHARED_INFRA_DIR" && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming) 2>&1 | sed 's/^/  /'
-pass "Shared lakehouse and streaming profiles started"
+(cd "$SHARED_INFRA_DIR" && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability) 2>&1 | sed 's/^/  /'
+pass "Shared lakehouse, streaming, and observability profiles started"
 
 echo ""
 echo "--- Phase 3: Start project stack ---"
@@ -72,7 +72,7 @@ pass "dev-up.sh completed"
 
 echo ""
 echo "--- Phase 4: Verify required containers ---"
-PROJECT_EXPECTED=(fdb-mysql fdb-observability-api fdb-frontend fdb-prometheus fdb-flink-jobmanager fdb-flink-taskmanager)
+PROJECT_EXPECTED=(fdb-mysql fdb-observability-api fdb-observability-frontend fdb-prometheus fdb-flink-jobmanager fdb-flink-taskmanager)
 for name in "${PROJECT_EXPECTED[@]}"; do
   if docker ps --format '{{.Names}}' | grep -qx "$name"; then
     pass "Project container $name is running"
@@ -81,7 +81,7 @@ for name in "${PROJECT_EXPECTED[@]}"; do
   fi
 done
 
-SHARED_EXPECTED=(shared-data-infra-zookeeper-1 shared-data-infra-kafka-1 shared-data-infra-hms-db-1 shared-data-infra-hive-metastore-1 shared-data-infra-hive-server-1 shared-data-infra-namenode-1 shared-data-infra-datanode-1)
+SHARED_EXPECTED=(shared-data-infra-zookeeper-1 shared-data-infra-kafka-1 shared-data-infra-kafka-ui-1 shared-data-infra-hms-db-1 shared-data-infra-hive-metastore-1 shared-data-infra-hive-server-1 shared-data-infra-namenode-1 shared-data-infra-datanode-1)
 for name in "${SHARED_EXPECTED[@]}"; do
   if docker ps --format '{{.Names}}' | grep -qx "$name"; then
     pass "Shared container $name is running"
@@ -178,6 +178,12 @@ if curl -s -o /dev/null -w "%{http_code}" http://localhost:5173 2>/dev/null | gr
   pass "Frontend is reachable"
 else
   fail "Frontend is not reachable"
+fi
+
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null | grep -q "200\|302\|401"; then
+  pass "Shared Kafka UI is reachable"
+else
+  fail "Shared Kafka UI is not reachable"
 fi
 
 echo ""

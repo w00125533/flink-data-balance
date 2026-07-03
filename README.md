@@ -23,7 +23,7 @@ docker compose -f docker/docker-compose.yml config
 
 ```bash
 cd ../shared-data-infra
-sh scripts/infra-up.sh lakehouse lakehouse-tools streaming
+sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability
 
 cd ../flink-data-balance
 bash scripts/dev-up.sh
@@ -35,6 +35,7 @@ profiles to be running. HDFS, Hive Metastore, HiveServer2, ZooKeeper and Kafka
 come from `../shared-data-infra`; this project starts only MySQL, Flink runtime,
 observability API, frontend and Prometheus. Kafka uses the shared default
 endpoint `kafka:9092` inside Docker and `localhost:9092` from the host.
+Kafka UI is provided by the shared `observability` profile at http://localhost:8080.
 It also creates Kafka topics, initializes MySQL tables, prepares shared HDFS
 warehouse directories, and creates the shared Hive external table.
 

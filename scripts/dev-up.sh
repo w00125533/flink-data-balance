@@ -22,7 +22,7 @@ echo "[dev-up] Checking shared infrastructure..."
 if ! docker network inspect shared-data-infra >/dev/null 2>&1; then
   echo "[dev-up] shared-data-infra network is missing."
   echo "[dev-up] Start shared infrastructure first:"
-  echo "[dev-up]   cd ../shared-data-infra && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming"
+  echo "[dev-up]   cd ../shared-data-infra && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability"
   exit 1
 fi
 

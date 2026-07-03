@@ -1206,6 +1206,7 @@ e2e summary 新增 `Iceberg KPI` 与 `Hive/Iceberg Compare`。Hive 指标包括 
 |---|---|---:|---|
 | ZooKeeper | `../shared-data-infra/compose.streaming.yaml` | 2181 | Kafka 内部依赖 |
 | Kafka | `../shared-data-infra/compose.streaming.yaml` | 9092 | `kafka:9092` |
+| Kafka UI | `../shared-data-infra/compose.streaming.yaml` (`observability`) | 8080 | `http://kafka-ui:8080` |
 | HDFS NameNode RPC | `../shared-data-infra/compose.lakehouse.yaml` | 8020 | `hdfs://namenode:8020` |
 | HDFS NameNode UI | `../shared-data-infra/compose.lakehouse.yaml` | 9870 | `http://namenode:9870` |
 | Hive Metastore | `../shared-data-infra/compose.lakehouse.yaml` | 9083 | `thrift://hive-metastore:9083` |
@@ -1225,6 +1226,7 @@ e2e summary 新增 `Iceberg KPI` 与 `Hive/Iceberg Compare`。Hive 指标包括 
 基础设施边界：
 
 - Kafka、ZooKeeper、Hive Metastore/HMS Postgres、HiveServer2 和 HDFS 下沉到 `../shared-data-infra`，使用默认端口，并通过 `shared-data-infra` 网络被本工程容器访问。
+- Kafka UI 也由 `../shared-data-infra` 的 `observability` profile 提供，本工程不再定义 project-local Kafka UI。
 - 本工程保留 MySQL、Flink runtime、observability-api、frontend 和 Prometheus；Prometheus 只负责本项目 scrape，不提供额外 dashboard 配置。
 - e2e 脚本、topic 初始化和 summary helper 通过共享 Kafka 容器执行命令，内部 bootstrap 固定为 `kafka:9092`；宿主机客户端使用 `localhost:9092`。
 
@@ -1233,6 +1235,7 @@ e2e summary 新增 `Iceberg KPI` 与 `Hive/Iceberg Compare`。Hive 指标包括 
 ```text
 Kafka              localhost:9092
 ZooKeeper          localhost:2181
+Kafka UI           http://localhost:8080
 HiveServer2        localhost:10000
 HDFS NameNode UI   http://localhost:9870
 Flink Web UI       http://localhost:8081
@@ -1270,7 +1273,7 @@ e2e 冒烟必须验证：
 ```bash
 # 0. 起共享依赖
 cd ../shared-data-infra
-sh scripts/infra-up.sh lakehouse lakehouse-tools streaming
+sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability
 cd ../flink-data-balance
 
 # 1. 起项目本地服务，并初始化 Kafka topic、MySQL DDL、共享 Hive 外表
