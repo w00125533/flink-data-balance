@@ -9,26 +9,37 @@ decisions.
 
 - JDK 17 with a current patch release
 - Maven 3.9+
-- Docker Desktop
 - Git Bash for scripts
+- Local target: Docker Desktop plus `../shared-data-infra`
+- External YARN target: Linux deployment host with Flink, Hadoop/YARN, Hive,
+  Kafka and MySQL-compatible CLI clients
 
 ## Fast Checks
 
 ```bash
 mvn test
-docker compose -f docker/docker-compose.yml config
+bash -n scripts/deploy.sh
+docker compose -f docker/docker-compose.yml --profile e2e config
 ```
 
-## Infrastructure
+The Docker Compose config check is for local development and CI. On a
+Docker-free external YARN deployment host, use `external-yarn check` instead.
+
+## Deployment Targets
+
+### Local Docker
 
 ```bash
 cd ../shared-data-infra
 sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability
 
 cd ../flink-data-balance
-bash scripts/deploy.sh local up
-bash scripts/deploy.sh local init
-bash scripts/deploy.sh local down
+cp .env.example.local .env.local
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local check
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local up
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local init
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local smoke
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local down
 ```
 
 `deploy.sh local up` starts project-local MySQL, Flink runtime, observability
@@ -40,6 +51,38 @@ provided by the shared `observability` profile at http://localhost:8080.
 `streaming` profiles to be running; it creates Kafka topics, initializes
 MySQL/Hive, prepares HDFS directories, and downloads the Flink Hadoop runtime
 jar into the ignored `docker/lib` cache.
+
+### External YARN
+
+External YARN mode is for Linux deployment hosts without Docker. External
+Kafka, HDFS, Hive, StarRocks and YARN are expected to be provisioned already.
+Install JDK 17, Maven, Flink, Hadoop/YARN clients, Hive beeline, Kafka CLI and
+MySQL-compatible clients on the deployment host, then configure endpoints in
+`.env.external`.
+
+```bash
+cp .env.example.external-yarn .env.external
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn check
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn check --strict
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn init
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn submit
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn smoke
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn stop
+```
+
+`external-yarn check` is diagnostic by default and can be run before the target
+cluster exists. Use `--strict` on the real deployment host when missing CLI tools
+or endpoint failures should block deployment. `external-yarn init` prepares
+Kafka topics, HDFS directories, Hive/MySQL objects and optional StarRocks DDL;
+it does not submit the Flink job. `external-yarn submit` is the explicit
+operator action that builds the jar and submits it through `$FLINK_HOME/bin/flink`.
+
+By default, `external-yarn submit` does not pass `FDB_MYSQL_PASSWORD` through
+Flink CLI arguments because those values can appear in process listings and
+YARN metadata. Prefer cluster-side secret injection. If that is not available,
+set `FDB_FLINK_SECRET_ENV_KEYS=FDB_MYSQL_PASSWORD` only after accepting that
+tradeoff. For complex Flink arguments, use `FDB_FLINK_EXTRA_ARGS_FILE` with one
+argument per line.
 
 ## 实时观测控制台
 
@@ -54,7 +97,7 @@ Build the API jar before starting the console services:
 
 ```bash
 mvn -pl observability-api package
-docker compose -f docker/docker-compose.yml up -d observability-api frontend prometheus
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local up
 ```
 
 The console shows CHR/MR/CM source delay, streaming stage status, VBucket
@@ -76,7 +119,7 @@ metrics.
 ## End-to-End Smoke Test
 
 ```bash
-bash scripts/deploy.sh local smoke
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local smoke
 ```
 
 The script builds the project, starts the Docker `e2e` profile with Flink,
@@ -89,14 +132,14 @@ logging path. Enable it only when you need stage-level record counts,
 code-level counters and data-shape diagnostics:
 
 ```bash
-FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
+FDB_ENV_FILE=.env.local FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
 ```
 
 To keep the e2e stack running after a successful run and inspect real metrics,
 use:
 
 ```bash
-FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
+FDB_ENV_FILE=.env.local FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
 ```
 
 After the script reports success, the script verifies that `fdb-stage-metrics` has runtime samples,
@@ -108,7 +151,7 @@ Summary lines are printed to the console and persisted to `logs-summary.log` by
 default. Override the file with `FDB_E2E_SUMMARY_FILE`:
 
 ```bash
-FDB_E2E_SUMMARY=1 FDB_E2E_SUMMARY_FILE=logs/e2e-summary.log bash scripts/deploy.sh local smoke
+FDB_ENV_FILE=.env.local FDB_E2E_SUMMARY=1 FDB_E2E_SUMMARY_FILE=logs/e2e-summary.log bash scripts/deploy.sh local smoke
 ```
 
 ### Smoke Stage Summary
