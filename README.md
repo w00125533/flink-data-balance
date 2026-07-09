@@ -76,7 +76,7 @@ metrics.
 ## End-to-End Smoke Test
 
 ```bash
-bash scripts/e2e-smoke-test.sh
+bash scripts/deploy.sh local smoke
 ```
 
 The script builds the project, starts the Docker `e2e` profile with Flink,
@@ -89,14 +89,14 @@ logging path. Enable it only when you need stage-level record counts,
 code-level counters and data-shape diagnostics:
 
 ```bash
-FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh
+FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
 ```
 
 To keep the e2e stack running after a successful run and inspect real metrics,
 use:
 
 ```bash
-FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/e2e-smoke-test.sh
+FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
 ```
 
 After the script reports success, the script verifies that `fdb-stage-metrics` has runtime samples,
@@ -108,7 +108,7 @@ Summary lines are printed to the console and persisted to `logs-summary.log` by
 default. Override the file with `FDB_E2E_SUMMARY_FILE`:
 
 ```bash
-FDB_E2E_SUMMARY=1 FDB_E2E_SUMMARY_FILE=logs/e2e-summary.log bash scripts/e2e-smoke-test.sh
+FDB_E2E_SUMMARY=1 FDB_E2E_SUMMARY_FILE=logs/e2e-summary.log bash scripts/deploy.sh local smoke
 ```
 
 ### Smoke Stage Summary
