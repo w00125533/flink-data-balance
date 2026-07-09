@@ -1,7 +1,7 @@
 # Flink 数据均衡处理工程 - 设计文档
 
 - **创建日期**: 2026-04-29
-- **最近刷新**: 2026-07-03
+- **最近刷新**: 2026-07-09
 - **状态**: 待评审
 - **关键技术栈**: Java 21 · Flink 1.20 · Maven · Avro · Kafka · StarRocks · Hive HMS · Iceberg · React 18 · TypeScript · Vite · Ant Design · AntV X6 · Prometheus
 
@@ -25,13 +25,14 @@
 6. **湖表保留**：Hive Parquet 与 Iceberg 保留为湖表落地和本地对比路径，查询通过 StarRocks 层统一进入。
 7. **实时观测控制台**：展示流处理状态、KPI 结果、异常结果、栅格异常、每次 sink 写入耗时与存储健康状态。
 8. **数据老化治理**：业务流和结果数据按 1 小时、10GB 上限治理；compact 配置类 topic 保留最新配置。
-9. **本地开发环境**：Windows + Git Bash + Docker Desktop，复用 `../shared-data-infra` 中的共享 Kafka、ZooKeeper、Hive、HDFS、StarRocks 等基础设施。
+9. **多目标部署入口**：通过统一 `scripts/deploy.sh <target> <command>` 管理本地 Docker 调试和外部 YARN 部署；本地复用 `../shared-data-infra`，外部环境通过 `.env` 连接已部署的 Kafka、HDFS、Hive、StarRocks、YARN 等基础设施。
 
 ### 1.2 非目标
 
 - 不实现完整 5G/6G 协议栈，字段语义贴近真实电信场景但不强制工业标准。
 - 不引入 Confluent Schema Registry；schema 通过 jar 包同步。
-- 不实现生产级 K8s/YARN 部署清单。
+- 不提供平台级 K8s 部署清单、自动扩缩容策略或生产发布流水线。
+- 不负责安装外部 Hadoop/YARN/Hive/Kafka/StarRocks 集群；外部模式只负责连通性检查、项目资源初始化、Flink 提交与停止。
 - 不实现 ML 模型类异常检测；当前只做规则集，模型能力作为扩展。
 - 不在第一版实现 StarRocks 异步物化视图；先通过 external catalog / view 查询 Iceberg 与 Hive。
 - 不提供生产级告警分派、用户权限、审计登录。
@@ -44,6 +45,7 @@
 - **结果可解释**：Full JOIN 输出质量标记，明确区分 `JOINED`、`CHR_ONLY`、`PM_ONLY`。
 - **查询不复制 KPI 主数据**：KPI 以 Iceberg 为主表，StarRocks 负责统一查询和加速入口。
 - **观测面与数据面分离**：业务结果、sink 耗时、Flink 指标分别采集，前端统一呈现。
+- **部署目标显式化**：local 与 external-yarn 共享生命周期命令，但不共享执行假设；local 使用 Docker Compose 和 shared-data-infra 容器，external-yarn 使用 Linux CLI 和外部 endpoint。
 
 ---
 
@@ -126,7 +128,7 @@ flink-data-balance/
 ├── observability-api/       # 观测与结果查询 API
 ├── frontend/                # React 观测控制台
 ├── docker/                  # 项目侧 compose，仅保留本工程服务
-├── scripts/                 # 启动、DDL、维护、冒烟脚本
+├── scripts/                 # 统一部署入口、DDL、维护、冒烟脚本
 └── docs/                    # 设计文档与表结构
 ```
 
@@ -742,13 +744,65 @@ StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external netw
 | `FDB_ICEBERG_DATABASE` | `fdb` |
 | `FDB_ICEBERG_TABLE` | `cell_kpi` |
 
+### 9.5 部署目标
+
+部署入口统一为：
+
+```bash
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local check
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local up
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local init
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local submit
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local stop
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local smoke
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local down
+
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn check
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn check --strict
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn init
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn submit
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn stop
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn smoke
+```
+
+`local` 目标用于开发机 Docker 调试；`external-yarn` 目标用于无 Docker 的 Linux 部署机，向外部 YARN 提交 Flink 作业。
+
+| 配置 | local 示例 | external-yarn 示例 | 说明 |
+|---|---|---|---|
+| `FDB_DEPLOY_TARGET` | `local` | `external-yarn` | 防误用的目标声明 |
+| `SHARED_INFRA_DIR` | `../shared-data-infra` | 空 | local 复用共享 Docker 基础设施 |
+| `FDB_KAFKA_BOOTSTRAP` | `kafka:9092` | `kafka01:9092,kafka02:9092` | Flink 与服务端连接 Kafka |
+| `FDB_KAFKA_HOST_BOOTSTRAP` | `localhost:9092` | 同外部 broker | 宿主机或 CLI 连接 Kafka |
+| `FDB_HDFS_URI` | `hdfs://namenode:8020` | `hdfs://nameservice1` | HDFS 入口 |
+| `FDB_HIVE_JDBC_URL` | `jdbc:hive2://localhost:10000/default` | `jdbc:hive2://hive01:10000/default` | HiveServer2 JDBC |
+| `FDB_HIVE_METASTORE_URI` | `thrift://hive-metastore:9083` | `thrift://hms01:9083` | Hive Metastore |
+| `FLINK_HOME` | 空或 Docker 内置 | `/opt/flink-1.20.3` | external-yarn 必填 |
+| `HADOOP_CONF_DIR` | 空或容器内置 | `/etc/hadoop/conf` | external-yarn 必填 |
+| `YARN_CONF_DIR` | 空或同 Hadoop | `/etc/hadoop/conf` | external-yarn 必填 |
+| `FDB_FLINK_YARN_QUEUE` | 空 | `default` | 外部 YARN 队列 |
+| `FDB_FLINK_CHECKPOINT_DIR` | `file:///tmp/fdb-checkpoints` | `hdfs://nameservice1/flink-data-balance/checkpoints` | checkpoint 目录 |
+| `FDB_STARROCKS_FE_ENDPOINT` | `starrocks-fe:9030` | `starrocks-fe01:9030` | StarRocks FE |
+
+配置文件建议分为：
+
+```text
+.env.example.local
+.env.example.external-yarn
+```
+
+二者差异集中在 runtime、endpoint、客户端 CLI、初始化执行位置、停止和验证方式。业务 topic 名、Hive/Iceberg 表名、数据库名尽量共用默认值。
+
+当前 local `.env` 示例只暴露脚本和作业实际支持的本地开关；项目侧 MySQL 与 shared Hive 的本地端点仍由 compose 和本地初始化脚本固定管理，避免误以为 `.env.local` 可以切换所有 local 依赖 endpoint。external-yarn 则通过 `.env.external` 显式配置外部 endpoint 与 CLI 路径。
+
 ---
 
-## 10. 共享基础设施
+## 10. 部署模式与共享基础设施
 
 新增或修改 Docker Compose 基础设施前必须先检查 `../shared-data-infra`。
 
-本工程复用共享能力：
+### 10.1 local
+
+local 目标继续复用共享能力：
 
 | 能力 | 来源 |
 |---|---|
@@ -757,7 +811,7 @@ StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external netw
 | StarRocks FE/BE | `../shared-data-infra` starrocks profile |
 | Kafka UI | `../shared-data-infra` observability / streaming tooling |
 
-本工程保留：
+local 目标中本工程保留：
 
 | 服务 | 说明 |
 |---|---|
@@ -766,11 +820,61 @@ StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external netw
 | frontend | 控制台 |
 | prometheus | 项目侧 scrape 与指标查询 |
 
+local 生命周期：
+
+| 命令 | 说明 |
+|---|---|
+| `deploy.sh local check` | 检查 Docker、shared-data-infra network、compose 配置 |
+| `deploy.sh local up` | 启动项目侧 MySQL、Flink runtime、observability-api、frontend、Prometheus |
+| `deploy.sh local init` | 创建 Kafka topics、MySQL 表、HDFS 目录、Hive 表，准备 Flink Hadoop runtime jar |
+| `deploy.sh local submit` | 向本地 Docker Flink JobManager 提交作业 |
+| `deploy.sh local stop` | 取消本地 Flink 作业 |
+| `deploy.sh local smoke` | 执行本地端到端冒烟验证 |
+| `deploy.sh local down` | 停止项目侧本地容器 |
+
 修改 compose 后至少运行：
 
 ```bash
 docker compose -f docker/docker-compose.yml --profile e2e config
 ```
+
+### 10.2 external-yarn
+
+external-yarn 目标用于没有 Docker 的 Linux 部署机。外部 Kafka、HDFS、Hive、StarRocks、YARN 由平台或外部环境提供，本工程不负责启动或销毁这些基础设施。
+
+部署机要求：
+
+| 依赖 | 说明 |
+|---|---|
+| JDK 17 | 构建与运行 Java 组件 |
+| Maven 3.9+ | 构建项目 jar |
+| Flink 客户端 | `FLINK_HOME` 指向 Flink 1.20.x 安装目录 |
+| Hadoop/YARN 客户端 | 提供 `hdfs`、`yarn`，并配置 `HADOOP_CONF_DIR` / `YARN_CONF_DIR` |
+| Hive beeline | 执行 Hive DDL 与连通性检查 |
+| Kafka CLI | 执行 topic 创建与 Kafka 连通性检查 |
+| MySQL/MariaDB client | 初始化项目 MySQL 表 |
+| StarRocks/MySQL client | 初始化 StarRocks 数据库、表或 external catalog |
+
+external-yarn 生命周期：
+
+| 命令 | 说明 |
+|---|---|
+| `deploy.sh external-yarn check` | 诊断 CLI 与 Kafka/HDFS/Hive/YARN/MySQL/StarRocks 连通性；默认不作为硬门禁 |
+| `deploy.sh external-yarn check --strict` | 同上，但任一失败返回非零 |
+| `deploy.sh external-yarn init` | 幂等创建 Kafka topics、HDFS warehouse/checkpoint 目录、Hive/MySQL/StarRocks DDL |
+| `deploy.sh external-yarn submit` | 构建 jar，并通过 `$FLINK_HOME/bin/flink` 提交到 YARN |
+| `deploy.sh external-yarn stop` | 根据记录的 Flink job id 或 YARN application id 停止作业 |
+| `deploy.sh external-yarn smoke` | 外部小流量验证；首版可渐进增强，当前不作为开发机硬门禁 |
+
+外部提交由部署人员显式执行 `deploy.sh external-yarn submit`。`init` 不自动提交长跑作业，避免在外部资源准备阶段误启动 Flink。
+
+提交和停止状态记录到：
+
+```text
+logs/external-yarn-current.env
+```
+
+其中保存 Flink job id、YARN application id、提交时间和使用的 env 文件路径，供 `stop` 和排障使用。
 
 ---
 
@@ -809,12 +913,17 @@ DLQ：
 | Integration | StarRocks DDL 与异常写入 |
 | Integration | Iceberg data files 与 snapshot commit 可见 |
 | E2E | 共享 Kafka/Hive/HDFS/StarRocks + 项目 Flink + 控制台 API |
+| Deploy | `deploy.sh local` 生命周期命令覆盖本地 Docker 调试 |
+| Deploy | `deploy.sh external-yarn` 生命周期命令覆盖外部 Linux/YARN 部署 |
 
 提交前约束：
 
 - 仅改 compose、脚本、文档时不需要 Java 符号 impact analysis。
 - 修改 Java 函数、类或方法前必须运行 GitNexus impact analysis。
 - 提交前运行 GitNexus detect_changes。
+- 修改部署脚本后至少运行 `bash -n scripts/deploy.sh`。
+- 修改 Docker Compose 后必须运行 `docker compose -f docker/docker-compose.yml --profile e2e config`。
+- 当前没有外部集群时，不要求 `deploy.sh external-yarn check` 在开发机通过；外部环境就绪后用 `deploy.sh external-yarn check --strict` 作为部署门禁。
 
 ---
 
@@ -838,6 +947,13 @@ DLQ：
 - [ ] Flink 默认并发与 TaskManager slots 为 4。
 - [ ] KPI window 与重 sink 在 Flink UI 中拆成可辨识 vertex。
 - [ ] `../shared-data-infra` 能提供 Kafka/ZooKeeper/Hive/HDFS/StarRocks，本工程不重复定义这些基础设施。
+- [x] 本地入口统一为 `scripts/deploy.sh local <command>`，覆盖 `check/up/init/submit/stop/smoke/down`。
+- [x] 外部入口统一为 `scripts/deploy.sh external-yarn <command>`，覆盖 `check/init/submit/stop/smoke`。
+- [x] 旧的 `dev-up.sh`、`dev-down.sh`、`e2e-smoke-test.sh` 入口不再作为目标态入口；README 示例统一迁移到 `deploy.sh`。
+- [x] `local up/down` 只管理本工程本地 Docker runtime，不重复启动 shared-data-infra 中已有的 Kafka/HDFS/Hive/StarRocks 服务。
+- [x] `external-yarn init` 幂等创建项目所需 Kafka topics、HDFS 目录、Hive/MySQL/StarRocks DDL，但不自动提交 Flink 作业。
+- [x] `external-yarn submit` 由部署人员显式执行，使用 `FLINK_HOME`、`HADOOP_CONF_DIR`、`YARN_CONF_DIR` 和 `.env` 中的外部 endpoint 提交到 YARN。
+- [x] `external-yarn check` 默认诊断模式不作为开发机硬门禁；`--strict` 模式在外部部署机上任一失败返回非零。
 
 ---
 
@@ -848,4 +964,4 @@ DLQ：
 3. 高精度 GIS：栅格边界、多级 geohash drilldown、热力图。
 4. ML 异常检测：与规则集并行输出。
 5. 生产调度：将老化脚本接入调度器。
-6. 多环境部署：K8s/YARN 和对象存储。
+6. 更多部署目标：K8s、独立 Flink 集群和对象存储。
