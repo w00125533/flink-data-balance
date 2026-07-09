@@ -57,7 +57,7 @@ fi
 cd "$ROOT_DIR"
 
 echo "--- Phase 1: Clean project stack ---"
-bash scripts/dev-down.sh --clean 2>&1 | sed 's/^/  /'
+bash scripts/deploy.sh local down --clean 2>&1 | sed 's/^/  /'
 pass "Project-local containers stopped and cleaned"
 
 echo ""
@@ -67,8 +67,9 @@ pass "Shared lakehouse, streaming, and observability profiles started"
 
 echo ""
 echo "--- Phase 3: Start project stack ---"
-bash scripts/dev-up.sh 2>&1 | sed 's/^/  /'
-pass "dev-up.sh completed"
+bash scripts/deploy.sh local up 2>&1 | sed 's/^/  /'
+bash scripts/deploy.sh local init 2>&1 | sed 's/^/  /'
+pass "deploy.sh local up/init completed"
 
 echo ""
 echo "--- Phase 4: Verify required containers ---"
@@ -188,7 +189,7 @@ fi
 
 echo ""
 echo "--- Phase 9: Stop project stack ---"
-bash scripts/dev-down.sh 2>&1 | sed 's/^/  /'
+bash scripts/deploy.sh local down 2>&1 | sed 's/^/  /'
 sleep 3
 
 for name in "${PROJECT_EXPECTED[@]}"; do

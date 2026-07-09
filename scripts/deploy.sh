@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
+
 TARGET="${1:-}"
 COMMAND="${2:-}"
 ARGS=()
@@ -43,11 +45,22 @@ load_env() {
   local env_file="${FDB_ENV_FILE:-.env}"
 
   if [[ ! -f "$env_file" ]]; then
-    if [[ "$COMMAND" == "check" ]]; then
-      warn "env file not found: $env_file"
-      return 0
-    fi
     die "env file not found: $env_file"
+  fi
+
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+  ok "loaded env file: $env_file"
+}
+
+load_env_optional() {
+  local env_file="${FDB_ENV_FILE:-.env}"
+
+  if [[ ! -f "$env_file" ]]; then
+    warn "optional env file not found: $env_file"
+    return 0
   fi
 
   set -a
@@ -87,18 +100,167 @@ require_flink_home_soft() {
   fi
 }
 
+shared_infra_dir() {
+  echo "${SHARED_INFRA_DIR:-../shared-data-infra}"
+}
+
+local_hdfs_uri() {
+  echo "${FDB_HDFS_URI:-hdfs://namenode:8020}"
+}
+
+local_kafka_bootstrap() {
+  echo "${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}"
+}
+
+shared_streaming() {
+  docker compose \
+    -f "$(shared_infra_dir)/compose.yaml" \
+    -f "$(shared_infra_dir)/compose.streaming.yaml" \
+    --profile streaming \
+    "$@"
+}
+
+shared_lakehouse() {
+  docker compose \
+    -f "$(shared_infra_dir)/compose.yaml" \
+    -f "$(shared_infra_dir)/compose.lakehouse.yaml" \
+    --profile lakehouse \
+    --profile lakehouse-tools \
+    "$@"
+}
+
+wait_for_command() {
+  local label=$1
+  local max_attempts=$2
+  local sleep_seconds=$3
+  shift 3
+
+  for _ in $(seq 1 "$max_attempts"); do
+    if "$@" >/dev/null 2>&1; then
+      ok "$label"
+      return 0
+    fi
+    sleep "$sleep_seconds"
+  done
+
+  die "$label did not become ready"
+}
+
+prepare_flink_hadoop_runtime() {
+  local artifact="${FLINK_HADOOP_RUNTIME_ARTIFACT:-org.apache.flink:flink-shaded-hadoop-2-uber:2.8.3-10.0}"
+  local jar="${FLINK_HADOOP_RUNTIME_JAR:-docker/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar}"
+
+  if [[ -f "$jar" ]]; then
+    return 0
+  fi
+
+  log "downloading Flink Hadoop runtime jar"
+  mkdir -p "$(dirname "$jar")"
+
+  local old_msys_no_pathconv_set=0
+  local old_msys_no_pathconv=""
+  if [[ "${MSYS_NO_PATHCONV+x}" == "x" ]]; then
+    old_msys_no_pathconv_set=1
+    old_msys_no_pathconv="$MSYS_NO_PATHCONV"
+    unset MSYS_NO_PATHCONV
+  fi
+
+  mvn -q dependency:copy \
+    -Dartifact="$artifact" \
+    -DoutputDirectory="$(dirname "$jar")" \
+    -Dtransitive=false
+
+  if [[ "$old_msys_no_pathconv_set" == "1" ]]; then
+    export MSYS_NO_PATHCONV="$old_msys_no_pathconv"
+  fi
+}
+
+remove_legacy_local_infra() {
+  local legacy=(
+    fdb-zookeeper
+    fdb-kafka
+    fdb-kafka-ui
+    fdb-hms-postgres
+    fdb-hive-metastore
+    fdb-hive-server
+    fdb-grafana
+  )
+  local name
+  local container_ids
+
+  for name in "${legacy[@]}"; do
+    container_ids="$(docker ps -aq --filter "name=^/${name}$")"
+    if [[ -n "$container_ids" ]]; then
+      docker rm -f "$name" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 local_check() {
+  load_env_optional
   log "checking local docker compose configuration"
   docker compose -f docker/docker-compose.yml --profile e2e config >/dev/null
   ok "local docker compose configuration is valid"
 }
 
 local_up() {
-  die "local up is not implemented yet; requires Task 2 local deployment orchestration"
+  load_env_optional
+  log "checking shared infrastructure network"
+  if ! docker network inspect shared-data-infra >/dev/null 2>&1; then
+    warn "shared-data-infra network is missing"
+    warn "start shared infrastructure first:"
+    warn "  cd $(shared_infra_dir) && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability"
+    exit 1
+  fi
+
+  prepare_flink_hadoop_runtime
+
+  log "starting local project containers"
+  docker compose -f docker/docker-compose.yml --profile e2e up -d \
+    mysql \
+    observability-api \
+    prometheus \
+    frontend \
+    jobmanager \
+    taskmanager
+
+  log "waiting for MySQL to be ready (up to 60s)"
+  wait_for_command "MySQL OK" 30 2 \
+    docker compose -f docker/docker-compose.yml exec -T mysql \
+      mysqladmin ping -h localhost -ufdb -pfdbpwd --silent
 }
 
 local_init() {
-  die "local init is not implemented yet; requires Task 3 local initialization workflow"
+  load_env_optional
+  log "waiting for shared Kafka to be ready (up to 60s)"
+  wait_for_command "shared Kafka OK" 30 2 \
+    shared_streaming exec -T kafka \
+      kafka-broker-api-versions --bootstrap-server "$(local_kafka_bootstrap)"
+
+  log "waiting for shared HiveServer2 to be ready (up to 90s)"
+  wait_for_command "shared HiveServer2 OK" 45 2 \
+    shared_lakehouse exec -T hive-server \
+      beeline -u jdbc:hive2://localhost:10000/default -e "SELECT 1"
+
+  log "preparing shared HDFS warehouse directories"
+  shared_lakehouse exec -T namenode \
+    hdfs dfs -fs "$(local_hdfs_uri)" -mkdir -p /warehouse/fdb/cell_kpi /warehouse/iceberg
+  shared_lakehouse exec -T namenode \
+    hdfs dfs -fs "$(local_hdfs_uri)" -chmod -R 777 /warehouse/fdb /warehouse/iceberg
+
+  prepare_flink_hadoop_runtime
+
+  log "creating Kafka topics"
+  bash scripts/create-kafka-topics.sh
+
+  log "initializing MySQL tables"
+  docker exec -i fdb-mysql mysql -ufdb -pfdbpwd fdb < scripts/init-mysql.sql
+
+  log "initializing shared Hive table"
+  bash scripts/init-hive.sh
+
+  ok "local dependencies initialized"
+  docker compose -f docker/docker-compose.yml ps
 }
 
 local_submit() {
@@ -114,11 +276,19 @@ local_smoke() {
 }
 
 local_down() {
-  die "local down is not implemented yet; requires Task 2 local deployment teardown"
+  if [[ "${1:-}" == "--clean" ]]; then
+    log "stopping and removing project containers plus data volumes"
+    docker compose -f docker/docker-compose.yml down -v
+    remove_legacy_local_infra
+    rm -rf docker/data
+  else
+    log "stopping project containers"
+    docker compose -f docker/docker-compose.yml down
+  fi
 }
 
 external_check() {
-  load_env
+  load_env_optional
   require_command_soft java
   require_command_soft mvn
   require_command_soft yarn
@@ -158,7 +328,7 @@ dispatch_local() {
     submit) local_submit ;;
     stop) local_stop ;;
     smoke) local_smoke ;;
-    down) local_down ;;
+    down) local_down "${ARGS[@]}" ;;
     *) die "unsupported command for local: $COMMAND" ;;
   esac
 }

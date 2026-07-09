@@ -26,19 +26,20 @@ cd ../shared-data-infra
 sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability
 
 cd ../flink-data-balance
-bash scripts/dev-up.sh
-bash scripts/dev-down.sh
+bash scripts/deploy.sh local up
+bash scripts/deploy.sh local init
+bash scripts/deploy.sh local down
 ```
 
-`dev-up.sh` expects the shared `lakehouse`, `lakehouse-tools` and `streaming`
-profiles to be running. HDFS, Hive Metastore, HiveServer2, ZooKeeper and Kafka
-come from `../shared-data-infra`; this project starts only MySQL, Flink runtime,
-observability API, frontend and Prometheus. Kafka uses the shared default
-endpoint `kafka:9092` inside Docker and `localhost:9092` from the host.
-Kafka UI is provided by the shared `observability` profile at http://localhost:8080.
-It also creates Kafka topics, initializes MySQL tables, prepares shared HDFS
-warehouse directories, downloads the local Flink Hadoop runtime jar into the
-ignored `docker/lib` cache, and creates the shared Hive external table.
+`deploy.sh local up` starts project-local MySQL, Flink runtime, observability
+API, frontend and Prometheus. HDFS, Hive Metastore, HiveServer2, ZooKeeper and
+Kafka come from `../shared-data-infra`. Kafka uses the shared default endpoint
+`kafka:9092` inside Docker and `localhost:9092` from the host. Kafka UI is
+provided by the shared `observability` profile at http://localhost:8080.
+`deploy.sh local init` expects the shared `lakehouse`, `lakehouse-tools` and
+`streaming` profiles to be running; it creates Kafka topics, initializes
+MySQL/Hive, prepares HDFS directories, and downloads the Flink Hadoop runtime
+jar into the ignored `docker/lib` cache.
 
 ## 实时观测控制台
 

@@ -16,7 +16,7 @@ cleanup() {
     echo "[e2e] Completed; keeping containers running because FDB_E2E_KEEP_RUNNING_ON_SUCCESS=${FDB_E2E_KEEP_RUNNING_ON_SUCCESS}"
     observability_links
   elif [ "$status" -eq 0 ] || [ "${FDB_E2E_KEEP_RUNNING_ON_FAIL:-0}" != "1" ]; then
-    COMPOSE_PROFILES=e2e bash scripts/dev-down.sh >/dev/null 2>&1 || true
+    bash scripts/deploy.sh local down >/dev/null 2>&1 || true
   else
     echo "[e2e] Failed; keeping containers running because FDB_E2E_KEEP_RUNNING_ON_FAIL=1"
     COMPOSE_PROFILES=e2e docker compose -f docker/docker-compose.yml ps || true
@@ -46,7 +46,8 @@ summary_line "Build" "maven package" "success"
 export MSYS_NO_PATHCONV=1
 
 echo "[e2e] Starting infrastructure and Flink containers..."
-COMPOSE_PROFILES=e2e bash scripts/dev-up.sh
+bash scripts/deploy.sh local up
+bash scripts/deploy.sh local init
 wait_for "Flink JobManager" "curl -fsS http://localhost:8081/overview >/dev/null"
 wait_for "HiveServer2" "shared_hive_exec beeline -u jdbc:hive2://localhost:10000/default -e 'SELECT 1' >/dev/null 2>&1"
 wait_for "Observability API" "curl -fsS \"$(observability_api_url)/metrics\" >/dev/null"
