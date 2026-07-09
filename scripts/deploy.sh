@@ -415,8 +415,184 @@ local_down() {
   fi
 }
 
+external_require_env() {
+  local name=$1
+  local value="${!name:-}"
+
+  if [[ -n "$value" ]]; then
+    ok "env set: $name"
+  else
+    warn_or_fail "env missing: $name"
+  fi
+}
+
+require_env() {
+  local name=$1
+  local value="${!name:-}"
+
+  [[ -n "$value" ]] || die "env missing: $name"
+}
+
+external_flink_bin() {
+  echo "${FLINK_HOME:-}/bin/flink"
+}
+
+external_starrocks_host() {
+  echo "${FDB_STARROCKS_FE_ENDPOINT:-}" | awk -F: '{print $1}'
+}
+
+external_starrocks_port() {
+  echo "${FDB_STARROCKS_FE_ENDPOINT:-}" | awk -F: '{print ($2 == "" ? 9030 : $2)}'
+}
+
+external_mysql_select_one() {
+  local host=$1
+  local port=$2
+  local user=$3
+  local password=$4
+  local database=$5
+  local args=(-h "$host" -P "$port" -u "$user")
+
+  if [[ -n "$password" ]]; then
+    args+=("-p$password")
+  fi
+  if [[ -n "$database" ]]; then
+    args+=("$database")
+  fi
+
+  mysql "${args[@]}" -e "SELECT 1" >/dev/null 2>&1
+}
+
+external_mysql_run_file() {
+  local host=$1
+  local port=$2
+  local user=$3
+  local password=$4
+  local database=$5
+  local sql_file=$6
+  local args=(-h "$host" -P "$port" -u "$user")
+
+  [[ -f "$sql_file" ]] || die "SQL file not found: $sql_file"
+
+  if [[ -n "$password" ]]; then
+    args+=("-p$password")
+  fi
+  if [[ -n "$database" ]]; then
+    args+=("$database")
+  fi
+
+  mysql "${args[@]}" < "$sql_file"
+}
+
+external_hive_cell_kpi_location() {
+  if [[ -n "${FDB_HIVE_CELL_KPI_LOCATION:-}" ]]; then
+    echo "$FDB_HIVE_CELL_KPI_LOCATION"
+  elif [[ -n "${FDB_HIVE_WAREHOUSE_PATH:-}" ]]; then
+    echo "${FDB_HDFS_URI%/}$FDB_HIVE_WAREHOUSE_PATH"
+  elif [[ -n "${FDB_HIVE_WAREHOUSE:-}" ]]; then
+    echo "${FDB_HIVE_WAREHOUSE%/}/cell_kpi"
+  else
+    echo "${FDB_HDFS_URI%/}/warehouse/fdb/cell_kpi"
+  fi
+}
+
+external_hdfs_path_from_location() {
+  local location=$1
+  local path="$location"
+
+  if [[ "$path" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]; then
+    path="/${path#*://*/}"
+  fi
+  [[ "$path" == /* ]] || path="/$path"
+  echo "$path"
+}
+
+external_iceberg_warehouse_path() {
+  if [[ -n "${FDB_ICEBERG_WAREHOUSE_PATH:-}" ]]; then
+    echo "$(external_hdfs_path_from_location "$FDB_ICEBERG_WAREHOUSE_PATH")"
+  elif [[ -n "${FDB_ICEBERG_WAREHOUSE:-}" ]]; then
+    echo "$(external_hdfs_path_from_location "$FDB_ICEBERG_WAREHOUSE")"
+  else
+    echo "/warehouse/iceberg"
+  fi
+}
+
+external_flink_checkpoint_path() {
+  if [[ -n "${FDB_FLINK_CHECKPOINT_PATH:-}" ]]; then
+    echo "$(external_hdfs_path_from_location "$FDB_FLINK_CHECKPOINT_PATH")"
+  elif [[ -n "${FDB_FLINK_CHECKPOINT_DIR:-}" ]]; then
+    echo "$(external_hdfs_path_from_location "$FDB_FLINK_CHECKPOINT_DIR")"
+  else
+    echo "/flink-data-balance/checkpoints"
+  fi
+}
+
+external_init_hive() {
+  local schema_file="docs/hive-schema.q"
+  local tmp_file
+  local location
+  local escaped_location
+
+  [[ -f "$schema_file" ]] || die "Hive schema file not found: $schema_file"
+
+  tmp_file="$(mktemp)"
+  location="$(external_hive_cell_kpi_location)"
+  escaped_location="${location//&/\\&}"
+  if sed "s#hdfs://namenode:8020/warehouse/fdb/cell_kpi#$escaped_location#g" "$schema_file" > "$tmp_file"; then
+    :
+  else
+    local status=$?
+    rm -f "$tmp_file"
+    return "$status"
+  fi
+
+  if beeline -u "$FDB_HIVE_JDBC_URL" -f "$tmp_file"; then
+    rm -f "$tmp_file"
+  else
+    local status=$?
+    rm -f "$tmp_file"
+    return "$status"
+  fi
+}
+
+create_external_topic() {
+  local name=$1
+  local partitions=$2
+  local cleanup=$3
+  local retention_ms=${4:-}
+  local extra=()
+
+  if [[ -n "$retention_ms" && "$cleanup" == "delete" ]]; then
+    extra+=(--config "retention.ms=$retention_ms")
+  fi
+
+  kafka-topics \
+    --bootstrap-server "$FDB_KAFKA_BOOTSTRAP" \
+    --create --if-not-exists \
+    --topic "$name" \
+    --partitions "$partitions" \
+    --replication-factor "${FDB_KAFKA_REPLICATION_FACTOR:-1}" \
+    --config "cleanup.policy=$cleanup" \
+    "${extra[@]}"
+}
+
 external_check() {
   load_env_optional
+  external_require_env FDB_DEPLOY_TARGET
+  if [[ "${FDB_DEPLOY_TARGET:-}" != "external-yarn" ]]; then
+    warn_or_fail "FDB_DEPLOY_TARGET should be external-yarn"
+  fi
+
+  external_require_env FLINK_HOME
+  external_require_env HADOOP_CONF_DIR
+  external_require_env YARN_CONF_DIR
+  external_require_env FDB_KAFKA_BOOTSTRAP
+  external_require_env FDB_HDFS_URI
+  external_require_env FDB_HIVE_JDBC_URL
+  external_require_env FDB_MYSQL_HOST
+  external_require_env FDB_MYSQL_PORT
+  external_require_env FDB_STARROCKS_FE_ENDPOINT
+
   require_command_soft java
   require_command_soft mvn
   require_command_soft yarn
@@ -426,11 +602,117 @@ external_check() {
   require_command_soft kafka-broker-api-versions
   require_command_soft mysql
   require_flink_home_soft
+
+  if [[ -n "${FDB_KAFKA_BOOTSTRAP:-}" ]] \
+    && kafka-broker-api-versions --bootstrap-server "$FDB_KAFKA_BOOTSTRAP" >/dev/null 2>&1; then
+    ok "Kafka reachable"
+  else
+    warn_or_fail "Kafka check failed"
+  fi
+
+  if [[ -n "${FDB_HDFS_URI:-}" ]] \
+    && hdfs dfs -fs "$FDB_HDFS_URI" -ls / >/dev/null 2>&1; then
+    ok "HDFS reachable"
+  else
+    warn_or_fail "HDFS check failed"
+  fi
+
+  if [[ -n "${FDB_HIVE_JDBC_URL:-}" ]] \
+    && beeline -u "$FDB_HIVE_JDBC_URL" -e "SELECT 1" >/dev/null 2>&1; then
+    ok "Hive reachable"
+  else
+    warn_or_fail "Hive check failed"
+  fi
+
+  if yarn node -list >/dev/null 2>&1; then
+    ok "YARN reachable"
+  else
+    warn_or_fail "YARN check failed"
+  fi
+
+  if [[ -n "${FDB_MYSQL_HOST:-}" ]] \
+    && external_mysql_select_one "$FDB_MYSQL_HOST" "${FDB_MYSQL_PORT:-3306}" "${FDB_MYSQL_USER:-fdb}" "${FDB_MYSQL_PASSWORD:-fdbpwd}" "${FDB_MYSQL_DATABASE:-fdb}"; then
+    ok "MySQL reachable"
+  else
+    warn_or_fail "MySQL check failed"
+  fi
+
+  if [[ -n "${FDB_STARROCKS_FE_ENDPOINT:-}" ]] \
+    && external_mysql_select_one "$(external_starrocks_host)" "$(external_starrocks_port)" "${FDB_STARROCKS_USER:-root}" "${FDB_STARROCKS_PASSWORD:-}" ""; then
+    ok "StarRocks reachable"
+  else
+    warn_or_fail "StarRocks check failed"
+  fi
 }
 
 external_init() {
   load_env
-  die "external-yarn init is not implemented yet; requires Task 7 external environment initialization"
+  [[ "${FDB_DEPLOY_TARGET:-}" == "external-yarn" ]] || die "FDB_DEPLOY_TARGET must be external-yarn"
+  require_env FDB_KAFKA_BOOTSTRAP
+  require_env FDB_HDFS_URI
+  require_env FDB_HIVE_JDBC_URL
+  require_env FDB_MYSQL_HOST
+  local hive_cell_kpi_path
+  local hive_warehouse_root
+  local iceberg_warehouse_path
+  local flink_checkpoint_path
+  hive_cell_kpi_path="$(external_hdfs_path_from_location "$(external_hive_cell_kpi_location)")"
+  hive_warehouse_root="$(external_hdfs_path_from_location "${FDB_HIVE_WAREHOUSE_ROOT:-${hive_cell_kpi_path%/*}}")"
+  iceberg_warehouse_path="$(external_iceberg_warehouse_path)"
+  flink_checkpoint_path="$(external_flink_checkpoint_path)"
+
+  log "creating external Kafka topics"
+  create_external_topic "${FDB_CHR_TOPIC:-chr-events}" 64 delete 604800000
+  create_external_topic "${FDB_PM_TOPIC:-mr-stats}" 16 delete 259200000
+  create_external_topic "${FDB_CFG_TOPIC:-cm-config}" 8 compact
+  create_external_topic "${FDB_TOPOLOGY_TOPIC:-topology}" 4 compact
+  create_external_topic "${FDB_LB_HEARTBEAT_TOPIC:-lb-heartbeat}" 1 delete 3600000
+  create_external_topic "${FDB_LB_ROUTING_TOPIC:-lb-routing}" 1 compact
+  create_external_topic "${FDB_METRICS_TOPIC:-fdb-stage-metrics}" 1 delete 3600000
+  create_external_topic "${FDB_ANOMALY_TOPIC:-anomaly-events}" 16 delete 604800000
+  create_external_topic "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}" 8 delete 259200000
+  create_external_topic "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}" 8 delete 604800000
+  create_external_topic "${FDB_CHR_DLQ_TOPIC:-chr-dlq}" 4 delete 604800000
+  create_external_topic "${FDB_PM_DLQ_TOPIC:-mr-dlq}" 4 delete 604800000
+  create_external_topic "${FDB_CFG_DLQ_TOPIC:-cm-dlq}" 4 delete 604800000
+  create_external_topic "${FDB_ENRICHMENT_LATE_TOPIC:-enrichment-late}" 4 delete 604800000
+
+  log "creating external HDFS directories"
+  hdfs dfs -fs "$FDB_HDFS_URI" -mkdir -p \
+    "$hive_cell_kpi_path" \
+    "$iceberg_warehouse_path" \
+    "$flink_checkpoint_path"
+  hdfs dfs -fs "$FDB_HDFS_URI" -chmod -R 777 \
+    "$hive_warehouse_root" \
+    "$iceberg_warehouse_path" \
+    "$flink_checkpoint_path"
+
+  log "initializing external Hive table"
+  external_init_hive
+
+  log "initializing external MySQL tables"
+  external_mysql_run_file \
+    "$FDB_MYSQL_HOST" \
+    "${FDB_MYSQL_PORT:-3306}" \
+    "${FDB_MYSQL_USER:-fdb}" \
+    "${FDB_MYSQL_PASSWORD:-fdbpwd}" \
+    "${FDB_MYSQL_DATABASE:-fdb}" \
+    scripts/init-mysql.sql
+
+  if [[ -f scripts/init-starrocks.sql ]]; then
+    log "initializing external StarRocks objects"
+    external_mysql_run_file \
+      "$(external_starrocks_host)" \
+      "$(external_starrocks_port)" \
+      "${FDB_STARROCKS_USER:-root}" \
+      "${FDB_STARROCKS_PASSWORD:-}" \
+      "${FDB_STARROCKS_DATABASE:-}" \
+      scripts/init-starrocks.sql
+  else
+    warn "scripts/init-starrocks.sql not found; skipping StarRocks initialization"
+  fi
+
+  ok "external-yarn dependencies initialized"
 }
 
 external_submit() {
