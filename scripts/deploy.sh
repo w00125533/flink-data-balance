@@ -496,6 +496,24 @@ external_hive_cell_kpi_location() {
   fi
 }
 
+external_hive_warehouse_location() {
+  local cell_location
+  local root_path
+
+  if [[ -n "${FDB_HIVE_WAREHOUSE:-}" ]]; then
+    echo "$FDB_HIVE_WAREHOUSE"
+  elif [[ -n "${FDB_HIVE_WAREHOUSE_ROOT:-}" ]]; then
+    echo "${FDB_HDFS_URI%/}$FDB_HIVE_WAREHOUSE_ROOT"
+  else
+    cell_location="$(external_hive_cell_kpi_location)"
+    root_path="${cell_location%/cell_kpi}"
+    if [[ "$root_path" == "$cell_location" ]]; then
+      root_path="${cell_location%/*}"
+    fi
+    echo "$root_path"
+  fi
+}
+
 external_hdfs_path_from_location() {
   local location=$1
   local path="$location"
@@ -505,6 +523,22 @@ external_hdfs_path_from_location() {
   fi
   [[ "$path" == /* ]] || path="/$path"
   echo "$path"
+}
+
+external_apply_runtime_defaults() {
+  if [[ -z "${FDB_MYSQL_URL:-}" && -n "${FDB_MYSQL_HOST:-}" ]]; then
+    export FDB_MYSQL_URL="jdbc:mysql://$FDB_MYSQL_HOST:${FDB_MYSQL_PORT:-3306}/${FDB_MYSQL_DATABASE:-fdb}"
+  fi
+  if [[ -z "${FDB_HIVE_WAREHOUSE:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
+    export FDB_HIVE_WAREHOUSE
+    FDB_HIVE_WAREHOUSE="$(external_hive_warehouse_location)"
+  fi
+  if [[ -z "${FDB_ICEBERG_WAREHOUSE:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
+    export FDB_ICEBERG_WAREHOUSE="${FDB_HDFS_URI%/}$(external_iceberg_warehouse_path)"
+  fi
+  if [[ -z "${FDB_FLINK_CHECKPOINT_DIR:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
+    export FDB_FLINK_CHECKPOINT_DIR="${FDB_HDFS_URI%/}$(external_flink_checkpoint_path)"
+  fi
 }
 
 external_iceberg_warehouse_path() {
@@ -574,6 +608,101 @@ create_external_topic() {
     --replication-factor "${FDB_KAFKA_REPLICATION_FACTOR:-1}" \
     --config "cleanup.policy=$cleanup" \
     "${extra[@]}"
+}
+
+EXTERNAL_FLINK_ENV_ARGS=()
+
+build_external_flink_env_args() {
+  local key
+  local value
+  local env_keys=(
+    FDB_KAFKA_BOOTSTRAP
+    FDB_MYSQL_URL
+    FDB_MYSQL_USER
+    FDB_HIVE_WAREHOUSE
+    FDB_ICEBERG_ENABLED
+    FDB_ICEBERG_WAREHOUSE
+    FDB_ICEBERG_CATALOG
+    FDB_ICEBERG_DATABASE
+    FDB_ICEBERG_TABLE
+    FDB_FLINK_CHECKPOINT_DIR
+    FDB_FLINK_CHECKPOINT_INTERVAL_MS
+    FDB_FLINK_PARALLELISM
+    FDB_METRICS_TOPIC
+    FDB_E2E_SUMMARY
+  )
+
+  EXTERNAL_FLINK_ENV_ARGS=()
+  for key in "${env_keys[@]}"; do
+    value="${!key:-}"
+    if [[ -n "$value" ]]; then
+      EXTERNAL_FLINK_ENV_ARGS+=("-Dcontainerized.master.env.$key=$value")
+      EXTERNAL_FLINK_ENV_ARGS+=("-Dcontainerized.taskmanager.env.$key=$value")
+    fi
+  done
+
+  if [[ -n "${FDB_FLINK_SECRET_ENV_KEYS:-}" ]]; then
+    warn "FDB_FLINK_SECRET_ENV_KEYS propagates secret values through Flink CLI/YARN metadata; prefer cluster-side secret injection"
+    local secret_key
+    local secret_keys=()
+    read -r -a secret_keys <<< "$FDB_FLINK_SECRET_ENV_KEYS"
+    for secret_key in "${secret_keys[@]}"; do
+      value="${!secret_key:-}"
+      if [[ -n "$value" ]]; then
+        EXTERNAL_FLINK_ENV_ARGS+=("-Dcontainerized.master.env.$secret_key=$value")
+        EXTERNAL_FLINK_ENV_ARGS+=("-Dcontainerized.taskmanager.env.$secret_key=$value")
+      else
+        warn "secret env key requested but not set: $secret_key"
+      fi
+    done
+  fi
+}
+
+append_args_from_file() {
+  local target_name=$1
+  local file=$2
+  local line
+
+  [[ -f "$file" ]] || die "args file not found: $file"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    case "$target_name" in
+      flink) EXTERNAL_FLINK_FILE_ARGS+=("$line") ;;
+      cancel) EXTERNAL_CANCEL_FILE_ARGS+=("$line") ;;
+      *) die "unsupported args target: $target_name" ;;
+    esac
+  done < "$file"
+}
+
+record_external_submit_output() {
+  local output_file=$1
+  local state_file="${FDB_EXTERNAL_STATE_FILE:-logs/external-yarn-current.env}"
+  local state_dir
+  local flink_job_id
+  local yarn_app_id
+
+  state_dir="$(dirname "$state_file")"
+  if [[ "$state_dir" != "." ]]; then
+    mkdir -p "$state_dir"
+  fi
+
+  flink_job_id="$(awk '/JobID|Job ID|job id/ {job_id=$NF} END {print job_id}' "$output_file")"
+  yarn_app_id="$(grep -Eo 'application_[0-9]+_[0-9]+' "$output_file" | tail -1 || true)"
+
+  {
+    printf 'FDB_EXTERNAL_SUBMITTED_AT=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf 'FDB_EXTERNAL_ENV_FILE=%q\n' "${FDB_ENV_FILE:-.env}"
+    printf 'FDB_EXTERNAL_FLINK_JOB_ID=%q\n' "$flink_job_id"
+    printf 'FDB_EXTERNAL_YARN_APPLICATION_ID=%q\n' "$yarn_app_id"
+  } > "$state_file"
+
+  if [[ -z "$flink_job_id" && -z "$yarn_app_id" ]]; then
+    warn "wrote external runtime state without parsed Flink/YARN ids: $state_file"
+    warn "set FDB_FLINK_JOB_ID or FDB_YARN_APPLICATION_ID explicitly when stopping this job"
+  else
+    ok "wrote external runtime state: $state_file"
+  fi
 }
 
 external_check() {
@@ -717,17 +846,135 @@ external_init() {
 
 external_submit() {
   load_env
-  die "external-yarn submit is not implemented yet; requires Task 8 external YARN Flink job submission"
+  [[ "${FDB_DEPLOY_TARGET:-}" == "external-yarn" ]] || die "FDB_DEPLOY_TARGET must be external-yarn"
+  require_env FDB_KAFKA_BOOTSTRAP
+  require_env FDB_HDFS_URI
+  require_env FDB_HIVE_JDBC_URL
+  require_env FLINK_HOME
+  require_env HADOOP_CONF_DIR
+  require_env YARN_CONF_DIR
+  [[ -x "$(external_flink_bin)" ]] || die "flink command not executable: $(external_flink_bin)"
+  external_apply_runtime_defaults
+  require_env FDB_MYSQL_URL
+  require_env FDB_HIVE_WAREHOUSE
+  require_env FDB_ICEBERG_WAREHOUSE
+  require_env FDB_FLINK_CHECKPOINT_DIR
+
+  log "building project jars"
+  mvn package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
+
+  local jar="${FDB_FLINK_JOB_LOCAL_JAR:-flink-job/target/flink-job-0.1.0-SNAPSHOT.jar}"
+  [[ -f "$jar" ]] || die "Flink job jar not found: $jar"
+
+  local output_file="${FDB_EXTERNAL_SUBMIT_LOG:-logs-external-yarn-submit.out}"
+  local output_dir
+  output_dir="$(dirname "$output_file")"
+  if [[ "$output_dir" != "." ]]; then
+    mkdir -p "$output_dir"
+  fi
+
+  local flink_args=(run)
+  if [[ -n "${FDB_FLINK_MASTER:-}" ]]; then
+    case "$FDB_FLINK_MASTER" in
+      yarn-cluster | yarn-session | yarn-application | yarn-*)
+        flink_args+=(-m "$FDB_FLINK_MASTER")
+        ;;
+      *)
+        die "FDB_FLINK_MASTER must be a YARN target for external-yarn submit: $FDB_FLINK_MASTER"
+        ;;
+    esac
+  elif [[ -n "${FDB_FLINK_TARGET:-}" ]]; then
+    case "$FDB_FLINK_TARGET" in
+      yarn-application | yarn-session | yarn-per-job | yarn-*)
+        flink_args+=(-t "$FDB_FLINK_TARGET")
+        ;;
+      *)
+        die "FDB_FLINK_TARGET must be a YARN target for external-yarn submit: $FDB_FLINK_TARGET"
+        ;;
+    esac
+  else
+    flink_args+=(-t yarn-application)
+  fi
+
+  if [[ -n "${FDB_FLINK_YARN_QUEUE:-}" ]]; then
+    flink_args+=(-yqu "$FDB_FLINK_YARN_QUEUE")
+  fi
+  flink_args+=(-p "${FDB_FLINK_PARALLELISM:-4}")
+  build_external_flink_env_args
+  flink_args+=("${EXTERNAL_FLINK_ENV_ARGS[@]}")
+
+  if [[ -n "${FDB_FLINK_EXTRA_ARGS:-}" ]]; then
+    local extra_args=()
+    read -r -a extra_args <<< "$FDB_FLINK_EXTRA_ARGS"
+    flink_args+=("${extra_args[@]}")
+  fi
+  if [[ -n "${FDB_FLINK_EXTRA_ARGS_FILE:-}" ]]; then
+    EXTERNAL_FLINK_FILE_ARGS=()
+    append_args_from_file flink "$FDB_FLINK_EXTRA_ARGS_FILE"
+    flink_args+=("${EXTERNAL_FLINK_FILE_ARGS[@]}")
+  fi
+  flink_args+=("$jar")
+
+  log "submitting Flink job to external YARN"
+  "$(external_flink_bin)" "${flink_args[@]}" 2>&1 | tee "$output_file"
+  record_external_submit_output "$output_file"
 }
 
 external_stop() {
   load_env
-  die "external-yarn stop is not implemented yet; requires Task 9 external YARN job lifecycle control"
+  local explicit_flink_job_id="${FDB_FLINK_JOB_ID:-}"
+  local explicit_yarn_app_id="${FDB_YARN_APPLICATION_ID:-}"
+  local state_file="${FDB_EXTERNAL_STATE_FILE:-logs/external-yarn-current.env}"
+  if [[ -f "$state_file" ]]; then
+    # shellcheck disable=SC1090
+    source "$state_file"
+  fi
+
+  local flink_job_id="${explicit_flink_job_id:-${FDB_EXTERNAL_FLINK_JOB_ID:-}}"
+  local yarn_app_id="${explicit_yarn_app_id:-${FDB_EXTERNAL_YARN_APPLICATION_ID:-}}"
+
+  if [[ -n "$flink_job_id" && -x "$(external_flink_bin)" ]]; then
+    local cancel_args=(cancel)
+    if [[ -n "${FDB_FLINK_CANCEL_ARGS:-}" ]]; then
+      local extra_cancel_args=()
+      read -r -a extra_cancel_args <<< "$FDB_FLINK_CANCEL_ARGS"
+      cancel_args+=("${extra_cancel_args[@]}")
+    fi
+    if [[ -n "${FDB_FLINK_CANCEL_ARGS_FILE:-}" ]]; then
+      EXTERNAL_CANCEL_FILE_ARGS=()
+      append_args_from_file cancel "$FDB_FLINK_CANCEL_ARGS_FILE"
+      cancel_args+=("${EXTERNAL_CANCEL_FILE_ARGS[@]}")
+    fi
+    cancel_args+=("$flink_job_id")
+
+    log "canceling Flink job: $flink_job_id"
+    if "$(external_flink_bin)" "${cancel_args[@]}"; then
+      return 0
+    fi
+    warn "Flink cancel failed"
+  fi
+
+  if [[ -n "$yarn_app_id" ]]; then
+    log "killing YARN application: $yarn_app_id"
+    yarn application -kill "$yarn_app_id"
+    return 0
+  fi
+
+  die "missing Flink job id or YARN application id; set FDB_FLINK_JOB_ID or FDB_YARN_APPLICATION_ID"
 }
 
 external_smoke() {
   load_env
-  die "external-yarn smoke is not implemented yet; requires Task 10 external smoke test workflow"
+  log "running external-yarn smoke diagnostics"
+  external_apply_runtime_defaults
+  STRICT=0
+  external_check
+
+  if [[ "${FDB_EXTERNAL_SMOKE_SUBMIT:-0}" == "1" ]]; then
+    external_submit
+  else
+    warn "skipping Flink submit; set FDB_EXTERNAL_SMOKE_SUBMIT=1 to include submit in smoke"
+  fi
 }
 
 dispatch_local() {
