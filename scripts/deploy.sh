@@ -251,7 +251,7 @@ local_init() {
   prepare_flink_hadoop_runtime
 
   log "creating Kafka topics"
-  bash scripts/create-kafka-topics.sh
+  bash scripts/init-kafka-topics.sh
 
   log "initializing MySQL tables"
   docker exec -i fdb-mysql mysql -ufdb -pfdbpwd fdb < scripts/init-mysql.sql

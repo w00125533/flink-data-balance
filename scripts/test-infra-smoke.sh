@@ -36,7 +36,7 @@ shared_hdfs_exec() {
   shared_lakehouse exec -T namenode hdfs dfs -fs "$HDFS_URI" "$@"
 }
 
-echo "=== infra-smoke-test ==="
+echo "=== test-infra-smoke ==="
 echo ""
 
 if ! command -v docker >/dev/null 2>&1; then
