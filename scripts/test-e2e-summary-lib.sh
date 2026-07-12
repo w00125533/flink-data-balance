@@ -57,16 +57,16 @@ unset FDB_PROMETHEUS_URL || true
 unset FDB_PROMETHEUS_PORT || true
 unset FDB_OBSERVABILITY_URL || true
 links="$(observability_links)"
-if ! printf '%s\n' "$links" | grep -q 'Prometheus | http://localhost:9090'; then
-  fail "observability_links should include the default Prometheus URL"
+if ! printf '%s\n' "$links" | grep -q 'Prometheus | http://localhost:19090'; then
+  fail "observability_links should include the default shared Prometheus URL"
 fi
 if ! printf '%s\n' "$links" | grep -q 'Observability API metrics | http://localhost:18080/metrics'; then
   fail "observability_links should include the default observability API metrics URL"
 fi
 
-FDB_PROMETHEUS_PORT=19090
+FDB_PROMETHEUS_PORT=19091
 links="$(observability_links)"
-if ! printf '%s\n' "$links" | grep -q 'Prometheus | http://localhost:19090'; then
+if ! printf '%s\n' "$links" | grep -q 'Prometheus | http://localhost:19091'; then
   fail "observability_links should honor FDB_PROMETHEUS_PORT"
 fi
 unset FDB_PROMETHEUS_PORT

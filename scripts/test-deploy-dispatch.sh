@@ -71,15 +71,20 @@ run_expect_failure "invalid command" bash scripts/deploy.sh local invalid
 grep -q "unsupported command for local: invalid" "$ERR_FILE" \
   || fail "invalid local command error should be explicit"
 
+FDB_PRUNE_DRY_RUN=1 run_expect_success "local prune dry run" bash scripts/deploy.sh local prune
+grep -F "[INFO] prune dry run" "$OUT_FILE" \
+  || fail "local prune dry run should describe planned cleanup"
+
 tmp_env="$TEST_TMP_DIR/fdb-test.env"
 cat > "$tmp_env" <<'ENV'
 FDB_DEPLOY_TARGET=external-yarn
 FDB_KAFKA_BOOTSTRAP=127.0.0.1:1
 FDB_HDFS_URI=hdfs://127.0.0.1:8020
 FDB_HIVE_JDBC_URL=jdbc:hive2://127.0.0.1:10000/default
-FDB_MYSQL_HOST=127.0.0.1
-FDB_MYSQL_PORT=3306
 FDB_STARROCKS_FE_ENDPOINT=127.0.0.1:9030
+FDB_STARROCKS_JDBC_URL=jdbc:mysql://127.0.0.1:9030/fdb
+FDB_STARROCKS_USER=root
+FDB_STARROCKS_DATABASE=fdb
 ENV
 
 FDB_ENV_FILE="$tmp_env" run_expect_success "external non-strict check" bash scripts/deploy.sh external-yarn check
@@ -87,6 +92,10 @@ grep -F "[OK] loaded env file: $tmp_env" "$OUT_FILE" \
   || fail "external non-strict check should load temp env file"
 grep -Eq "\[WARN\]|\[OK\]" "$OUT_FILE" \
   || fail "external non-strict check should emit diagnostic lines"
+
+FDB_ENV_FILE="$tmp_env" FDB_PRUNE_DRY_RUN=1 run_expect_success "external prune dry run" bash scripts/deploy.sh external-yarn prune
+grep -F "[INFO] prune dry run" "$OUT_FILE" \
+  || fail "external prune dry run should describe planned cleanup"
 
 tmp_repo="$TEST_TMP_DIR/no-env-repo"
 mkdir -p "$tmp_repo/docker" "$tmp_repo/scripts"

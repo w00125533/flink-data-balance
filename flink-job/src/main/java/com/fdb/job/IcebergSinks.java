@@ -56,7 +56,16 @@ public final class IcebergSinks {
     }
 
     static Map<String, String> tableProperties() {
-        return Map.of("format-version", "2");
+        return Map.of(
+            "format-version", "2",
+            "write.metadata.delete-after-commit.enabled", "true",
+            "write.metadata.previous-versions-max", "20");
+    }
+
+    static Map<String, String> missingTableProperties(Map<String, String> existingProperties) {
+        return tableProperties().entrySet().stream()
+            .filter(entry -> !entry.getValue().equals(existingProperties.get(entry.getKey())))
+            .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     static Table ensureTable(IcebergConfig config) {
@@ -69,7 +78,15 @@ public final class IcebergSinks {
         }
         TableIdentifier identifier = tableIdentifier(config);
         if (catalog.tableExists(identifier)) {
-            return catalog.loadTable(identifier);
+            Table table = catalog.loadTable(identifier);
+            Map<String, String> missingProperties = missingTableProperties(table.properties());
+            if (!missingProperties.isEmpty()) {
+                org.apache.iceberg.UpdateProperties update = table.updateProperties();
+                missingProperties.forEach(update::set);
+                update.commit();
+                return catalog.loadTable(identifier);
+            }
+            return table;
         }
         Schema schema = cellKpiSchema();
         return catalog.createTable(identifier, schema, cellKpiPartitionSpec(schema), tableProperties());

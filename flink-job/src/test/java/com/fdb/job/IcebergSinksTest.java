@@ -7,6 +7,7 @@ import org.apache.iceberg.hadoop.HadoopCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.util.Map;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +34,9 @@ class IcebergSinksTest {
         assertThat(spec.fields().stream().map(field -> field.name()))
             .containsExactly("window_kind", "dt", "hour");
         assertThat(IcebergSinks.tableProperties()).containsEntry("format-version", "2");
+        assertThat(IcebergSinks.tableProperties())
+            .containsEntry("write.metadata.delete-after-commit.enabled", "true")
+            .containsEntry("write.metadata.previous-versions-max", "20");
     }
 
     @Test
@@ -43,5 +47,12 @@ class IcebergSinksTest {
         HadoopCatalog catalog = IcebergSinks.hadoopCatalog(config);
 
         assertThat(catalog.getConf()).isNotNull();
+    }
+
+    @Test
+    void finds_metadata_retention_properties_missing_from_existing_table() {
+        assertThat(IcebergSinks.missingTableProperties(Map.of("format-version", "2")))
+            .containsEntry("write.metadata.delete-after-commit.enabled", "true")
+            .containsEntry("write.metadata.previous-versions-max", "20");
     }
 }

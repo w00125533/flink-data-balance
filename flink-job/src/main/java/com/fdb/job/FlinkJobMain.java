@@ -179,8 +179,8 @@ public class FlinkJobMain {
             .name("anomaly-kafka-sink");
 
         anomalies
-            .process(new StageMetricsProbe<>("mysql-sink", "MySQL Sink", "healthy", 5_000L))
-            .name("mysql-anomaly-sink-metrics")
+            .process(new StageMetricsProbe<>("starrocks-sink", "StarRocks Sink", "healthy", 5_000L))
+            .name("starrocks-anomaly-sink-metrics")
             .sinkTo(JdbcSinks.anomalySink())
             .name("anomaly-jdbc-sink");
 
@@ -213,17 +213,6 @@ public class FlinkJobMain {
             .sinkTo(HiveSinks.cellKpiSink("MIN_1"))
             .name("cell-kpi-hive-sink");
 
-        if (icebergConfig.enabled()) {
-            DataStream<RowData> icebergKpi1m = cellKpi1m
-                .process(new SinkPerformanceProbe("iceberg-cell-kpi-1m", 100), new GenericTypeInfo<>(CellKpi.class))
-                .name("cell-kpi-iceberg-probe")
-                .map(new CellKpiIcebergMapper())
-                .returns(new GenericTypeInfo<>(RowData.class))
-                .name("cell-kpi-iceberg-map");
-            IcebergSinks.appendCellKpiSink(icebergKpi1m, icebergConfig)
-                .name("cell-kpi-iceberg-sink");
-        }
-
         DataStream<CellKpi> cellKpi5m = enriched
             .keyBy(ec -> ec.chrEvent().getCellId().toString())
             .window(TumblingProcessingTimeWindows.of(Time.minutes(5)))
@@ -248,14 +237,20 @@ public class FlinkJobMain {
             .name("cell-kpi-5m-hive-sink");
 
         if (icebergConfig.enabled()) {
+            DataStream<RowData> icebergKpi1m = cellKpi1m
+                .process(new SinkPerformanceProbe("iceberg-cell-kpi-1m", 100), new GenericTypeInfo<>(CellKpi.class))
+                .name("cell-kpi-iceberg-probe")
+                .map(new CellKpiIcebergMapper())
+                .returns(new GenericTypeInfo<>(RowData.class))
+                .name("cell-kpi-iceberg-map");
             DataStream<RowData> icebergKpi5m = cellKpi5m
                 .process(new SinkPerformanceProbe("iceberg-cell-kpi-5m", 100), new GenericTypeInfo<>(CellKpi.class))
                 .name("cell-kpi-5m-iceberg-probe")
                 .map(new CellKpiIcebergMapper())
                 .returns(new GenericTypeInfo<>(RowData.class))
                 .name("cell-kpi-5m-iceberg-map");
-            IcebergSinks.appendCellKpiSink(icebergKpi5m, icebergConfig)
-                .name("cell-kpi-5m-iceberg-sink");
+            IcebergSinks.appendCellKpiSink(icebergKpi1m.union(icebergKpi5m), icebergConfig)
+                .name("cell-kpi-iceberg-sink");
         }
 
         // ── Coordinator pipeline: lb-heartbeat → LoadCoordinator → lb-routing ──

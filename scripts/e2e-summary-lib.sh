@@ -12,7 +12,11 @@ e2e_run_id() {
     printf '%s\n' "$FDB_E2E_RUN_ID"
     return 0
   fi
-  date -u '+%Y%m%d-%H%M%S'
+  if [ -z "${FDB_E2E_EFFECTIVE_RUN_ID:-}" ]; then
+    FDB_E2E_EFFECTIVE_RUN_ID="$(date -u '+%Y%m%d-%H%M%S')"
+    export FDB_E2E_EFFECTIVE_RUN_ID
+  fi
+  printf '%s\n' "$FDB_E2E_EFFECTIVE_RUN_ID"
 }
 
 e2e_runs_root() {
@@ -39,7 +43,7 @@ e2e_keep_running_on_success() {
 }
 
 observability_prometheus_url() {
-  printf '%s\n' "${FDB_PROMETHEUS_URL:-http://localhost:${FDB_PROMETHEUS_PORT:-9090}}"
+  printf '%s\n' "${FDB_PROMETHEUS_URL:-http://localhost:${FDB_PROMETHEUS_PORT:-19090}}"
 }
 
 observability_api_url() {
@@ -56,8 +60,13 @@ shared_infra_dir() {
 }
 
 shared_kafka_exec() {
-  docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.streaming.yaml" --profile streaming \
-    exec -T kafka "$@"
+  if docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.streaming.yaml" --profile streaming \
+    exec -T kafka "$@" >/tmp/fdb-shared-kafka-exec.out 2>/tmp/fdb-shared-kafka-exec.err; then
+    cat /tmp/fdb-shared-kafka-exec.out
+    return 0
+  fi
+
+  docker exec shared-data-infra-kafka-1 "$@"
 }
 
 shared_hive_exec() {
@@ -68,6 +77,26 @@ shared_hive_exec() {
 shared_hdfs_exec() {
   docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.lakehouse.yaml" \
     --profile lakehouse exec -T namenode hdfs dfs -fs "${FDB_HDFS_URI:-hdfs://namenode:8020}" "$@"
+}
+
+shared_starrocks_mysql() {
+  local use_database=1
+  local args=(-h 127.0.0.1 -P 9030 -u "${FDB_STARROCKS_USER:-root}")
+
+  if [ "${1:-}" = "--no-database" ]; then
+    use_database=0
+    shift
+  fi
+  if [ -n "${FDB_STARROCKS_PASSWORD:-}" ]; then
+    args+=("-p${FDB_STARROCKS_PASSWORD}")
+  fi
+  if [ "$use_database" -eq 1 ]; then
+    docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.starrocks.yaml" \
+      --profile starrocks exec -T starrocks-fe mysql "${args[@]}" "$@" "${FDB_STARROCKS_DATABASE:-fdb}"
+  else
+    docker compose -f "$(shared_infra_dir)/compose.yaml" -f "$(shared_infra_dir)/compose.starrocks.yaml" \
+      --profile starrocks exec -T starrocks-fe mysql "${args[@]}" "$@"
+  fi
 }
 
 summary_file() {
@@ -86,6 +115,7 @@ summary_emit() {
 }
 
 summary_init() {
+  e2e_run_id >/dev/null
   local file
   file="$(summary_file)"
   local dir
@@ -233,7 +263,7 @@ summary_kafka_topic() {
   summary_line "Kafka" "$topic records" "$records"
 }
 
-summary_mysql_kpi() {
+summary_starrocks_kpi() {
   summary_enabled || return 0
   local query="
 SELECT 'rows_by_window_kind', COALESCE(GROUP_CONCAT(CONCAT(window_kind, '=', cnt) ORDER BY window_kind SEPARATOR ','), 'none')
@@ -241,9 +271,9 @@ FROM (SELECT window_kind, COUNT(*) cnt FROM cell_kpi GROUP BY window_kind) x;
 SELECT 'window_ts_range', CONCAT(COALESCE(MIN(window_start_ts), 0), '..', COALESCE(MAX(window_end_ts), 0)) FROM cell_kpi;
 SELECT 'distinct_site_cell_grid', CONCAT(COUNT(DISTINCT site_id), '/', COUNT(DISTINCT cell_id), '/', COUNT(DISTINCT grid_id)) FROM cell_kpi;
 "
-  docker exec fdb-mysql mysql -N -ufdb -pfdbpwd fdb -e "$query" 2>/dev/null |
+  shared_starrocks_mysql -N -e "$query" 2>/dev/null |
     while IFS=$'\t' read -r metric value; do
-      summary_line "MySQL KPI" "$metric" "${value:-empty}"
+      summary_line "StarRocks KPI" "$metric" "${value:-empty}"
     done
 }
 

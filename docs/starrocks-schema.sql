@@ -1,0 +1,4 @@
+-- Canonical StarRocks schema is maintained in scripts/init-starrocks.sql.
+-- Initialize through:
+--   bash scripts/deploy.sh local init
+--   bash scripts/deploy.sh external-yarn init

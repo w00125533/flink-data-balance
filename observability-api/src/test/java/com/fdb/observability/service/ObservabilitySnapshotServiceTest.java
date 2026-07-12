@@ -38,7 +38,7 @@ class ObservabilitySnapshotServiceTest {
   void includesHiveAndIcebergSinkSummaries() {
     assertThat(service.sinkSummaries())
         .extracting("sink")
-        .contains("mysql", "hive", "iceberg");
+        .contains("starrocks", "hive", "iceberg");
   }
 
   @Test

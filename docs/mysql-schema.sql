@@ -1,3 +1,0 @@
--- Canonical MySQL schema is maintained in scripts/init-mysql.sql.
--- Run with:
---   docker exec -i fdb-mysql mysql -ufdb -pfdbpwd fdb < scripts/init-mysql.sql

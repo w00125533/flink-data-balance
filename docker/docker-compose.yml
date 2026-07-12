@@ -1,20 +1,6 @@
 name: fdb
 
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: fdb-mysql
-    ports:
-      - "3306:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpwd
-      MYSQL_DATABASE: fdb
-      MYSQL_USER: fdb
-      MYSQL_PASSWORD: fdbpwd
-    command: ["--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4"]
-    volumes:
-      - ./data/mysql:/var/lib/mysql
-
   observability-api:
     image: eclipse-temurin:17-jre
     container_name: fdb-observability-api
@@ -22,7 +8,7 @@ services:
     command: ["java", "-jar", "/app/observability-api.jar"]
     environment:
       FDB_OBSERVABILITY_PORT: "18080"
-      FDB_KAFKA_BOOTSTRAP: kafka:9092
+      FDB_KAFKA_BOOTSTRAP: ${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
       FDB_METRICS_TOPIC: fdb-stage-metrics
       FDB_RUN_HISTORY_DIR: /observability-runs
     ports:
@@ -48,16 +34,6 @@ services:
     depends_on:
       - observability-api
 
-  prometheus:
-    image: prom/prometheus:v2.52.0
-    container_name: fdb-prometheus
-    ports:
-      - "${FDB_PROMETHEUS_PORT:-9090}:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      - observability-api
-
   jobmanager:
     image: flink:1.20.3-scala_2.12-java17
     container_name: fdb-flink-jobmanager
@@ -67,11 +43,16 @@ services:
     command: jobmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - "FLINK_PROPERTIES=metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249"
-      - FDB_KAFKA_BOOTSTRAP=kafka:9092
-      - FDB_MYSQL_URL=jdbc:mysql://mysql:3306/fdb
-      - FDB_MYSQL_USER=fdb
-      - FDB_MYSQL_PASSWORD=fdbpwd
+      - "FLINK_PROPERTIES=jobmanager.memory.process.size: ${FDB_FLINK_JOBMANAGER_MEMORY:-1600m}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}"
+      - FDB_KAFKA_BOOTSTRAP=${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
+      - FDB_STARROCKS_FE_ENDPOINT=${FDB_STARROCKS_FE_ENDPOINT:-starrocks-fe:9030}
+      - FDB_STARROCKS_JDBC_URL=${FDB_STARROCKS_JDBC_URL:-jdbc:mysql://starrocks-fe:9030/fdb?rewriteBatchedStatements=true&useServerPrepStmts=false}
+      - FDB_STARROCKS_USER=${FDB_STARROCKS_USER:-root}
+      - FDB_STARROCKS_PASSWORD=${FDB_STARROCKS_PASSWORD:-}
+      - FDB_STARROCKS_DATABASE=${FDB_STARROCKS_DATABASE:-fdb}
+      - FDB_STARROCKS_JDBC_BATCH_SIZE=${FDB_STARROCKS_JDBC_BATCH_SIZE:-100000}
+      - FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS=${FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS:-60000}
+      - FDB_STARROCKS_JDBC_MAX_RETRIES=${FDB_STARROCKS_JDBC_MAX_RETRIES:-1}
       - FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
       - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
@@ -79,7 +60,7 @@ services:
       - FDB_ICEBERG_DATABASE=fdb
       - FDB_ICEBERG_TABLE=cell_kpi
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
-      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
+      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-60000}
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
     volumes:
       - ../flink-job/target:/opt/fdb
@@ -97,11 +78,16 @@ services:
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - "FLINK_PROPERTIES=metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249"
-      - FDB_KAFKA_BOOTSTRAP=kafka:9092
-      - FDB_MYSQL_URL=jdbc:mysql://mysql:3306/fdb
-      - FDB_MYSQL_USER=fdb
-      - FDB_MYSQL_PASSWORD=fdbpwd
+      - "FLINK_PROPERTIES=taskmanager.memory.process.size: ${FDB_FLINK_TASKMANAGER_MEMORY:-4096m}\ntaskmanager.numberOfTaskSlots: ${FDB_FLINK_TASKMANAGER_SLOTS:-4}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}"
+      - FDB_KAFKA_BOOTSTRAP=${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
+      - FDB_STARROCKS_FE_ENDPOINT=${FDB_STARROCKS_FE_ENDPOINT:-starrocks-fe:9030}
+      - FDB_STARROCKS_JDBC_URL=${FDB_STARROCKS_JDBC_URL:-jdbc:mysql://starrocks-fe:9030/fdb?rewriteBatchedStatements=true&useServerPrepStmts=false}
+      - FDB_STARROCKS_USER=${FDB_STARROCKS_USER:-root}
+      - FDB_STARROCKS_PASSWORD=${FDB_STARROCKS_PASSWORD:-}
+      - FDB_STARROCKS_DATABASE=${FDB_STARROCKS_DATABASE:-fdb}
+      - FDB_STARROCKS_JDBC_BATCH_SIZE=${FDB_STARROCKS_JDBC_BATCH_SIZE:-100000}
+      - FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS=${FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS:-60000}
+      - FDB_STARROCKS_JDBC_MAX_RETRIES=${FDB_STARROCKS_JDBC_MAX_RETRIES:-1}
       - FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
       - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
@@ -109,7 +95,7 @@ services:
       - FDB_ICEBERG_DATABASE=fdb
       - FDB_ICEBERG_TABLE=cell_kpi
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
-      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=10000
+      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-60000}
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
     volumes:
       - ./lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro

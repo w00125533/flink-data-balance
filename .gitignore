@@ -12,6 +12,7 @@ dependency-reduced-pom.xml
 *.log
 logs-*.err
 logs-*.out
+logs-*.pid
 logs/
 
 # OS
@@ -24,6 +25,9 @@ docker/lib/
 
 # Local config overrides
 *.local.yaml
+.env
+.env.local
+.env.external
 
 # Claude Code
 .claude/

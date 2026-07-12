@@ -11,22 +11,43 @@ public final class JdbcSinks {
 
     private JdbcSinks() {}
 
-    private static final String DEFAULT_URL = "jdbc:mysql://localhost:3306/fdb";
-    private static final String DEFAULT_USER = "fdb";
-    private static final String DEFAULT_PASSWORD = "fdbpwd";
+    private static final String DEFAULT_URL = "jdbc:mysql://starrocks-fe:9030/fdb";
+    private static final String DEFAULT_USER = "root";
+    private static final String DEFAULT_PASSWORD = "";
+    private static final int DEFAULT_BATCH_SIZE = 100_000;
+    private static final long DEFAULT_BATCH_INTERVAL_MS = 60_000L;
+    private static final int DEFAULT_MAX_RETRIES = 1;
 
     private static String jdbcUrl() {
-        return System.getenv().getOrDefault("FDB_MYSQL_URL",
-            System.getenv().getOrDefault("FDB_JDBC_URL", DEFAULT_URL));
+        return appendJdbcBatchParameters(System.getenv().getOrDefault("FDB_STARROCKS_JDBC_URL",
+            System.getenv().getOrDefault("FDB_JDBC_URL", DEFAULT_URL)));
+    }
+
+    private static String appendJdbcBatchParameters(String url) {
+        if (!url.startsWith("jdbc:mysql:")) {
+            return url;
+        }
+        String result = url;
+        if (!result.contains("rewriteBatchedStatements=")) {
+            result = appendJdbcParameter(result, "rewriteBatchedStatements=true");
+        }
+        if (!result.contains("useServerPrepStmts=")) {
+            result = appendJdbcParameter(result, "useServerPrepStmts=false");
+        }
+        return result;
+    }
+
+    private static String appendJdbcParameter(String url, String parameter) {
+        return url + (url.contains("?") ? "&" : "?") + parameter;
     }
 
     private static String jdbcUser() {
-        return System.getenv().getOrDefault("FDB_MYSQL_USER",
+        return System.getenv().getOrDefault("FDB_STARROCKS_USER",
             System.getenv().getOrDefault("FDB_JDBC_USER", DEFAULT_USER));
     }
 
     private static String jdbcPassword() {
-        return System.getenv().getOrDefault("FDB_MYSQL_PASSWORD",
+        return System.getenv().getOrDefault("FDB_STARROCKS_PASSWORD",
             System.getenv().getOrDefault("FDB_JDBC_PASSWORD", DEFAULT_PASSWORD));
     }
 
@@ -41,9 +62,27 @@ public final class JdbcSinks {
 
     private static JdbcExecutionOptions execOpts() {
         return JdbcExecutionOptions.builder()
-            .withBatchSize(500)
-            .withBatchIntervalMs(5000)
+            .withBatchSize(envInt("FDB_STARROCKS_JDBC_BATCH_SIZE", "FDB_JDBC_BATCH_SIZE", DEFAULT_BATCH_SIZE))
+            .withBatchIntervalMs(envLong("FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS", "FDB_JDBC_BATCH_INTERVAL_MS",
+                DEFAULT_BATCH_INTERVAL_MS))
+            .withMaxRetries(envInt("FDB_STARROCKS_JDBC_MAX_RETRIES", "FDB_JDBC_MAX_RETRIES", DEFAULT_MAX_RETRIES))
             .build();
+    }
+
+    private static int envInt(String primary, String fallback, int defaultValue) {
+        String value = System.getenv().getOrDefault(primary, System.getenv().get(fallback));
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        return Integer.parseInt(value);
+    }
+
+    private static long envLong(String primary, String fallback, long defaultValue) {
+        String value = System.getenv().getOrDefault(primary, System.getenv().get(fallback));
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        return Long.parseLong(value);
     }
 
     public static JdbcSink<AnomalyEvent> anomalySink() {
@@ -51,9 +90,7 @@ public final class JdbcSinks {
             .withQueryStatement(
                 "INSERT INTO anomaly_events (detection_ts, event_ts, imsi, site_id, cell_id, grid_id, " +
                 "latitude, longitude, anomaly_type, severity, rule_version, context_json) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-                "ON DUPLICATE KEY UPDATE detection_ts=VALUES(detection_ts), severity=VALUES(severity), " +
-                "context_json=VALUES(context_json)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ps, ae) -> {
                     ps.setLong(1, ae.getDetectionTs());
                     ps.setLong(2, ae.getEventTs());
@@ -79,12 +116,7 @@ public final class JdbcSinks {
                 "INSERT INTO cell_kpi (window_start_ts, window_end_ts, window_kind, site_id, cell_id, " +
                 "grid_id, num_chr_events, num_users, avg_rsrp, avg_sinr, avg_prb_usage_dl, " +
                 "throughput_dl_mbps_avg, drop_rate, ho_success_rate, attach_success_rate) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-                "ON DUPLICATE KEY UPDATE num_chr_events=VALUES(num_chr_events), avg_rsrp=VALUES(avg_rsrp), " +
-                "avg_sinr=VALUES(avg_sinr), avg_prb_usage_dl=VALUES(avg_prb_usage_dl), " +
-                "num_users=VALUES(num_users), throughput_dl_mbps_avg=VALUES(throughput_dl_mbps_avg), " +
-                "drop_rate=VALUES(drop_rate), ho_success_rate=VALUES(ho_success_rate), " +
-                "attach_success_rate=VALUES(attach_success_rate)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ps, kpi) -> {
                     ps.setLong(1, kpi.getWindowStartTs());
                     ps.setLong(2, kpi.getWindowEndTs());

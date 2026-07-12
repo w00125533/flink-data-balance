@@ -72,7 +72,7 @@ public final class ExecutionRunHistoryService {
         .map(ExecutionMetric::value)
         .findFirst()
         .orElseGet(() -> metrics.stream()
-            .filter(metric -> "MySQL KPI".equals(metric.section()) || "Hive KPI".equals(metric.section()))
+            .filter(metric -> "StarRocks KPI".equals(metric.section()) || "Hive KPI".equals(metric.section()))
             .findFirst()
             .map(metric -> metric.metric() + "=" + metric.value())
             .orElse("no summary"));

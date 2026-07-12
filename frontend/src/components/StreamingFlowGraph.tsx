@@ -24,7 +24,7 @@ const nodePositions: Record<string, { x: number; y: number; group: string }> = {
   assigner: { x: 788, y: 300, group: 'Balance' },
   enrichment: { x: 1166, y: 128, group: 'Process' },
   'load-coordinator': { x: 1166, y: 472, group: 'Balance' },
-  'mysql-sink': { x: 1544, y: 36, group: 'Sink' },
+  'starrocks-sink': { x: 1544, y: 36, group: 'Sink' },
   'hive-sink': { x: 1544, y: 300, group: 'Sink' },
   'iceberg-sink': { x: 1544, y: 564, group: 'Sink' }
 };
@@ -37,7 +37,7 @@ const flowEdges = [
   ['assigner', 'enrichment'],
   ['assigner', 'load-coordinator'],
   ['load-coordinator', 'assigner'],
-  ['enrichment', 'mysql-sink'],
+  ['enrichment', 'starrocks-sink'],
   ['enrichment', 'hive-sink'],
   ['enrichment', 'iceberg-sink']
 ];

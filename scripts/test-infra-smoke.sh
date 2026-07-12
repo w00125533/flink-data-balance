@@ -32,8 +32,42 @@ shared_lakehouse() {
     --profile lakehouse --profile lakehouse-tools "$@"
 }
 
+shared_starrocks() {
+  docker compose \
+    -f "$SHARED_INFRA_DIR/compose.yaml" \
+    -f "$SHARED_INFRA_DIR/compose.starrocks.yaml" \
+    --profile starrocks "$@"
+}
+
 shared_hdfs_exec() {
   shared_lakehouse exec -T namenode hdfs dfs -fs "$HDFS_URI" "$@"
+}
+
+shared_starrocks_mysql() {
+  local use_database=1
+  local args=(-h 127.0.0.1 -P 9030 -u "${FDB_STARROCKS_USER:-root}")
+
+  if [ "${1:-}" = "--no-database" ]; then
+    use_database=0
+    shift
+  fi
+  if [ -n "${FDB_STARROCKS_PASSWORD:-}" ]; then
+    args+=("-p${FDB_STARROCKS_PASSWORD}")
+  fi
+  if [ "$use_database" -eq 1 ]; then
+    shared_starrocks exec -T starrocks-fe mysql "${args[@]}" "$@" "${FDB_STARROCKS_DATABASE:-fdb}"
+  else
+    shared_starrocks exec -T starrocks-fe mysql "${args[@]}" "$@"
+  fi
+}
+
+shared_kafka_exec() {
+  if shared_streaming exec -T kafka "$@" >/tmp/fdb-test-shared-kafka-exec.out 2>/tmp/fdb-test-shared-kafka-exec.err; then
+    cat /tmp/fdb-test-shared-kafka-exec.out
+    return 0
+  fi
+
+  docker exec shared-data-infra-kafka-1 "$@"
 }
 
 echo "=== test-infra-smoke ==="
@@ -62,8 +96,8 @@ pass "Project-local containers stopped and cleaned"
 
 echo ""
 echo "--- Phase 2: Start shared infra ---"
-(cd "$SHARED_INFRA_DIR" && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability) 2>&1 | sed 's/^/  /'
-pass "Shared lakehouse, streaming, and observability profiles started"
+(cd "$SHARED_INFRA_DIR" && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming starrocks observability) 2>&1 | sed 's/^/  /'
+pass "Shared lakehouse, streaming, StarRocks, and observability profiles started"
 
 echo ""
 echo "--- Phase 3: Start project stack ---"
@@ -73,7 +107,7 @@ pass "deploy.sh local up/init completed"
 
 echo ""
 echo "--- Phase 4: Verify required containers ---"
-PROJECT_EXPECTED=(fdb-mysql fdb-observability-api fdb-observability-frontend fdb-prometheus fdb-flink-jobmanager fdb-flink-taskmanager)
+PROJECT_EXPECTED=(fdb-observability-api fdb-observability-frontend fdb-flink-jobmanager fdb-flink-taskmanager)
 for name in "${PROJECT_EXPECTED[@]}"; do
   if docker ps --format '{{.Names}}' | grep -qx "$name"; then
     pass "Project container $name is running"
@@ -82,7 +116,7 @@ for name in "${PROJECT_EXPECTED[@]}"; do
   fi
 done
 
-SHARED_EXPECTED=(shared-data-infra-zookeeper-1 shared-data-infra-kafka-1 shared-data-infra-kafka-ui-1 shared-data-infra-hms-db-1 shared-data-infra-hive-metastore-1 shared-data-infra-hive-server-1 shared-data-infra-namenode-1 shared-data-infra-datanode-1)
+SHARED_EXPECTED=(shared-data-infra-zookeeper-1 shared-data-infra-kafka-1 shared-data-infra-kafka-ui-1 shared-data-infra-hms-db-1 shared-data-infra-hive-metastore-1 shared-data-infra-hive-server-1 shared-data-infra-namenode-1 shared-data-infra-datanode-1 shared-data-infra-starrocks-fe-1 shared-data-infra-starrocks-be-1 shared-data-infra-prometheus-1)
 for name in "${SHARED_EXPECTED[@]}"; do
   if docker ps --format '{{.Names}}' | grep -qx "$name"; then
     pass "Shared container $name is running"
@@ -94,7 +128,7 @@ done
 echo ""
 echo "--- Phase 5: Verify Kafka (produce -> consume roundtrip) ---"
 TOPIC="fdb-smoke-test-$$"
-if shared_streaming exec -T kafka kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" \
+if shared_kafka_exec kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" \
   --create --topic "$TOPIC" --partitions 1 --replication-factor 1 >/dev/null 2>&1; then
   pass "Kafka topic $TOPIC created"
 else
@@ -102,14 +136,14 @@ else
 fi
 
 MSG="smoke-test-$(date +%s)"
-if printf '%s\n' "$MSG" | shared_streaming exec -T kafka kafka-console-producer \
+if printf '%s\n' "$MSG" | shared_kafka_exec kafka-console-producer \
   --bootstrap-server "$KAFKA_BOOTSTRAP" --topic "$TOPIC" >/dev/null 2>&1; then
   pass "Kafka message produced"
 else
   fail "Kafka message production failed"
 fi
 
-CONSUMED=$(shared_streaming exec -T kafka kafka-console-consumer \
+CONSUMED=$(shared_kafka_exec kafka-console-consumer \
   --bootstrap-server "$KAFKA_BOOTSTRAP" --topic "$TOPIC" \
   --from-beginning --max-messages 1 --timeout-ms 10000 2>/dev/null || true)
 if [ "$CONSUMED" = "$MSG" ]; then
@@ -118,7 +152,7 @@ else
   fail "Kafka consume mismatch. Expected '$MSG', got '$CONSUMED'"
 fi
 
-shared_streaming exec -T kafka kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" \
+shared_kafka_exec kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" \
   --delete --topic "$TOPIC" >/dev/null 2>&1 || true
 pass "Kafka test topic cleaned up"
 
@@ -139,33 +173,35 @@ else
 fi
 
 echo ""
-echo "--- Phase 7: Verify MySQL (CRUD roundtrip) ---"
-MYSQL_CMD="docker exec fdb-mysql mysql -ufdb -pfdbpwd fdb"
+echo "--- Phase 7: Verify StarRocks (CRUD roundtrip) ---"
 
-if $MYSQL_CMD -e "SELECT VERSION();" >/dev/null 2>&1; then
-  pass "MySQL connection succeeded"
+if shared_starrocks_mysql --no-database -e "SELECT 1;" >/dev/null 2>&1; then
+  pass "StarRocks connection succeeded"
 else
-  fail "MySQL version check failed"
+  fail "StarRocks connection check failed"
 fi
 
-$MYSQL_CMD -e "
+shared_starrocks_mysql -e "
   CREATE TABLE IF NOT EXISTS smoke_test (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id BIGINT NOT NULL,
     msg VARCHAR(255)
-  ) ENGINE=InnoDB CHARSET=utf8mb4;
+  )
+  PRIMARY KEY (id)
+  DISTRIBUTED BY HASH(id) BUCKETS 1
+  PROPERTIES (\"replication_num\" = \"1\");
 " >/dev/null 2>&1
-pass "MySQL table smoke_test created"
+pass "StarRocks table smoke_test created"
 
-$MYSQL_CMD -e "INSERT INTO smoke_test (msg) VALUES ('hello'), ('world');" >/dev/null 2>&1
-ROW_COUNT=$($MYSQL_CMD -N -e "SELECT COUNT(*) FROM smoke_test;" 2>/dev/null)
+shared_starrocks_mysql -e "INSERT INTO smoke_test (id, msg) VALUES (1, 'hello'), (2, 'world');" >/dev/null 2>&1
+ROW_COUNT=$(shared_starrocks_mysql -N -e "SELECT COUNT(*) FROM smoke_test;" 2>/dev/null)
 if [ "$ROW_COUNT" = "2" ]; then
-  pass "MySQL inserted 2 rows, count=$ROW_COUNT"
+  pass "StarRocks inserted 2 rows, count=$ROW_COUNT"
 else
-  fail "MySQL row count expected 2, got $ROW_COUNT"
+  fail "StarRocks row count expected 2, got $ROW_COUNT"
 fi
 
-$MYSQL_CMD -e "DROP TABLE smoke_test;" >/dev/null 2>&1
-pass "MySQL test table cleaned up"
+shared_starrocks_mysql -e "DROP TABLE smoke_test;" >/dev/null 2>&1
+pass "StarRocks test table cleaned up"
 
 echo ""
 echo "--- Phase 8: Verify observability endpoints ---"
@@ -185,6 +221,12 @@ if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null | gr
   pass "Shared Kafka UI is reachable"
 else
   fail "Shared Kafka UI is not reachable"
+fi
+
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:19090/-/ready 2>/dev/null | grep -q "200"; then
+  pass "Shared Prometheus is reachable"
+else
+  fail "Shared Prometheus is not reachable"
 fi
 
 echo ""

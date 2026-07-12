@@ -27,7 +27,7 @@ class ExecutionRunHistoryServiceTest {
         """);
     Files.writeString(runDir.resolve("logs-summary.log"), """
         [summary] Execution | run id | 20260603-010203
-        [summary] MySQL KPI | rows_by_window_kind | MIN_1=10
+        [summary] StarRocks KPI | rows_by_window_kind | MIN_1=10
         [summary] Execution | status | success
         """);
 

@@ -99,7 +99,7 @@ public final class ObservabilitySnapshotService {
     defaults.add(StageMetricSample.stage("assigner", "VBucket Assigner", "unknown", 0, 0, 0, 0, 0, now));
     defaults.add(StageMetricSample.stage("enrichment", "Enrichment Process", "unknown", 0, 0, 0, 0, 0, now));
     defaults.add(StageMetricSample.stage("load-coordinator", "Load Coordinator", "unknown", 0, 0, 0, 0, 0, now));
-    defaults.add(StageMetricSample.sink("mysql-sink", "MySQL Sink", "unknown", "mysql", "anomaly", 0, 0, now));
+    defaults.add(StageMetricSample.sink("starrocks-sink", "StarRocks Sink", "unknown", "starrocks", "anomaly", 0, 0, now));
     defaults.add(StageMetricSample.sink("hive-sink", "Hive Sink", "unknown", "hive", "1m", 0, 0, now));
     defaults.add(StageMetricSample.sink("hive-sink", "Hive Sink", "unknown", "hive", "5m", 0, 0, now));
     defaults.add(StageMetricSample.sink("iceberg-sink", "Iceberg Sink", "unknown", "iceberg", "1m", 0, 0, now));
@@ -116,7 +116,7 @@ public final class ObservabilitySnapshotService {
     order.put("assigner", 4);
     order.put("enrichment", 5);
     order.put("load-coordinator", 6);
-    order.put("mysql-sink", 7);
+    order.put("starrocks-sink", 7);
     order.put("hive-sink", 8);
     order.put("iceberg-sink", 9);
     return order;

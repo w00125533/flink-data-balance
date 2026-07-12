@@ -92,8 +92,8 @@ public final class SinkPerformanceProbe extends ProcessFunction<CellKpi, CellKpi
         if (sinkName.startsWith("iceberg-")) {
             return "iceberg-sink";
         }
-        if (sinkName.startsWith("mysql-")) {
-            return "mysql-sink";
+        if (sinkName.startsWith("starrocks-")) {
+            return "starrocks-sink";
         }
         return sinkName;
     }
@@ -102,7 +102,7 @@ public final class SinkPerformanceProbe extends ProcessFunction<CellKpi, CellKpi
         return switch (stageId()) {
             case "hive-sink" -> "Hive Sink";
             case "iceberg-sink" -> "Iceberg Sink";
-            case "mysql-sink" -> "MySQL Sink";
+            case "starrocks-sink" -> "StarRocks Sink";
             default -> sinkName;
         };
     }

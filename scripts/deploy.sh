@@ -100,6 +100,14 @@ require_flink_home_soft() {
   fi
 }
 
+maven_cmd() {
+  if command -v mvn.cmd >/dev/null 2>&1; then
+    mvn.cmd "$@"
+  else
+    mvn "$@"
+  fi
+}
+
 shared_infra_dir() {
   echo "${SHARED_INFRA_DIR:-../shared-data-infra}"
 }
@@ -120,6 +128,15 @@ shared_streaming() {
     "$@"
 }
 
+shared_kafka_exec() {
+  if shared_streaming exec -T kafka "$@" >/tmp/fdb-shared-kafka-exec.out 2>/tmp/fdb-shared-kafka-exec.err; then
+    cat /tmp/fdb-shared-kafka-exec.out
+    return 0
+  fi
+
+  docker exec shared-data-infra-kafka-1 "$@"
+}
+
 shared_lakehouse() {
   docker compose \
     -f "$(shared_infra_dir)/compose.yaml" \
@@ -127,6 +144,43 @@ shared_lakehouse() {
     --profile lakehouse \
     --profile lakehouse-tools \
     "$@"
+}
+
+shared_hdfs_exec() {
+  local hdfs_bin="${FDB_LOCAL_HDFS_BIN:-/opt/hadoop-3.2.1/bin/hdfs}"
+  if shared_lakehouse exec -T namenode "$hdfs_bin" dfs -fs "$(local_hdfs_uri)" "$@" \
+      >/tmp/fdb-shared-hdfs-exec.out 2>/tmp/fdb-shared-hdfs-exec.err; then
+    cat /tmp/fdb-shared-hdfs-exec.out
+    return 0
+  fi
+
+  docker exec shared-data-infra-namenode-1 "$hdfs_bin" dfs -fs "$(local_hdfs_uri)" "$@"
+}
+
+shared_starrocks() {
+  docker compose \
+    -f "$(shared_infra_dir)/compose.yaml" \
+    -f "$(shared_infra_dir)/compose.starrocks.yaml" \
+    --profile starrocks \
+    "$@"
+}
+
+shared_starrocks_mysql() {
+  local use_database=1
+  local args=(-h 127.0.0.1 -P 9030 -u "${FDB_STARROCKS_USER:-root}")
+
+  if [[ "${1:-}" == "--no-database" ]]; then
+    use_database=0
+    shift
+  fi
+  if [[ -n "${FDB_STARROCKS_PASSWORD:-}" ]]; then
+    args+=("-p${FDB_STARROCKS_PASSWORD}")
+  fi
+  if [[ "$use_database" == "1" ]]; then
+    shared_starrocks exec -T starrocks-fe mysql "${args[@]}" "$@" "${FDB_STARROCKS_DATABASE:-fdb}"
+  else
+    shared_starrocks exec -T starrocks-fe mysql "${args[@]}" "$@"
+  fi
 }
 
 wait_for_command() {
@@ -144,6 +198,75 @@ wait_for_command() {
   done
 
   die "$label did not become ready"
+}
+
+now_epoch_ms() {
+  echo "$(($(date +%s) * 1000))"
+}
+
+retention_threshold_ms() {
+  local retention_ms=$1
+  echo "$(($(now_epoch_ms) - retention_ms))"
+}
+
+retention_days_floor() {
+  local retention_ms=$1
+  local days=$((retention_ms / 86400000))
+  if ((days < 1)); then
+    days=1
+  fi
+  echo "$days"
+}
+
+prune_starrocks_sql() {
+  local kpi_retention_ms=${FDB_STARROCKS_KPI_RETENTION_MS:-3600000}
+  local anomaly_retention_ms=${FDB_STARROCKS_ANOMALY_RETENTION_MS:-3600000}
+  local kpi_threshold
+  local anomaly_threshold
+  kpi_threshold="$(retention_threshold_ms "$kpi_retention_ms")"
+  anomaly_threshold="$(retention_threshold_ms "$anomaly_retention_ms")"
+
+  cat <<SQL
+DELETE FROM cell_kpi WHERE window_end_ts < ${kpi_threshold};
+DELETE FROM anomaly_events WHERE event_ts < ${anomaly_threshold};
+SQL
+}
+
+run_hdfs_prune_with() {
+  local runner=$1
+  local hive_path=${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}
+  local iceberg_path=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi
+  local parquet_retention_ms=${FDB_HDFS_KPI_RETENTION_MS:-86400000}
+  local iceberg_retention_ms=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}
+  local parquet_days
+  local iceberg_days
+  parquet_days="$(retention_days_floor "$parquet_retention_ms")"
+  iceberg_days="$(retention_days_floor "$iceberg_retention_ms")"
+
+  log "pruning HDFS in-progress KPI files"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && "$runner" -rm -f "$path"
+  done < <("$runner" -find "$hive_path" -name "*.inprogress*" 2>/dev/null || true)
+
+  log "pruning HDFS KPI parquet files older than ${parquet_days}d"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && "$runner" -rm -f "$path"
+  done < <("$runner" -find "$hive_path" -name "*.parquet" -mtime +"$parquet_days" 2>/dev/null || true)
+
+  log "pruning Iceberg orphan in-progress files"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && "$runner" -rm -f "$path"
+  done < <("$runner" -find "$iceberg_path" -name "*.inprogress*" 2>/dev/null || true)
+
+  if [[ "${FDB_ICEBERG_PRUNE_DATA_FILES:-0}" == "1" ]]; then
+    warn "FDB_ICEBERG_PRUNE_DATA_FILES=1 deletes Iceberg data files by mtime; use only after expiring snapshots"
+    log "pruning old Iceberg data files older than ${iceberg_days}d"
+    while IFS= read -r path; do
+      [[ -n "$path" ]] && "$runner" -rm -f "$path"
+    done < <("$runner" -find "$iceberg_path/data" -name "*.parquet" -mtime +"$iceberg_days" 2>/dev/null || true)
+  else
+    log "skipping Iceberg data-file mtime prune; expire snapshots with an Iceberg engine before deleting referenced files"
+  fi
 }
 
 prepare_flink_hadoop_runtime() {
@@ -165,7 +288,7 @@ prepare_flink_hadoop_runtime() {
     unset MSYS_NO_PATHCONV
   fi
 
-  mvn -q dependency:copy \
+  maven_cmd -q dependency:copy \
     -Dartifact="$artifact" \
     -DoutputDirectory="$(dirname "$jar")" \
     -Dtransitive=false
@@ -183,6 +306,8 @@ remove_legacy_local_infra() {
     fdb-hms-postgres
     fdb-hive-metastore
     fdb-hive-server
+    fdb-mysql
+    fdb-prometheus
     fdb-grafana
   )
   local name
@@ -209,7 +334,7 @@ local_up() {
   if ! docker network inspect shared-data-infra >/dev/null 2>&1; then
     warn "shared-data-infra network is missing"
     warn "start shared infrastructure first:"
-    warn "  cd $(shared_infra_dir) && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming observability"
+    warn "  cd $(shared_infra_dir) && sh scripts/infra-up.sh lakehouse lakehouse-tools streaming starrocks observability"
     exit 1
   fi
 
@@ -217,30 +342,28 @@ local_up() {
 
   log "starting local project containers"
   docker compose -f docker/docker-compose.yml --profile e2e up -d \
-    mysql \
     observability-api \
-    prometheus \
     frontend \
     jobmanager \
     taskmanager
-
-  log "waiting for MySQL to be ready (up to 60s)"
-  wait_for_command "MySQL OK" 30 2 \
-    docker compose -f docker/docker-compose.yml exec -T mysql \
-      mysqladmin ping -h localhost -ufdb -pfdbpwd --silent
 }
 
 local_init() {
   load_env_optional
   log "waiting for shared Kafka to be ready (up to 60s)"
   wait_for_command "shared Kafka OK" 30 2 \
-    shared_streaming exec -T kafka \
-      kafka-broker-api-versions --bootstrap-server "$(local_kafka_bootstrap)"
+    shared_kafka_exec kafka-broker-api-versions --bootstrap-server "$(local_kafka_bootstrap)"
 
   log "waiting for shared HiveServer2 to be ready (up to 90s)"
   wait_for_command "shared HiveServer2 OK" 45 2 \
     shared_lakehouse exec -T hive-server \
       beeline -u jdbc:hive2://localhost:10000/default -e "SELECT 1"
+
+  log "waiting for shared StarRocks to be ready (up to 120s)"
+  wait_for_command "shared StarRocks OK" 60 2 \
+    shared_starrocks_mysql --no-database -e "SELECT 1"
+  wait_for_command "shared StarRocks BE OK" 60 2 \
+    shared_starrocks exec -T starrocks-be bash -lc "exec 3<>/dev/tcp/localhost/8040"
 
   log "preparing shared HDFS warehouse directories"
   shared_lakehouse exec -T namenode \
@@ -253,8 +376,8 @@ local_init() {
   log "creating Kafka topics"
   bash scripts/init-kafka-topics.sh
 
-  log "initializing MySQL tables"
-  docker exec -i fdb-mysql mysql -ufdb -pfdbpwd fdb < scripts/init-mysql.sql
+  log "initializing shared StarRocks tables"
+  shared_starrocks_mysql --no-database < scripts/init-starrocks.sql
 
   log "initializing shared Hive table"
   bash scripts/init-hive.sh
@@ -286,7 +409,12 @@ local_stop() {
   fi
 
   log "cancelling local Flink job: $job_id"
-  docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id"
+  if docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id"; then
+    return 0
+  fi
+
+  warn "Flink CLI cancel failed; falling back to REST cancel"
+  curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null
 }
 
 local_smoke() {
@@ -325,7 +453,7 @@ local_smoke() {
   }
 
   echo "[e2e] Building jars..."
-  mvn package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
+  maven_cmd package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
   summary_section "Build"
   summary_line "Build" "maven package" "success"
 
@@ -348,10 +476,11 @@ local_smoke() {
   observability_links
 
   echo "[e2e] Publishing topology and starting simulators..."
-  java -jar topology-service/target/topology-service-0.1.0-SNAPSHOT.jar > logs-topology.log 2>&1
-  java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar cm > logs-cm.log 2>&1 & PIDS+=("$!")
-  java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar mr > logs-mr.log 2>&1 & PIDS+=("$!")
-  java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar chr > logs-chr.log 2>&1 & PIDS+=("$!")
+  local host_kafka_bootstrap="${FDB_KAFKA_HOST_BOOTSTRAP:-localhost:9092}"
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar topology-service/target/topology-service-0.1.0-SNAPSHOT.jar > logs-topology.log 2>&1
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar cm > logs-cm.log 2>&1 & PIDS+=("$!")
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar mr > logs-mr.log 2>&1 & PIDS+=("$!")
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar chr > logs-chr.log 2>&1 & PIDS+=("$!")
   summary_section "Data Generation"
   summary_command "Data Generation" "topology log lines" "wc -l < logs-topology.log | tr -d ' '"
   summary_line "Data Generation" "simulator processes" "${#PIDS[@]}"
@@ -367,9 +496,9 @@ local_smoke() {
   summary_kafka_topic "cm-config"
   summary_kafka_topic "mr-stats"
   summary_kafka_topic "chr-events"
-  local_smoke_wait_for "1m KPI rows in MySQL" "docker exec fdb-mysql mysql -N -ufdb -pfdbpwd fdb -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'\" | grep -Eq '^[1-9][0-9]*$'" 90
-  summary_section "MySQL KPI"
-  summary_mysql_kpi
+  local_smoke_wait_for "1m KPI rows in StarRocks" "shared_starrocks_mysql -N -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'\" | grep -Eq '^[1-9][0-9]*$'" 90
+  summary_section "StarRocks KPI"
+  summary_starrocks_kpi
   local_smoke_wait_for "runtime stage metric messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic fdb-stage-metrics | grep -Eq ':[1-9][0-9]*$'" 60
   local_smoke_wait_for "nonzero observability metrics" "curl -fsS \"$(observability_api_url)/metrics\" | awk '/^fdb_stage_out_eps|^fdb_source_eps/ { if (\$2+0 > 0) found=1 } END { exit(found ? 0 : 1) }'" 60
   local_smoke_wait_for "Prometheus fdb_stage_out_eps" "curl -fsS \"$(observability_prometheus_url)/api/v1/query?query=fdb_stage_out_eps%20%3E%200\" | grep -q '\"metric\"'" 60
@@ -406,13 +535,52 @@ local_smoke() {
 local_down() {
   if [[ "${1:-}" == "--clean" ]]; then
     log "stopping and removing project containers plus data volumes"
-    docker compose -f docker/docker-compose.yml down -v
+    docker compose -f docker/docker-compose.yml --profile e2e down -v
     remove_legacy_local_infra
     rm -rf docker/data
   else
     log "stopping project containers"
-    docker compose -f docker/docker-compose.yml down
+    docker compose -f docker/docker-compose.yml --profile e2e down
   fi
+}
+
+local_prune() {
+  load_env_optional
+  if [[ "${FDB_PRUNE_DRY_RUN:-0}" == "1" ]]; then
+    log "prune dry run"
+    prune_starrocks_sql
+    echo "HDFS prune: ${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi} retention=${FDB_HDFS_KPI_RETENTION_MS:-86400000}ms"
+    echo "Iceberg prune: ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi retention=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}ms"
+    return 0
+  fi
+
+  log "pruning shared StarRocks rows"
+  prune_starrocks_sql | shared_starrocks_mysql
+
+  log "pruning shared HDFS files"
+  run_hdfs_prune_with shared_hdfs_exec
+  ok "local storage prune completed"
+}
+
+local_status() {
+  load_env_optional
+  echo "[status] containers"
+  docker ps --format "table {{.Names}}\t{{.Status}}" |
+    grep -E "^(NAMES|fdb-|shared-data-infra-(kafka|starrocks|hive|namenode|datanode|prometheus))" || true
+
+  echo "[status] flink jobs"
+  curl -fsS http://localhost:8081/jobs/overview || true
+  echo
+
+  echo "[status] starrocks"
+  shared_starrocks_mysql -N -e "
+    SELECT 'cell_kpi', COUNT(*), MIN(window_start_ts), MAX(window_start_ts) FROM cell_kpi;
+    SELECT 'anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM anomaly_events;
+  " || true
+
+  echo "[status] hdfs"
+  shared_hdfs_exec -count -h "${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}" || true
+  shared_hdfs_exec -count -h "${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi" || true
 }
 
 external_require_env() {
@@ -484,6 +652,28 @@ external_mysql_run_file() {
   mysql "${args[@]}" < "$sql_file"
 }
 
+external_mysql_run_sql() {
+  local host=$1
+  local port=$2
+  local user=$3
+  local password=$4
+  local database=$5
+  local args=(-h "$host" -P "$port" -u "$user")
+
+  if [[ -n "$password" ]]; then
+    args+=("-p$password")
+  fi
+  if [[ -n "$database" ]]; then
+    args+=("$database")
+  fi
+
+  mysql "${args[@]}"
+}
+
+external_hdfs_exec() {
+  hdfs dfs -fs "$FDB_HDFS_URI" "$@"
+}
+
 external_hive_cell_kpi_location() {
   if [[ -n "${FDB_HIVE_CELL_KPI_LOCATION:-}" ]]; then
     echo "$FDB_HIVE_CELL_KPI_LOCATION"
@@ -526,8 +716,8 @@ external_hdfs_path_from_location() {
 }
 
 external_apply_runtime_defaults() {
-  if [[ -z "${FDB_MYSQL_URL:-}" && -n "${FDB_MYSQL_HOST:-}" ]]; then
-    export FDB_MYSQL_URL="jdbc:mysql://$FDB_MYSQL_HOST:${FDB_MYSQL_PORT:-3306}/${FDB_MYSQL_DATABASE:-fdb}"
+  if [[ -z "${FDB_STARROCKS_JDBC_URL:-}" && -n "${FDB_STARROCKS_FE_ENDPOINT:-}" ]]; then
+    export FDB_STARROCKS_JDBC_URL="jdbc:mysql://$(external_starrocks_host):$(external_starrocks_port)/${FDB_STARROCKS_DATABASE:-fdb}?rewriteBatchedStatements=true&useServerPrepStmts=false"
   fi
   if [[ -z "${FDB_HIVE_WAREHOUSE:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
     export FDB_HIVE_WAREHOUSE
@@ -608,6 +798,13 @@ create_external_topic() {
     --replication-factor "${FDB_KAFKA_REPLICATION_FACTOR:-1}" \
     --config "cleanup.policy=$cleanup" \
     "${extra[@]}"
+
+  kafka-configs \
+    --bootstrap-server "$FDB_KAFKA_BOOTSTRAP" \
+    --alter \
+    --entity-type topics \
+    --entity-name "$name" \
+    --add-config "cleanup.policy=$cleanup${retention_ms:+,retention.ms=$retention_ms}" >/dev/null
 }
 
 EXTERNAL_FLINK_ENV_ARGS=()
@@ -617,8 +814,13 @@ build_external_flink_env_args() {
   local value
   local env_keys=(
     FDB_KAFKA_BOOTSTRAP
-    FDB_MYSQL_URL
-    FDB_MYSQL_USER
+    FDB_STARROCKS_FE_ENDPOINT
+    FDB_STARROCKS_JDBC_URL
+    FDB_STARROCKS_USER
+    FDB_STARROCKS_DATABASE
+    FDB_STARROCKS_JDBC_BATCH_SIZE
+    FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS
+    FDB_STARROCKS_JDBC_MAX_RETRIES
     FDB_HIVE_WAREHOUSE
     FDB_ICEBERG_ENABLED
     FDB_ICEBERG_WAREHOUSE
@@ -628,6 +830,9 @@ build_external_flink_env_args() {
     FDB_FLINK_CHECKPOINT_DIR
     FDB_FLINK_CHECKPOINT_INTERVAL_MS
     FDB_FLINK_PARALLELISM
+    FDB_FLINK_TASKMANAGER_MEMORY
+    FDB_FLINK_TASKMANAGER_SLOTS
+    FDB_FLINK_RETAINED_CHECKPOINTS
     FDB_METRICS_TOPIC
     FDB_E2E_SUMMARY
   )
@@ -718,8 +923,6 @@ external_check() {
   external_require_env FDB_KAFKA_BOOTSTRAP
   external_require_env FDB_HDFS_URI
   external_require_env FDB_HIVE_JDBC_URL
-  external_require_env FDB_MYSQL_HOST
-  external_require_env FDB_MYSQL_PORT
   external_require_env FDB_STARROCKS_FE_ENDPOINT
 
   require_command_soft java
@@ -759,13 +962,6 @@ external_check() {
     warn_or_fail "YARN check failed"
   fi
 
-  if [[ -n "${FDB_MYSQL_HOST:-}" ]] \
-    && external_mysql_select_one "$FDB_MYSQL_HOST" "${FDB_MYSQL_PORT:-3306}" "${FDB_MYSQL_USER:-fdb}" "${FDB_MYSQL_PASSWORD:-fdbpwd}" "${FDB_MYSQL_DATABASE:-fdb}"; then
-    ok "MySQL reachable"
-  else
-    warn_or_fail "MySQL check failed"
-  fi
-
   if [[ -n "${FDB_STARROCKS_FE_ENDPOINT:-}" ]] \
     && external_mysql_select_one "$(external_starrocks_host)" "$(external_starrocks_port)" "${FDB_STARROCKS_USER:-root}" "${FDB_STARROCKS_PASSWORD:-}" ""; then
     ok "StarRocks reachable"
@@ -780,7 +976,7 @@ external_init() {
   require_env FDB_KAFKA_BOOTSTRAP
   require_env FDB_HDFS_URI
   require_env FDB_HIVE_JDBC_URL
-  require_env FDB_MYSQL_HOST
+  require_env FDB_STARROCKS_FE_ENDPOINT
   local hive_cell_kpi_path
   local hive_warehouse_root
   local iceberg_warehouse_path
@@ -791,16 +987,16 @@ external_init() {
   flink_checkpoint_path="$(external_flink_checkpoint_path)"
 
   log "creating external Kafka topics"
-  create_external_topic "${FDB_CHR_TOPIC:-chr-events}" 64 delete 604800000
-  create_external_topic "${FDB_PM_TOPIC:-mr-stats}" 16 delete 259200000
+  create_external_topic "${FDB_CHR_TOPIC:-chr-events}" 64 delete "${FDB_CHR_RETENTION_MS:-604800000}"
+  create_external_topic "${FDB_PM_TOPIC:-mr-stats}" 16 delete "${FDB_MR_RETENTION_MS:-259200000}"
   create_external_topic "${FDB_CFG_TOPIC:-cm-config}" 8 compact
   create_external_topic "${FDB_TOPOLOGY_TOPIC:-topology}" 4 compact
   create_external_topic "${FDB_LB_HEARTBEAT_TOPIC:-lb-heartbeat}" 1 delete 3600000
   create_external_topic "${FDB_LB_ROUTING_TOPIC:-lb-routing}" 1 compact
-  create_external_topic "${FDB_METRICS_TOPIC:-fdb-stage-metrics}" 1 delete 3600000
-  create_external_topic "${FDB_ANOMALY_TOPIC:-anomaly-events}" 16 delete 604800000
-  create_external_topic "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}" 8 delete 259200000
-  create_external_topic "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}" 8 delete 604800000
+  create_external_topic "${FDB_METRICS_TOPIC:-fdb-stage-metrics}" 1 delete "${FDB_METRICS_RETENTION_MS:-3600000}"
+  create_external_topic "${FDB_ANOMALY_TOPIC:-anomaly-events}" 16 delete "${FDB_ANOMALY_RETENTION_MS:-604800000}"
+  create_external_topic "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}" 8 delete "${FDB_KPI_1M_RETENTION_MS:-259200000}"
+  create_external_topic "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}" 8 delete "${FDB_KPI_5M_RETENTION_MS:-604800000}"
   create_external_topic "${FDB_CHR_DLQ_TOPIC:-chr-dlq}" 4 delete 604800000
   create_external_topic "${FDB_PM_DLQ_TOPIC:-mr-dlq}" 4 delete 604800000
   create_external_topic "${FDB_CFG_DLQ_TOPIC:-cm-dlq}" 4 delete 604800000
@@ -819,27 +1015,14 @@ external_init() {
   log "initializing external Hive table"
   external_init_hive
 
-  log "initializing external MySQL tables"
+  log "initializing external StarRocks objects"
   external_mysql_run_file \
-    "$FDB_MYSQL_HOST" \
-    "${FDB_MYSQL_PORT:-3306}" \
-    "${FDB_MYSQL_USER:-fdb}" \
-    "${FDB_MYSQL_PASSWORD:-fdbpwd}" \
-    "${FDB_MYSQL_DATABASE:-fdb}" \
-    scripts/init-mysql.sql
-
-  if [[ -f scripts/init-starrocks.sql ]]; then
-    log "initializing external StarRocks objects"
-    external_mysql_run_file \
-      "$(external_starrocks_host)" \
-      "$(external_starrocks_port)" \
-      "${FDB_STARROCKS_USER:-root}" \
-      "${FDB_STARROCKS_PASSWORD:-}" \
-      "${FDB_STARROCKS_DATABASE:-}" \
-      scripts/init-starrocks.sql
-  else
-    warn "scripts/init-starrocks.sql not found; skipping StarRocks initialization"
-  fi
+    "$(external_starrocks_host)" \
+    "$(external_starrocks_port)" \
+    "${FDB_STARROCKS_USER:-root}" \
+    "${FDB_STARROCKS_PASSWORD:-}" \
+    "" \
+    scripts/init-starrocks.sql
 
   ok "external-yarn dependencies initialized"
 }
@@ -855,13 +1038,13 @@ external_submit() {
   require_env YARN_CONF_DIR
   [[ -x "$(external_flink_bin)" ]] || die "flink command not executable: $(external_flink_bin)"
   external_apply_runtime_defaults
-  require_env FDB_MYSQL_URL
+  require_env FDB_STARROCKS_JDBC_URL
   require_env FDB_HIVE_WAREHOUSE
   require_env FDB_ICEBERG_WAREHOUSE
   require_env FDB_FLINK_CHECKPOINT_DIR
 
   log "building project jars"
-  mvn package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
+  maven_cmd package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
 
   local jar="${FDB_FLINK_JOB_LOCAL_JAR:-flink-job/target/flink-job-0.1.0-SNAPSHOT.jar}"
   [[ -f "$jar" ]] || die "Flink job jar not found: $jar"
@@ -907,6 +1090,15 @@ external_submit() {
     local extra_args=()
     read -r -a extra_args <<< "$FDB_FLINK_EXTRA_ARGS"
     flink_args+=("${extra_args[@]}")
+  fi
+  if [[ -n "${FDB_FLINK_TASKMANAGER_MEMORY:-}" ]]; then
+    flink_args+=(-D "taskmanager.memory.process.size=${FDB_FLINK_TASKMANAGER_MEMORY}")
+  fi
+  if [[ -n "${FDB_FLINK_TASKMANAGER_SLOTS:-}" ]]; then
+    flink_args+=(-D "taskmanager.numberOfTaskSlots=${FDB_FLINK_TASKMANAGER_SLOTS}")
+  fi
+  if [[ -n "${FDB_FLINK_RETAINED_CHECKPOINTS:-}" ]]; then
+    flink_args+=(-D "state.checkpoints.num-retained=${FDB_FLINK_RETAINED_CHECKPOINTS}")
   fi
   if [[ -n "${FDB_FLINK_EXTRA_ARGS_FILE:-}" ]]; then
     EXTERNAL_FLINK_FILE_ARGS=()
@@ -977,6 +1169,54 @@ external_smoke() {
   fi
 }
 
+external_prune() {
+  load_env
+  [[ "${FDB_DEPLOY_TARGET:-}" == "external-yarn" ]] || die "FDB_DEPLOY_TARGET must be external-yarn"
+  require_env FDB_HDFS_URI
+  require_env FDB_STARROCKS_FE_ENDPOINT
+  external_apply_runtime_defaults
+
+  if [[ "${FDB_PRUNE_DRY_RUN:-0}" == "1" ]]; then
+    log "prune dry run"
+    prune_starrocks_sql
+    echo "HDFS prune: ${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi} retention=${FDB_HDFS_KPI_RETENTION_MS:-86400000}ms"
+    echo "Iceberg prune: $(external_iceberg_warehouse_path)/fdb/cell_kpi retention=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}ms"
+    return 0
+  fi
+
+  log "pruning external StarRocks rows"
+  prune_starrocks_sql | external_mysql_run_sql \
+    "$(external_starrocks_host)" \
+    "$(external_starrocks_port)" \
+    "${FDB_STARROCKS_USER:-root}" \
+    "${FDB_STARROCKS_PASSWORD:-}" \
+    "${FDB_STARROCKS_DATABASE:-fdb}"
+
+  log "pruning external HDFS files"
+  run_hdfs_prune_with external_hdfs_exec
+  ok "external-yarn storage prune completed"
+}
+
+external_status() {
+  load_env
+  external_apply_runtime_defaults
+  echo "[status] yarn applications"
+  yarn application -list 2>/dev/null || true
+  echo "[status] starrocks"
+  external_mysql_run_sql \
+    "$(external_starrocks_host)" \
+    "$(external_starrocks_port)" \
+    "${FDB_STARROCKS_USER:-root}" \
+    "${FDB_STARROCKS_PASSWORD:-}" \
+    "${FDB_STARROCKS_DATABASE:-fdb}" <<'SQL' || true
+SELECT 'cell_kpi', COUNT(*), MIN(window_start_ts), MAX(window_start_ts) FROM cell_kpi;
+SELECT 'anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM anomaly_events;
+SQL
+  echo "[status] hdfs"
+  external_hdfs_exec -count -h "${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}" || true
+  external_hdfs_exec -count -h "$(external_iceberg_warehouse_path)/fdb/cell_kpi" || true
+}
+
 dispatch_local() {
   case "$COMMAND" in
     check) local_check ;;
@@ -985,6 +1225,8 @@ dispatch_local() {
     submit) local_submit ;;
     stop) local_stop ;;
     smoke) local_smoke ;;
+    prune) local_prune ;;
+    status) local_status ;;
     down) local_down "${ARGS[@]}" ;;
     *) die "unsupported command for local: $COMMAND" ;;
   esac
@@ -997,6 +1239,8 @@ dispatch_external_yarn() {
     submit) external_submit ;;
     stop) external_stop ;;
     smoke) external_smoke ;;
+    prune) external_prune ;;
+    status) external_status ;;
     *) die "unsupported command for external-yarn: $COMMAND" ;;
   esac
 }
