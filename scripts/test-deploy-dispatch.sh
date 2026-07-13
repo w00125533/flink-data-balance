@@ -11,6 +11,8 @@ FAKE_BIN_DIR="$TEST_TMP_DIR/bin"
 trap 'rm -rf "$TEST_TMP_DIR"' EXIT
 
 mkdir -p "$FAKE_BIN_DIR"
+FAKE_RM_LOG="$TEST_TMP_DIR/hdfs-rm.log"
+export FAKE_RM_LOG
 cat > "$FAKE_BIN_DIR/docker" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -22,6 +24,70 @@ if [[ "${1:-}" == "compose" ]]; then
       exit 0
     fi
   done
+  if [[ "$*" == *" exec -T starrocks-fe mysql "* ]]; then
+    cat >/dev/null
+    exit 0
+  fi
+  if [[ "$*" == *" exec -T namenode "* ]]; then
+    if [[ "$*" == *" -ls -R "* ]]; then
+      if [[ "$*" == *" /warehouse/iceberg/fdb/cell_kpi"* ]]; then
+        cat <<'OUT'
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/iceberg/fdb/cell_kpi/.metadata.inprogress.token
+OUT
+      else
+        cat <<'OUT'
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/fdb/cell_kpi/old.parquet
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:10 /warehouse/fdb/cell_kpi/old-2.parquet
+-rw-r--r--   3 flink supergroup       1000 2026-07-12 00:00 /warehouse/fdb/cell_kpi/new.parquet
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/fdb/cell_kpi/.old.part.parquet.inprogress.token
+-rw-r--r--   3 flink supergroup       1000 2026-07-12 00:00 /warehouse/fdb/cell_kpi/.recent.part.parquet.inprogress.token
+OUT
+      fi
+      exit 0
+    fi
+    if [[ "$*" == *" -find "* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" -rm -f "* ]]; then
+      printf '%s\n' "$*" >> "${FAKE_RM_LOG:?}"
+      exit 0
+    fi
+  fi
+fi
+
+if [[ "${1:-}" == "exec" ]]; then
+  shift
+  container="${1:-}"
+  shift || true
+  if [[ "$container" == "shared-data-infra-starrocks-fe-1" ]]; then
+    cat >/dev/null
+    exit 0
+  fi
+  if [[ "$container" == "shared-data-infra-namenode-1" ]]; then
+    if [[ "$*" == *" -ls -R "* ]]; then
+      if [[ "$*" == *" /warehouse/iceberg/fdb/cell_kpi"* ]]; then
+        cat <<'OUT'
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/iceberg/fdb/cell_kpi/.metadata.inprogress.token
+OUT
+      else
+        cat <<'OUT'
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/fdb/cell_kpi/old.parquet
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:10 /warehouse/fdb/cell_kpi/old-2.parquet
+-rw-r--r--   3 flink supergroup       1000 2026-07-12 00:00 /warehouse/fdb/cell_kpi/new.parquet
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/fdb/cell_kpi/.old.part.parquet.inprogress.token
+-rw-r--r--   3 flink supergroup       1000 2026-07-12 00:00 /warehouse/fdb/cell_kpi/.recent.part.parquet.inprogress.token
+OUT
+      fi
+      exit 0
+    fi
+    if [[ "$*" == *" -find "* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" -rm -f "* ]]; then
+      printf '%s\n' "$*" >> "${FAKE_RM_LOG:?}"
+      exit 0
+    fi
+  fi
 fi
 
 echo "unexpected docker invocation: docker $*" >&2
@@ -74,6 +140,24 @@ grep -q "unsupported command for local: invalid" "$ERR_FILE" \
 FDB_PRUNE_DRY_RUN=1 run_expect_success "local prune dry run" bash scripts/deploy.sh local prune
 grep -F "[INFO] prune dry run" "$OUT_FILE" \
   || fail "local prune dry run should describe planned cleanup"
+
+run_expect_success "local prune removes old HDFS parquet without hdfs find mtime" env \
+  FDB_ENV_FILE="$TEST_TMP_DIR/missing.env" \
+  FDB_HDFS_KPI_RETENTION_MS=172800000 \
+  FDB_HDFS_INPROGRESS_RETENTION_MS=172800000 \
+  bash scripts/deploy.sh local prune
+grep -F "/warehouse/fdb/cell_kpi/old.parquet" "$FAKE_RM_LOG" \
+  || fail "local prune should remove old HDFS parquet from ls timestamp fallback"
+grep -F "/warehouse/fdb/cell_kpi/old-2.parquet" "$FAKE_RM_LOG" \
+  || fail "local prune should remove every old HDFS parquet from one listing"
+if grep -F "/warehouse/fdb/cell_kpi/new.parquet" "$FAKE_RM_LOG" >/dev/null; then
+  fail "local prune should not remove recent HDFS parquet"
+fi
+grep -F "/warehouse/fdb/cell_kpi/.old.part.parquet.inprogress.token" "$FAKE_RM_LOG" \
+  || fail "local prune should remove stale HDFS in-progress files"
+if grep -F "/warehouse/fdb/cell_kpi/.recent.part.parquet.inprogress.token" "$FAKE_RM_LOG" >/dev/null; then
+  fail "local prune should not remove recent HDFS in-progress files"
+fi
 
 tmp_env="$TEST_TMP_DIR/fdb-test.env"
 cat > "$tmp_env" <<'ENV'

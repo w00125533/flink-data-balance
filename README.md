@@ -157,9 +157,9 @@ Storage aging uses different mechanisms per backend:
 
 | Backend | Aging mechanism |
 | --- | --- |
-| Kafka | Topic `retention.ms`, configured by `FDB_*_RETENTION_MS` during `init` |
+| Kafka | Topic `retention.ms` plus `segment.ms`, configured by `FDB_*_RETENTION_MS` and `FDB_KAFKA_SEGMENT_MS` during `init` |
 | StarRocks | Explicit `prune` SQL using `FDB_STARROCKS_KPI_RETENTION_MS` and `FDB_STARROCKS_ANOMALY_RETENTION_MS` |
-| HDFS Parquet | Explicit `prune` removes old KPI parquet and failed `.inprogress` files |
+| HDFS Parquet | Explicit `prune` removes old KPI parquet and stale `.inprogress` files by parsing `hdfs dfs -ls -R` timestamps, so it does not depend on optional `hdfs dfs -find -mtime` support |
 | Iceberg | New tables keep only 20 previous metadata versions; `prune` removes orphan in-progress files and leaves referenced data files to Iceberg snapshot expiry |
 | Prometheus | Shared infra Prometheus retention, currently 15 days |
 

@@ -19,13 +19,18 @@ create_topic() {
   local partitions=$2
   local cleanup=$3
   local retention_ms=${4:-}
+  local segment_ms=${5:-}
 
-  local extra=""
+  local extra=()
+  local alter_config="cleanup.policy=$cleanup"
   if [[ -n "$retention_ms" && "$cleanup" == "delete" ]]; then
-    extra="--config retention.ms=$retention_ms"
+    segment_ms="${segment_ms:-${FDB_KAFKA_SEGMENT_MS:-600000}}"
+    extra+=(--config "retention.ms=$retention_ms")
+    extra+=(--config "segment.ms=$segment_ms")
+    alter_config+=",retention.ms=$retention_ms,segment.ms=$segment_ms"
   fi
 
-  echo "[create] $name partitions=$partitions cleanup=$cleanup retention=${retention_ms:-default}"
+  echo "[create] $name partitions=$partitions cleanup=$cleanup retention=${retention_ms:-default} segment=${segment_ms:-default}"
   shared_kafka kafka-topics \
     --bootstrap-server "$INTERNAL_BOOTSTRAP" \
     --create --if-not-exists \
@@ -33,14 +38,14 @@ create_topic() {
     --partitions "$partitions" \
     --replication-factor 1 \
     --config "cleanup.policy=$cleanup" \
-    $extra
+    "${extra[@]}"
 
   shared_kafka kafka-configs \
     --bootstrap-server "$INTERNAL_BOOTSTRAP" \
     --alter \
     --entity-type topics \
     --entity-name "$name" \
-    --add-config "cleanup.policy=$cleanup${retention_ms:+,retention.ms=$retention_ms}" >/dev/null
+    --add-config "$alter_config" >/dev/null
 }
 
 # Business topics

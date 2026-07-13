@@ -218,6 +218,50 @@ retention_days_floor() {
   echo "$days"
 }
 
+hdfs_file_epoch_seconds() {
+  local file_date=$1
+  local file_time=$2
+  local year month day hour minute
+  IFS=- read -r year month day <<< "$file_date"
+  IFS=: read -r hour minute <<< "$file_time"
+  awk -v year="$year" -v month="$month" -v day="$day" -v hour="$hour" -v minute="$minute" \
+    'BEGIN { print mktime(year " " month " " day " " hour " " minute " 00", 1) }'
+}
+
+prune_hdfs_listing_matches() {
+  local runner=$1
+  local base_path=$2
+  local path_pattern=$3
+  local retention_ms=${4:-}
+  local threshold_seconds=0
+  local listing
+  local paths_to_delete=()
+
+  if [[ -n "$retention_ms" ]]; then
+    threshold_seconds=$(( $(retention_threshold_ms "$retention_ms") / 1000 ))
+  fi
+
+  listing="$("$runner" -ls -R "$base_path" 2>/dev/null || true)"
+
+  while read -r permissions replication owner group size file_date file_time path _rest; do
+    [[ "${permissions:-}" == -* ]] || continue
+    [[ "${path:-}" == $path_pattern ]] || continue
+
+    if [[ -n "$retention_ms" ]]; then
+      local file_epoch
+      file_epoch="$(hdfs_file_epoch_seconds "$file_date" "$file_time")" || continue
+      ((file_epoch < threshold_seconds)) || continue
+    fi
+
+    paths_to_delete+=("$path")
+  done <<< "$listing"
+
+  local path
+  for path in "${paths_to_delete[@]}"; do
+    "$runner" -rm -f "$path"
+  done
+}
+
 prune_starrocks_sql() {
   local kpi_retention_ms=${FDB_STARROCKS_KPI_RETENTION_MS:-3600000}
   local anomaly_retention_ms=${FDB_STARROCKS_ANOMALY_RETENTION_MS:-3600000}
@@ -238,32 +282,26 @@ run_hdfs_prune_with() {
   local iceberg_path=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi
   local parquet_retention_ms=${FDB_HDFS_KPI_RETENTION_MS:-86400000}
   local iceberg_retention_ms=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}
+  local inprogress_retention_ms=${FDB_HDFS_INPROGRESS_RETENTION_MS:-$parquet_retention_ms}
+  local iceberg_inprogress_retention_ms=${FDB_ICEBERG_INPROGRESS_RETENTION_MS:-$iceberg_retention_ms}
   local parquet_days
   local iceberg_days
   parquet_days="$(retention_days_floor "$parquet_retention_ms")"
   iceberg_days="$(retention_days_floor "$iceberg_retention_ms")"
 
-  log "pruning HDFS in-progress KPI files"
-  while IFS= read -r path; do
-    [[ -n "$path" ]] && "$runner" -rm -f "$path"
-  done < <("$runner" -find "$hive_path" -name "*.inprogress*" 2>/dev/null || true)
+  log "pruning stale HDFS in-progress KPI files"
+  prune_hdfs_listing_matches "$runner" "$hive_path" "*.inprogress*" "$inprogress_retention_ms"
 
   log "pruning HDFS KPI parquet files older than ${parquet_days}d"
-  while IFS= read -r path; do
-    [[ -n "$path" ]] && "$runner" -rm -f "$path"
-  done < <("$runner" -find "$hive_path" -name "*.parquet" -mtime +"$parquet_days" 2>/dev/null || true)
+  prune_hdfs_listing_matches "$runner" "$hive_path" "*.parquet" "$parquet_retention_ms"
 
-  log "pruning Iceberg orphan in-progress files"
-  while IFS= read -r path; do
-    [[ -n "$path" ]] && "$runner" -rm -f "$path"
-  done < <("$runner" -find "$iceberg_path" -name "*.inprogress*" 2>/dev/null || true)
+  log "pruning stale Iceberg orphan in-progress files"
+  prune_hdfs_listing_matches "$runner" "$iceberg_path" "*.inprogress*" "$iceberg_inprogress_retention_ms"
 
   if [[ "${FDB_ICEBERG_PRUNE_DATA_FILES:-0}" == "1" ]]; then
     warn "FDB_ICEBERG_PRUNE_DATA_FILES=1 deletes Iceberg data files by mtime; use only after expiring snapshots"
     log "pruning old Iceberg data files older than ${iceberg_days}d"
-    while IFS= read -r path; do
-      [[ -n "$path" ]] && "$runner" -rm -f "$path"
-    done < <("$runner" -find "$iceberg_path/data" -name "*.parquet" -mtime +"$iceberg_days" 2>/dev/null || true)
+    prune_hdfs_listing_matches "$runner" "$iceberg_path/data" "*.parquet" "$iceberg_retention_ms"
   else
     log "skipping Iceberg data-file mtime prune; expire snapshots with an Iceberg engine before deleting referenced files"
   fi
