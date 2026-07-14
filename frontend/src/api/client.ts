@@ -1,7 +1,13 @@
 import type {
+  AnomalyQueryParams,
+  AnomalyResultRow,
   ExecutionRunDetail,
   ExecutionRunSummary,
+  KpiResultRow,
   MigrationEvent,
+  ResultQueryParams,
+  RuntimeConfig,
+  SinkLatencySummary,
   SinkSummary,
   SourceSummary,
   StageStatus
@@ -13,6 +19,18 @@ async function getJson<T>(path: string): Promise<T> {
     throw new Error(`Request failed: ${response.status} ${path}`);
   }
   return response.json() as Promise<T>;
+}
+
+function withQuery(path: string, params: object) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if ((typeof value !== 'string' && typeof value !== 'number') || value === '') {
+      return;
+    }
+    query.set(key, String(value));
+  });
+  const queryString = query.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 export function fetchStageStatuses() {
@@ -37,6 +55,26 @@ export function fetchExecutionRuns() {
 
 export function fetchExecutionRunDetail(runId: string) {
   return getJson<ExecutionRunDetail>(`/api/runs/${encodeURIComponent(runId)}`);
+}
+
+export function fetchKpiResults(windowKind: '1m' | '5m', params: ResultQueryParams): Promise<KpiResultRow[]> {
+  return getJson<KpiResultRow[]>(withQuery(`/api/results/kpi/${windowKind}`, params));
+}
+
+export function fetchCellAnomalies(params: AnomalyQueryParams): Promise<AnomalyResultRow[]> {
+  return getJson<AnomalyResultRow[]>(withQuery('/api/results/anomalies/cell', params));
+}
+
+export function fetchGridAnomalies(params: AnomalyQueryParams): Promise<AnomalyResultRow[]> {
+  return getJson<AnomalyResultRow[]>(withQuery('/api/results/anomalies/grid', params));
+}
+
+export function fetchSinkLatency(): Promise<SinkLatencySummary[]> {
+  return getJson<SinkLatencySummary[]>('/api/results/sink-latency');
+}
+
+export function fetchRuntimeConfig(): Promise<RuntimeConfig> {
+  return getJson<RuntimeConfig>('/api/runtime/config');
 }
 
 export function subscribeObservabilityEvents(handlers: {
