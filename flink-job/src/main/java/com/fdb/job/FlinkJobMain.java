@@ -13,7 +13,6 @@ import com.fdb.job.kpi.CellKpiRollupAggregator;
 import com.fdb.job.kpi.ChrMinuteFactWindowFunction;
 import com.fdb.job.kpi.MinuteKpiJoinFunction;
 import com.fdb.job.kpi.PmMinuteFactWindowFunction;
-import com.fdb.job.metrics.SinkLatencyProbe;
 import com.fdb.job.metrics.StageMetricsProbe;
 import com.fdb.job.model.ChrMinuteFact;
 import com.fdb.job.model.EnrichedChr;
@@ -21,12 +20,8 @@ import com.fdb.job.model.InputEnvelope;
 import com.fdb.job.model.MinuteFactEnvelope;
 import com.fdb.job.model.PmMinuteFact;
 import com.fdb.job.model.RoutedEnvelope;
-import com.fdb.job.sink.CellKpiIcebergMapper;
-import com.fdb.job.sink.HiveSinks;
 import com.fdb.job.sink.IcebergConfig;
-import com.fdb.job.sink.IcebergSinks;
-import com.fdb.job.sink.JdbcSinks;
-import com.fdb.job.sink.StarRocksSinks;
+import com.fdb.job.sink.ResultSinks;
 import com.fdb.job.source.FlinkAvroDeserializer;
 import com.fdb.job.source.FlinkAvroSerializationSchema;
 import com.fdb.common.avro.*;
@@ -50,7 +45,6 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,8 +71,6 @@ public class FlinkJobMain {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(effectiveCheckpointIntervalMs(
             resultSinkConfig.resultSink(),
-            true,
-            icebergConfig.enabled(),
             resolveCheckpointIntervalMs(envVars, systemProperties)));
         env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(envVars, systemProperties));
         env.setParallelism(resolveParallelism(envVars, systemProperties));
@@ -171,15 +163,17 @@ public class FlinkJobMain {
             .process(new StageMetricsProbe<>("enrichment", "Enrichment Process", "healthy", 5_000L))
             .name("enrichment-metrics");
 
-        KafkaSink<ChrEvent> chrDlqSink = KafkaSink.<ChrEvent>builder()
-            .setBootstrapServers(bootstrap)
-            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                .setTopic("chr-dlq")
-                .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(ChrEvent.class))
-                .build())
-            .build();
-        enrichedRaw.getSideOutput(EnrichmentProcessFunction.CHR_DLQ)
-            .sinkTo(chrDlqSink).name("chr-dlq-sink");
+        if (resultSinkConfig.dlqEnabled()) {
+            KafkaSink<ChrEvent> chrDlqSink = KafkaSink.<ChrEvent>builder()
+                .setBootstrapServers(bootstrap)
+                .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                    .setTopic("chr-dlq")
+                    .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(ChrEvent.class))
+                    .build())
+                .build();
+            enrichedRaw.getSideOutput(EnrichmentProcessFunction.CHR_DLQ)
+                .sinkTo(chrDlqSink).name("chr-dlq-sink");
+        }
 
         // Anomaly detection
 
@@ -194,35 +188,6 @@ public class FlinkJobMain {
             .process(new CoverageHoleDetector(rules), new GenericTypeInfo<>(AnomalyEvent.class))
             .name("coverage-hole-detector")
             .uid("coverage-hole-detector");
-        cellAnomalies
-            .process(new SinkLatencyProbe<>("kafka-cell-anomaly", "Cell Anomaly Kafka Sink", "kafka",
-                "cell_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
-            .startNewChain()
-            .name("kafka-cell-anomaly")
-            .sinkTo(anomalySink(bootstrap, "cell-anomaly-events"))
-            .name("cell-anomaly-kafka-sink");
-        coverageAnomalies
-            .process(new SinkLatencyProbe<>("kafka-grid-anomaly", "Grid Anomaly Kafka Sink", "kafka",
-                "grid_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
-            .startNewChain()
-            .name("kafka-grid-anomaly")
-            .sinkTo(anomalySink(bootstrap, "grid-anomaly-events"))
-            .name("grid-anomaly-kafka-sink");
-
-        cellAnomalies
-            .process(new SinkLatencyProbe<>("starrocks-cell-anomaly", "Cell Anomaly StarRocks Sink", "starrocks",
-                "cell_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
-            .startNewChain()
-            .name("starrocks-cell-anomaly")
-            .sinkTo(StarRocksSinks.cellAnomalySink())
-            .name("cell-anomaly-starrocks-sink");
-        coverageAnomalies
-            .process(new SinkLatencyProbe<>("starrocks-grid-anomaly", "Grid Anomaly StarRocks Sink", "starrocks",
-                "grid_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
-            .startNewChain()
-            .name("starrocks-grid-anomaly")
-            .sinkTo(StarRocksSinks.gridAnomalySink())
-            .name("grid-anomaly-starrocks-sink");
 
         // KPI aggregation (1-minute CHR/PM event-time full join)
 
@@ -269,38 +234,6 @@ public class FlinkJobMain {
             .name("kpi-1m-full-join")
             .uid("kpi-1m-full-join");
 
-        KafkaSink<CellKpi> cellKpiSink = KafkaSink.<CellKpi>builder()
-            .setBootstrapServers(bootstrap)
-            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                .setTopic("cell-kpi-1m")
-                .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(CellKpi.class))
-                .build())
-            .build();
-
-        cellKpi1m
-            .process(new SinkLatencyProbe<>("kafka-kpi-1m", "Cell KPI 1m Kafka Sink", "kafka",
-                "kpi_1m", "MIN_1", 100), new GenericTypeInfo<>(CellKpi.class))
-            .startNewChain()
-            .name("kafka-kpi-1m")
-            .sinkTo(cellKpiSink)
-            .name("cell-kpi-kafka-sink");
-
-        cellKpi1m
-            .process(new SinkLatencyProbe<>("starrocks-kpi-1m", "Cell KPI 1m StarRocks Sink", "starrocks",
-                "kpi_1m", "MIN_1", 100), new GenericTypeInfo<>(CellKpi.class))
-            .startNewChain()
-            .name("starrocks-kpi-1m")
-            .sinkTo(JdbcSinks.cellKpiSink())
-            .name("cell-kpi-jdbc-sink");
-
-        cellKpi1m
-            .process(new SinkLatencyProbe<>("hive-kpi-1m", "Cell KPI 1m Hive Sink", "hive",
-                "kpi_1m", "MIN_1", 100), new GenericTypeInfo<>(CellKpi.class))
-            .startNewChain()
-            .name("hive-kpi-1m")
-            .sinkTo(HiveSinks.cellKpiSink("MIN_1"))
-            .name("cell-kpi-hive-sink");
-
         DataStream<CellKpi> cellKpi5m = cellKpi1m
             .assignTimestampsAndWatermarks(
                 WatermarkStrategy.<CellKpi>forBoundedOutOfOrderness(Duration.ofMinutes(2))
@@ -312,56 +245,9 @@ public class FlinkJobMain {
             .name("kpi-5m-rollup")
             .uid("kpi-5m-rollup");
 
-        KafkaSink<CellKpi> cellKpi5mSink = KafkaSink.<CellKpi>builder()
-            .setBootstrapServers(bootstrap)
-            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                .setTopic("cell-kpi-5m")
-                .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(CellKpi.class))
-                .build())
-            .build();
-
-        cellKpi5m
-            .process(new SinkLatencyProbe<>("kafka-kpi-5m", "Cell KPI 5m Kafka Sink", "kafka",
-                "kpi_5m", "MIN_5", 100), new GenericTypeInfo<>(CellKpi.class))
-            .startNewChain()
-            .name("kafka-kpi-5m")
-            .sinkTo(cellKpi5mSink)
-            .name("cell-kpi-5m-kafka-sink");
-        cellKpi5m
-            .process(new SinkLatencyProbe<>("starrocks-kpi-5m", "Cell KPI 5m StarRocks Sink", "starrocks",
-                "kpi_5m", "MIN_5", 100), new GenericTypeInfo<>(CellKpi.class))
-            .startNewChain()
-            .name("starrocks-kpi-5m")
-            .sinkTo(JdbcSinks.cellKpiSink())
-            .name("cell-kpi-5m-jdbc-sink");
-        cellKpi5m
-            .process(new SinkLatencyProbe<>("hive-kpi-5m", "Cell KPI 5m Hive Sink", "hive",
-                "kpi_5m", "MIN_5", 100), new GenericTypeInfo<>(CellKpi.class))
-            .startNewChain()
-            .name("hive-kpi-5m")
-            .sinkTo(HiveSinks.cellKpiSink("MIN_5"))
-            .name("cell-kpi-5m-hive-sink");
-
-        if (icebergConfig.enabled()) {
-            DataStream<RowData> icebergKpi1m = cellKpi1m
-                .process(new SinkLatencyProbe<>("iceberg-kpi-1m", "Cell KPI 1m Iceberg Sink", "iceberg",
-                    "kpi_1m", "MIN_1", 100), new GenericTypeInfo<>(CellKpi.class))
-                .startNewChain()
-                .name("iceberg-kpi-1m")
-                .map(new CellKpiIcebergMapper())
-                .returns(new GenericTypeInfo<>(RowData.class))
-                .name("cell-kpi-iceberg-map");
-            DataStream<RowData> icebergKpi5m = cellKpi5m
-                .process(new SinkLatencyProbe<>("iceberg-kpi-5m", "Cell KPI 5m Iceberg Sink", "iceberg",
-                    "kpi_5m", "MIN_5", 100), new GenericTypeInfo<>(CellKpi.class))
-                .startNewChain()
-                .name("iceberg-kpi-5m")
-                .map(new CellKpiIcebergMapper())
-                .returns(new GenericTypeInfo<>(RowData.class))
-                .name("cell-kpi-5m-iceberg-map");
-            IcebergSinks.appendCellKpiSink(icebergKpi1m.union(icebergKpi5m), icebergConfig)
-                .name("cell-kpi-iceberg-sink");
-        }
+        ResultSinks.attachBusinessResultSinks(
+            cellKpi1m, cellKpi5m, cellAnomalies, coverageAnomalies,
+            resultSinkConfig, bootstrap, icebergConfig);
 
         env.execute("fdb-flink-job");
     }
@@ -438,16 +324,6 @@ public class FlinkJobMain {
         return new RoutedEnvelope(envelope, Hashes.toVBucket(envelope.cellId(), DIRECT_ROUTE_VBUCKETS));
     }
 
-    private static KafkaSink<AnomalyEvent> anomalySink(String bootstrap, String topic) {
-        return KafkaSink.<AnomalyEvent>builder()
-            .setBootstrapServers(bootstrap)
-            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                .setTopic(topic)
-                .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(AnomalyEvent.class))
-                .build())
-            .build();
-    }
-
     static boolean resolveDynamicBalancingEnabled(Map<String, String> env, Properties properties) {
         String configured = env.get("FDB_DYNAMIC_BALANCING_ENABLED");
         if (configured == null || configured.isBlank()) {
@@ -490,13 +366,8 @@ public class FlinkJobMain {
         }
     }
 
-    static long effectiveCheckpointIntervalMs(ResultSinkType resultSink, boolean legacyHiveSinkActive,
-                                              boolean icebergSinkActive, long configuredIntervalMs) {
-        // Until Task 3/4 single-sink routing lands, the legacy topology may still create file sinks
-        // even when FDB_RESULT_SINK selects a non-file sink. Cap checkpoints whenever that is true.
-        boolean fileSinkActive = resultSink.fileBased() || legacyHiveSinkActive || icebergSinkActive;
-        ResultSinkType checkpointPolicySink = fileSinkActive ? ResultSinkType.HIVE : resultSink;
-        return ResultSinkConfig.effectiveCheckpointIntervalMs(checkpointPolicySink, configuredIntervalMs);
+    static long effectiveCheckpointIntervalMs(ResultSinkType resultSink, long configuredIntervalMs) {
+        return ResultSinkConfig.effectiveCheckpointIntervalMs(resultSink, configuredIntervalMs);
     }
 
     static String resolveCheckpointStorage(Map<String, String> env, Properties properties) {

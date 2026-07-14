@@ -78,17 +78,20 @@ class FlinkJobMainTest {
     }
 
     @Test
-    void effective_checkpoint_interval_caps_starrocks_when_legacy_file_sink_is_active() {
+    void effective_checkpoint_interval_keeps_starrocks_interval() {
         assertThat(FlinkJobMain.effectiveCheckpointIntervalMs(
-            ResultSinkType.STARROCKS, true, false, 240_000L))
-            .isEqualTo(180_000L);
+            ResultSinkType.STARROCKS, 240_000L))
+            .isEqualTo(240_000L);
     }
 
     @Test
-    void effective_checkpoint_interval_keeps_starrocks_interval_when_no_file_sinks_are_active() {
+    void effective_checkpoint_interval_caps_selected_file_sinks() {
         assertThat(FlinkJobMain.effectiveCheckpointIntervalMs(
-            ResultSinkType.STARROCKS, false, false, 240_000L))
-            .isEqualTo(240_000L);
+            ResultSinkType.HIVE, 240_000L))
+            .isEqualTo(180_000L);
+        assertThat(FlinkJobMain.effectiveCheckpointIntervalMs(
+            ResultSinkType.ICEBERG, 240_000L))
+            .isEqualTo(180_000L);
     }
 
     @Test

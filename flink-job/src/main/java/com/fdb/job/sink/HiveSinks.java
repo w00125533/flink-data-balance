@@ -1,5 +1,6 @@
 package com.fdb.job.sink;
 
+import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.CellKpi;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.core.fs.Path;
@@ -27,6 +28,30 @@ public final class HiveSinks {
 
         return FileSink
             .forBulkFormat(new Path(outputPath), AvroParquetWriters.forSpecificRecord(CellKpi.class))
+            .withBucketAssigner(new DateTimeBucketAssigner<>(KPI_BUCKET_FORMAT))
+            .withOutputFileConfig(PARQUET_OUTPUT_FILE_CONFIG)
+            .build();
+    }
+
+    static String cellAnomalyOutputPath(String warehousePath) {
+        return warehousePath + "/cell_anomaly_events";
+    }
+
+    static String gridAnomalyOutputPath(String warehousePath) {
+        return warehousePath + "/grid_anomaly_events";
+    }
+
+    public static FileSink<AnomalyEvent> cellAnomalySink() {
+        return anomalySink(cellAnomalyOutputPath(warehousePath()));
+    }
+
+    public static FileSink<AnomalyEvent> gridAnomalySink() {
+        return anomalySink(gridAnomalyOutputPath(warehousePath()));
+    }
+
+    private static FileSink<AnomalyEvent> anomalySink(String outputPath) {
+        return FileSink
+            .forBulkFormat(new Path(outputPath), AvroParquetWriters.forSpecificRecord(AnomalyEvent.class))
             .withBucketAssigner(new DateTimeBucketAssigner<>(KPI_BUCKET_FORMAT))
             .withOutputFileConfig(PARQUET_OUTPUT_FILE_CONFIG)
             .build();

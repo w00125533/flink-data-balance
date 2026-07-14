@@ -1,5 +1,9 @@
 package com.fdb.job.sink;
 
+import com.fdb.common.avro.AnomalyEvent;
+import com.fdb.common.avro.CellKpi;
+import com.fdb.job.metrics.SinkLatencyProbe;
+import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.table.data.RowData;
@@ -24,7 +28,19 @@ public final class IcebergSinks {
     private IcebergSinks() {}
 
     static TableIdentifier tableIdentifier(IcebergConfig config) {
+        return cellKpiIdentifier(config);
+    }
+
+    static TableIdentifier cellKpiIdentifier(IcebergConfig config) {
         return TableIdentifier.of(config.database(), config.table());
+    }
+
+    static TableIdentifier cellAnomalyIdentifier(IcebergConfig config) {
+        return TableIdentifier.of(config.database(), config.cellAnomalyTable());
+    }
+
+    static TableIdentifier gridAnomalyIdentifier(IcebergConfig config) {
+        return TableIdentifier.of(config.database(), config.gridAnomalyTable());
     }
 
     static Schema cellKpiSchema() {
@@ -60,6 +76,30 @@ public final class IcebergSinks {
             .build();
     }
 
+    static Schema anomalySchema() {
+        return new Schema(
+            Types.NestedField.required(1, "detection_ts", Types.LongType.get()),
+            Types.NestedField.required(2, "event_ts", Types.LongType.get()),
+            Types.NestedField.required(3, "site_id", Types.StringType.get()),
+            Types.NestedField.required(4, "cell_id", Types.StringType.get()),
+            Types.NestedField.required(5, "grid_id", Types.StringType.get()),
+            Types.NestedField.required(6, "latitude", Types.DoubleType.get()),
+            Types.NestedField.required(7, "longitude", Types.DoubleType.get()),
+            Types.NestedField.required(8, "anomaly_type", Types.StringType.get()),
+            Types.NestedField.required(9, "severity", Types.StringType.get()),
+            Types.NestedField.required(10, "rule_version", Types.StringType.get()),
+            Types.NestedField.required(11, "context_json", Types.StringType.get()),
+            Types.NestedField.required(12, "dt", Types.StringType.get()),
+            Types.NestedField.required(13, "hour", Types.StringType.get()));
+    }
+
+    static PartitionSpec anomalyPartitionSpec(Schema schema) {
+        return PartitionSpec.builderFor(schema)
+            .identity("dt")
+            .identity("hour")
+            .build();
+    }
+
     static Map<String, String> tableProperties() {
         return Map.of(
             "format-version", "2",
@@ -74,6 +114,11 @@ public final class IcebergSinks {
     }
 
     static Table ensureTable(IcebergConfig config) {
+        Schema schema = cellKpiSchema();
+        return ensureTable(config, cellKpiIdentifier(config), schema, cellKpiPartitionSpec(schema));
+    }
+
+    static Table ensureTable(IcebergConfig config, TableIdentifier identifier, Schema schema, PartitionSpec spec) {
         HiveCatalog catalog = hiveCatalog(config);
         Namespace namespace = Namespace.of(config.database());
         try {
@@ -81,14 +126,13 @@ public final class IcebergSinks {
         } catch (AlreadyExistsException ignored) {
             // Existing namespace is the normal path after the first run.
         }
-        TableIdentifier identifier = tableIdentifier(config);
         if (catalog.tableExists(identifier)) {
             Table table;
             try {
                 table = catalog.loadTable(identifier);
             } catch (NotFoundException e) {
                 catalog.dropTable(identifier, false);
-                return createCellKpiTable(catalog, identifier);
+                return createTable(catalog, identifier, schema, spec);
             }
             Map<String, String> missingProperties = missingTableProperties(table.properties());
             if (!missingProperties.isEmpty()) {
@@ -99,12 +143,12 @@ public final class IcebergSinks {
             }
             return table;
         }
-        return createCellKpiTable(catalog, identifier);
+        return createTable(catalog, identifier, schema, spec);
     }
 
-    private static Table createCellKpiTable(HiveCatalog catalog, TableIdentifier identifier) {
-        Schema schema = cellKpiSchema();
-        return catalog.createTable(identifier, schema, cellKpiPartitionSpec(schema), tableProperties());
+    private static Table createTable(HiveCatalog catalog, TableIdentifier identifier, Schema schema,
+                                     PartitionSpec spec) {
+        return catalog.createTable(identifier, schema, spec, tableProperties());
     }
 
     static HiveCatalog hiveCatalog(IcebergConfig config) {
@@ -121,12 +165,74 @@ public final class IcebergSinks {
     }
 
     public static DataStreamSink<Void> appendCellKpiSink(DataStream<RowData> stream, IcebergConfig config) {
-        ensureTable(config);
+        Schema schema = cellKpiSchema();
+        return appendRowDataSink(stream, config, cellKpiIdentifier(config), schema, cellKpiPartitionSpec(schema));
+    }
+
+    static DataStreamSink<Void> appendRowDataSink(DataStream<RowData> stream, IcebergConfig config,
+                                                  TableIdentifier identifier, Schema schema, PartitionSpec spec) {
+        ensureTable(config, identifier, schema, spec);
         CatalogLoader catalogLoader = CatalogLoader.hive(
             config.catalogName(), new Configuration(), catalogProperties(config));
-        TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, tableIdentifier(config));
+        TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, identifier);
         return FlinkSink.forRowData(stream)
             .tableLoader(tableLoader)
             .append();
+    }
+
+    public static void appendBusinessResultSinks(
+        DataStream<CellKpi> kpi1m,
+        DataStream<CellKpi> kpi5m,
+        DataStream<AnomalyEvent> cellAnomalies,
+        DataStream<AnomalyEvent> gridAnomalies,
+        IcebergConfig config) {
+        Schema kpiSchema = cellKpiSchema();
+        PartitionSpec kpiSpec = cellKpiPartitionSpec(kpiSchema);
+        Schema anomalySchema = anomalySchema();
+        PartitionSpec anomalySpec = anomalyPartitionSpec(anomalySchema);
+
+        DataStream<RowData> icebergKpi1m = kpi1m
+            .process(new SinkLatencyProbe<>("iceberg-kpi-1m", "Cell KPI 1m Iceberg Sink", "iceberg",
+                "kpi_1m", "MIN_1", 100), new GenericTypeInfo<>(CellKpi.class))
+            .startNewChain()
+            .name("iceberg-kpi-1m")
+            .map(new CellKpiIcebergMapper())
+            .returns(new GenericTypeInfo<>(RowData.class))
+            .name("cell-kpi-1m-iceberg-map");
+        appendRowDataSink(icebergKpi1m, config, cellKpiIdentifier(config), kpiSchema, kpiSpec)
+            .name("cell-kpi-1m-iceberg-sink");
+
+        DataStream<RowData> icebergKpi5m = kpi5m
+            .process(new SinkLatencyProbe<>("iceberg-kpi-5m", "Cell KPI 5m Iceberg Sink", "iceberg",
+                "kpi_5m", "MIN_5", 100), new GenericTypeInfo<>(CellKpi.class))
+            .startNewChain()
+            .name("iceberg-kpi-5m")
+            .map(new CellKpiIcebergMapper())
+            .returns(new GenericTypeInfo<>(RowData.class))
+            .name("cell-kpi-5m-iceberg-map");
+        appendRowDataSink(icebergKpi5m, config, cellKpiIdentifier(config), kpiSchema, kpiSpec)
+            .name("cell-kpi-5m-iceberg-sink");
+
+        DataStream<RowData> icebergCellAnomalies = cellAnomalies
+            .process(new SinkLatencyProbe<>("iceberg-cell-anomaly", "Cell Anomaly Iceberg Sink", "iceberg",
+                "cell_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
+            .startNewChain()
+            .name("iceberg-cell-anomaly")
+            .map(new AnomalyEventIcebergMapper())
+            .returns(new GenericTypeInfo<>(RowData.class))
+            .name("cell-anomaly-iceberg-map");
+        appendRowDataSink(icebergCellAnomalies, config, cellAnomalyIdentifier(config), anomalySchema, anomalySpec)
+            .name("cell-anomaly-iceberg-sink");
+
+        DataStream<RowData> icebergGridAnomalies = gridAnomalies
+            .process(new SinkLatencyProbe<>("iceberg-grid-anomaly", "Grid Anomaly Iceberg Sink", "iceberg",
+                "grid_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
+            .startNewChain()
+            .name("iceberg-grid-anomaly")
+            .map(new AnomalyEventIcebergMapper())
+            .returns(new GenericTypeInfo<>(RowData.class))
+            .name("grid-anomaly-iceberg-map");
+        appendRowDataSink(icebergGridAnomalies, config, gridAnomalyIdentifier(config), anomalySchema, anomalySpec)
+            .name("grid-anomaly-iceberg-sink");
     }
 }

@@ -19,4 +19,14 @@ class HiveSinksTest {
         assertThat(formatter.format(Instant.parse("2026-06-02T07:00:00Z")))
             .isEqualTo("dt=2026-06-02/hour=07");
     }
+
+    @Test
+    void builds_anomaly_output_paths_under_warehouse() {
+        String warehouse = "hdfs://namenode:8020/warehouse/fdb";
+
+        assertThat(HiveSinks.cellAnomalyOutputPath(warehouse))
+            .isEqualTo("hdfs://namenode:8020/warehouse/fdb/cell_anomaly_events");
+        assertThat(HiveSinks.gridAnomalyOutputPath(warehouse))
+            .isEqualTo("hdfs://namenode:8020/warehouse/fdb/grid_anomaly_events");
+    }
 }

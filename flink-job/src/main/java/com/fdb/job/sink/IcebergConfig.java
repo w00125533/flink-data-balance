@@ -12,9 +12,22 @@ public record IcebergConfig(
     String catalogName,
     String database,
     String table,
-    String metastoreUri) {
+    String metastoreUri,
+    String cellAnomalyTable,
+    String gridAnomalyTable) {
 
     private static final Logger log = LoggerFactory.getLogger(IcebergConfig.class);
+
+    public IcebergConfig(
+        boolean enabled,
+        String warehouse,
+        String catalogName,
+        String database,
+        String table,
+        String metastoreUri) {
+        this(enabled, warehouse, catalogName, database, table, metastoreUri,
+            "cell_anomaly_events", "grid_anomaly_events");
+    }
 
     public static IcebergConfig resolve(Map<String, String> env, Properties properties) {
         return new IcebergConfig(
@@ -22,9 +35,30 @@ public record IcebergConfig(
             resolveString(env, properties, "FDB_ICEBERG_WAREHOUSE", "fdb.iceberg.warehouse", "hdfs://namenode:8020/warehouse/iceberg"),
             resolveString(env, properties, "FDB_ICEBERG_CATALOG", "fdb.iceberg.catalog", "fdb_iceberg"),
             resolveString(env, properties, "FDB_ICEBERG_DATABASE", "fdb.iceberg.database", "iceberg_db"),
-            resolveString(env, properties, "FDB_ICEBERG_TABLE", "fdb.iceberg.table", "cell_kpi"),
+            resolveKpiTable(env, properties),
             resolveString(env, properties, "FDB_ICEBERG_METASTORE_URI", "fdb.iceberg.metastore.uri",
-                "thrift://hive-metastore:9083"));
+                "thrift://hive-metastore:9083"),
+            resolveString(env, properties, "FDB_ICEBERG_CELL_ANOMALY_TABLE",
+                "fdb.iceberg.cell.anomaly.table", "cell_anomaly_events"),
+            resolveString(env, properties, "FDB_ICEBERG_GRID_ANOMALY_TABLE",
+                "fdb.iceberg.grid.anomaly.table", "grid_anomaly_events"));
+    }
+
+    private static String resolveKpiTable(Map<String, String> env, Properties properties) {
+        String value = env.get("FDB_ICEBERG_KPI_TABLE");
+        if (value == null || value.isBlank()) {
+            value = env.get("FDB_ICEBERG_TABLE");
+        }
+        if (value == null || value.isBlank()) {
+            value = properties.getProperty("fdb.iceberg.kpi.table");
+        }
+        if (value == null || value.isBlank()) {
+            value = properties.getProperty("fdb.iceberg.table");
+        }
+        if (value == null || value.isBlank()) {
+            return "cell_kpi";
+        }
+        return value.trim();
     }
 
     private static String resolveString(

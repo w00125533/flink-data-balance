@@ -20,11 +20,12 @@ class IcebergSinksTest {
             true, "hdfs://namenode:8020/warehouse/iceberg", "fdb_iceberg", "iceberg_db", "cell_kpi",
             "thrift://hive-metastore:9083");
 
-        TableIdentifier identifier = IcebergSinks.tableIdentifier(config);
+        TableIdentifier identifier = IcebergSinks.cellKpiIdentifier(config);
         Schema schema = IcebergSinks.cellKpiSchema();
         PartitionSpec spec = IcebergSinks.cellKpiPartitionSpec(schema);
 
         assertThat(identifier.toString()).isEqualTo("iceberg_db.cell_kpi");
+        assertThat(IcebergSinks.tableIdentifier(config)).isEqualTo(identifier);
         assertThat(schema.columns()).hasSize(21);
         assertThat(schema.columns().stream().map(field -> field.name()))
             .containsExactly(
@@ -39,6 +40,34 @@ class IcebergSinksTest {
         assertThat(IcebergSinks.tableProperties())
             .containsEntry("write.metadata.delete-after-commit.enabled", "true")
             .containsEntry("write.metadata.previous-versions-max", "20");
+    }
+
+    @Test
+    void builds_independent_business_table_identifiers() {
+        IcebergConfig config = new IcebergConfig(
+            true, "hdfs://namenode:8020/warehouse/iceberg", "fdb_iceberg", "iceberg_db", "cell_kpi",
+            "thrift://hive-metastore:9083", "cell_anomaly_events", "grid_anomaly_events");
+
+        assertThat(IcebergSinks.cellKpiIdentifier(config).toString()).isEqualTo("iceberg_db.cell_kpi");
+        assertThat(IcebergSinks.cellAnomalyIdentifier(config).toString())
+            .isEqualTo("iceberg_db.cell_anomaly_events");
+        assertThat(IcebergSinks.gridAnomalyIdentifier(config).toString())
+            .isEqualTo("iceberg_db.grid_anomaly_events");
+    }
+
+    @Test
+    void builds_anomaly_schema_and_partition_spec() {
+        Schema schema = IcebergSinks.anomalySchema();
+        PartitionSpec spec = IcebergSinks.anomalyPartitionSpec(schema);
+
+        assertThat(schema.columns()).hasSize(13);
+        assertThat(schema.columns().stream().map(field -> field.name()))
+            .containsExactly(
+                "detection_ts", "event_ts", "site_id", "cell_id", "grid_id",
+                "latitude", "longitude", "anomaly_type", "severity", "rule_version",
+                "context_json", "dt", "hour");
+        assertThat(spec.fields().stream().map(field -> field.name()))
+            .containsExactly("dt", "hour");
     }
 
     @Test
