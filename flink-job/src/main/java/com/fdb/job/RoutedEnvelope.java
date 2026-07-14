@@ -30,9 +30,7 @@ public class RoutedEnvelope implements Serializable {
     }
 
     public String siteId() {
-        if (envelope instanceof InputEnvelope.ChrEnv e) return e.chrEvent().getSiteId().toString();
-        if (envelope instanceof InputEnvelope.PmEnv e) return e.pmStat().getSiteId().toString();
-        return ((InputEnvelope.CfgEnv) envelope).cfgConfig().getSiteId().toString();
+        return stateKey();
     }
 
     public String stateKey() {

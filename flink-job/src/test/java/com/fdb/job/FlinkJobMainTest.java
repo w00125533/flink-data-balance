@@ -10,8 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlinkJobMainTest {
 
     @Test
-    void resolve_parallelism_defaults_to_single_slot() {
-        assertThat(FlinkJobMain.resolveParallelism(Map.of(), new Properties())).isEqualTo(1);
+    void resolve_parallelism_defaults_to_four_slots() {
+        assertThat(FlinkJobMain.resolveParallelism(Map.of(), new Properties())).isEqualTo(4);
     }
 
     @Test
@@ -36,10 +36,13 @@ class FlinkJobMainTest {
     void resolve_parallelism_falls_back_for_invalid_values() {
         assertThat(FlinkJobMain.resolveParallelism(
             Map.of("FDB_FLINK_PARALLELISM", "nope"), new Properties()))
-            .isEqualTo(1);
+            .isEqualTo(4);
         assertThat(FlinkJobMain.resolveParallelism(
             Map.of("FDB_FLINK_PARALLELISM", "0"), new Properties()))
-            .isEqualTo(1);
+            .isEqualTo(4);
+        assertThat(FlinkJobMain.resolveParallelism(
+            Map.of("FDB_FLINK_PARALLELISM", "-2"), new Properties()))
+            .isEqualTo(4);
     }
 
     @Test
@@ -98,5 +101,39 @@ class FlinkJobMainTest {
             Map.of("FDB_ICEBERG_ENABLED", "false"), new Properties());
 
         assertThat(config.enabled()).isFalse();
+    }
+
+    @Test
+    void resolve_dynamic_balancing_defaults_to_disabled() {
+        assertThat(FlinkJobMain.resolveDynamicBalancingEnabled(Map.of(), new Properties())).isFalse();
+    }
+
+    @Test
+    void resolve_dynamic_balancing_prefers_environment() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.dynamic.balancing.enabled", "false");
+
+        assertThat(FlinkJobMain.resolveDynamicBalancingEnabled(
+            Map.of("FDB_DYNAMIC_BALANCING_ENABLED", "true"), properties))
+            .isTrue();
+    }
+
+    @Test
+    void resolve_dynamic_balancing_uses_property_when_environment_missing() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.dynamic.balancing.enabled", "true");
+
+        assertThat(FlinkJobMain.resolveDynamicBalancingEnabled(Map.of(), properties)).isTrue();
+    }
+
+    @Test
+    void direct_routing_preserves_cell_state_key_without_dynamic_topics() {
+        InputEnvelope envelope = new InputEnvelope(123L, "cell-a") {};
+
+        RoutedEnvelope routed = FlinkJobMain.directRoute(envelope);
+
+        assertThat(routed.envelope()).isSameAs(envelope);
+        assertThat(routed.stateKey()).isEqualTo("cell-a");
+        assertThat(routed.vbucketId()).isGreaterThanOrEqualTo(0);
     }
 }

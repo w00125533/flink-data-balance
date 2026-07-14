@@ -1,5 +1,8 @@
 package com.fdb.job.coordinator;
 
+import com.fdb.common.hash.Hashes;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -9,23 +12,31 @@ public class RebalancePolicy {
     private final long overloadDurationMs;
     private final int topHotspotsPerSubtask;
     private final int numVBuckets;
+    private final Integer maxParallelism;
 
     public RebalancePolicy() {
-        this.overloadThreshold = 1.5;
-        this.overloadDurationMs = 60_000;
-        this.topHotspotsPerSubtask = 3;
-        this.numVBuckets = 1024;
+        this(1.5, 60_000, 3, 1024);
     }
 
     public RebalancePolicy(double overloadThreshold, long overloadDurationMs,
                            int topHotspotsPerSubtask, int numVBuckets) {
+        this(overloadThreshold, overloadDurationMs, topHotspotsPerSubtask, numVBuckets, null);
+    }
+
+    public RebalancePolicy(double overloadThreshold, long overloadDurationMs,
+                           int topHotspotsPerSubtask, int numVBuckets, Integer maxParallelism) {
         this.overloadThreshold = overloadThreshold;
         this.overloadDurationMs = overloadDurationMs;
         this.topHotspotsPerSubtask = topHotspotsPerSubtask;
         this.numVBuckets = numVBuckets;
+        this.maxParallelism = maxParallelism;
     }
 
-    public record HotspotSite(String siteId, int vbucketId, double eps) {}
+    public record HotspotSite(String siteId, int vbucketId, double eps) {
+        public String routeKey() {
+            return siteId;
+        }
+    }
 
     public record RebalanceDecision(
         HotspotSite site,
@@ -82,7 +93,7 @@ public class RebalancePolicy {
                 int target = idleSubtasks.get(0);
                 idleSubtasks.remove(0);
 
-                int newSlotShift = computeSlotShift(site.vbucketId(), subtaskId, target);
+                int newSlotShift = computeSlotShift(site.routeKey(), target, numSubtasks);
                 decisions.add(new RebalanceDecision(site, subtaskId, target, newSlotShift));
             }
         }
@@ -120,10 +131,25 @@ public class RebalancePolicy {
         return candidates.stream().limit(topHotspotsPerSubtask).collect(Collectors.toList());
     }
 
-    private int heartbeatsCount() { return 4; }
+    private int computeSlotShift(String routeKey, int targetSubtask, int parallelism) {
+        int effectiveMaxParallelism = effectiveMaxParallelism(parallelism);
+        for (int shift = 0; shift < numVBuckets; shift++) {
+            int candidateVbucket = Hashes.toVBucketWithShift(routeKey, numVBuckets, shift);
+            int assignedSubtask = KeyGroupRangeAssignment.assignKeyToParallelOperator(
+                candidateVbucket, effectiveMaxParallelism, parallelism);
+            if (assignedSubtask == targetSubtask) {
+                return shift;
+            }
+        }
+        throw new IllegalStateException("No slot shift found for routeKey=" + routeKey
+            + ", targetSubtask=" + targetSubtask + ", parallelism=" + parallelism
+            + ", maxParallelism=" + effectiveMaxParallelism);
+    }
 
-    private int computeSlotShift(int vbucketId, int currentSubtask, int targetSubtask) {
-        int xor = currentSubtask ^ targetSubtask;
-        return xor & (numVBuckets - 1);
+    private int effectiveMaxParallelism(int parallelism) {
+        if (maxParallelism != null) {
+            return maxParallelism;
+        }
+        return KeyGroupRangeAssignment.computeDefaultMaxParallelism(parallelism);
     }
 }

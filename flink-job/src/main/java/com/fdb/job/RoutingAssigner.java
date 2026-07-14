@@ -14,10 +14,10 @@ public class RoutingAssigner extends BroadcastProcessFunction<InputEnvelope, Str
 
     @Override
     public void processElement(InputEnvelope envelope, ReadOnlyContext ctx, Collector<RoutedEnvelope> out) throws Exception {
-        String siteId = siteId(envelope);
-        RoutingEntry route = ctx.getBroadcastState(ROUTING_STATE).get(siteId);
+        String routeKey = routeKey(envelope);
+        RoutingEntry route = ctx.getBroadcastState(ROUTING_STATE).get(routeKey);
         int shift = route == null ? 0 : route.getSlotShift();
-        out.collect(new RoutedEnvelope(envelope, Hashes.toVBucketWithShift(siteId, NUM_VBUCKETS, shift)));
+        out.collect(new RoutedEnvelope(envelope, vbucketId(envelope, shift)));
     }
 
     @Override
@@ -30,9 +30,11 @@ public class RoutingAssigner extends BroadcastProcessFunction<InputEnvelope, Str
         }
     }
 
-    private static String siteId(InputEnvelope envelope) {
-        if (envelope instanceof InputEnvelope.ChrEnv e) return e.chrEvent().getSiteId().toString();
-        if (envelope instanceof InputEnvelope.PmEnv e) return e.pmStat().getSiteId().toString();
-        return ((InputEnvelope.CfgEnv) envelope).cfgConfig().getSiteId().toString();
+    static String routeKey(InputEnvelope envelope) {
+        return envelope.cellId();
+    }
+
+    static int vbucketId(InputEnvelope envelope, int slotShift) {
+        return Hashes.toVBucketWithShift(routeKey(envelope), NUM_VBUCKETS, slotShift);
     }
 }

@@ -6,6 +6,7 @@ import com.fdb.job.coordinator.HeartbeatPayload;
 import com.fdb.job.coordinator.LoadCoordinator;
 import com.fdb.job.coordinator.RoutingEntry;
 import com.fdb.job.coordinator.RoutingCsvSerializationSchema;
+import com.fdb.common.hash.Hashes;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
@@ -31,6 +32,8 @@ import java.util.Properties;
 public class FlinkJobMain {
 
     private static final Logger log = LoggerFactory.getLogger(FlinkJobMain.class);
+    private static final int DIRECT_ROUTE_VBUCKETS = 1024;
+    private static final int DEFAULT_PARALLELISM = 4;
 
     public static void main(String[] args) throws Exception {
         String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
@@ -41,6 +44,7 @@ public class FlinkJobMain {
         env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(System.getenv(), System.getProperties()));
         env.setParallelism(resolveParallelism(System.getenv(), System.getProperties()));
         IcebergConfig icebergConfig = resolveIcebergConfig(System.getenv(), System.getProperties());
+        boolean dynamicBalancingEnabled = resolveDynamicBalancingEnabled(System.getenv(), System.getProperties());
 
         // Main pipeline: CHR + PM + CFG
 
@@ -109,29 +113,15 @@ public class FlinkJobMain {
             .process(new StageMetricsProbe<>("kafka", "Kafka Topics", "healthy", 5_000L))
             .name("kafka-topics-metrics");
 
-        KafkaSource<String> routingSource = KafkaSource.<String>builder()
-            .setBootstrapServers(bootstrap).setTopics("lb-routing")
-            .setGroupId(groupId + "-routing").setStartingOffsets(OffsetsInitializer.earliest())
-            .setValueOnlyDeserializer(new SimpleStringSchema()).build();
-        BroadcastStream<String> routingBroadcast = env.fromSource(routingSource,
-            WatermarkStrategy.noWatermarks(), "lb-routing-source")
-            .broadcast(RoutingAssigner.ROUTING_STATE);
-        SingleOutputStreamOperator<RoutedEnvelope> metered = mergedInput.connect(routingBroadcast)
-            .process(new RoutingAssigner(), new GenericTypeInfo<>(RoutedEnvelope.class)).name("routing-assigner")
-            .keyBy(RoutedEnvelope::vbucketId)
-            .process(new VBucketLoadMeter(), new GenericTypeInfo<>(RoutedEnvelope.class))
-            .name("vbucket-load-meter");
-        DataStream<RoutedEnvelope> assigned = metered
-            .process(new StageMetricsProbe<>("assigner", "VBucket Assigner", "healthy", 5_000L))
-            .name("vbucket-assigner-metrics");
-
-        KafkaSink<String> heartbeatKafkaSink = KafkaSink.<String>builder()
-            .setBootstrapServers(bootstrap)
-            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                .setTopic("lb-heartbeat").setValueSerializationSchema(new SimpleStringSchema()).build())
-            .build();
-        metered.getSideOutput(VBucketLoadMeter.HEARTBEATS)
-            .sinkTo(heartbeatKafkaSink).name("lb-heartbeat-sink");
+        DataStream<RoutedEnvelope> assigned;
+        if (dynamicBalancingEnabled) {
+            assigned = buildDynamicallyAssignedStream(env, mergedInput, bootstrap, groupId);
+        } else {
+            assigned = mergedInput
+                .map(FlinkJobMain::directRoute)
+                .returns(new GenericTypeInfo<>(RoutedEnvelope.class))
+                .name("direct-cell-routing");
+        }
 
         SingleOutputStreamOperator<EnrichedChr> enrichedRaw = assigned
             .keyBy(RoutedEnvelope::stateKey)
@@ -253,6 +243,38 @@ public class FlinkJobMain {
                 .name("cell-kpi-iceberg-sink");
         }
 
+        env.execute("fdb-flink-job");
+    }
+
+    private static DataStream<RoutedEnvelope> buildDynamicallyAssignedStream(
+        StreamExecutionEnvironment env,
+        DataStream<InputEnvelope> mergedInput,
+        String bootstrap,
+        String groupId) {
+        KafkaSource<String> routingSource = KafkaSource.<String>builder()
+            .setBootstrapServers(bootstrap).setTopics("lb-routing")
+            .setGroupId(groupId + "-routing").setStartingOffsets(OffsetsInitializer.earliest())
+            .setValueOnlyDeserializer(new SimpleStringSchema()).build();
+        BroadcastStream<String> routingBroadcast = env.fromSource(routingSource,
+            WatermarkStrategy.noWatermarks(), "lb-routing-source")
+            .broadcast(RoutingAssigner.ROUTING_STATE);
+        SingleOutputStreamOperator<RoutedEnvelope> metered = mergedInput.connect(routingBroadcast)
+            .process(new RoutingAssigner(), new GenericTypeInfo<>(RoutedEnvelope.class)).name("routing-assigner")
+            .keyBy(RoutedEnvelope::vbucketId)
+            .process(new VBucketLoadMeter(), new GenericTypeInfo<>(RoutedEnvelope.class))
+            .name("vbucket-load-meter");
+        DataStream<RoutedEnvelope> assigned = metered
+            .process(new StageMetricsProbe<>("assigner", "VBucket Assigner", "healthy", 5_000L))
+            .name("vbucket-assigner-metrics");
+
+        KafkaSink<String> heartbeatKafkaSink = KafkaSink.<String>builder()
+            .setBootstrapServers(bootstrap)
+            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                .setTopic("lb-heartbeat").setValueSerializationSchema(new SimpleStringSchema()).build())
+            .build();
+        metered.getSideOutput(VBucketLoadMeter.HEARTBEATS)
+            .sinkTo(heartbeatKafkaSink).name("lb-heartbeat-sink");
+
         // Coordinator pipeline: lb-heartbeat to LoadCoordinator to lb-routing
 
         KafkaSource<String> heartbeatSource = KafkaSource.<String>builder()
@@ -289,7 +311,19 @@ public class FlinkJobMain {
             .sinkTo(routingSink)
             .name("lb-routing-sink");
 
-        env.execute("fdb-flink-job");
+        return assigned;
+    }
+
+    static RoutedEnvelope directRoute(InputEnvelope envelope) {
+        return new RoutedEnvelope(envelope, Hashes.toVBucket(envelope.cellId(), DIRECT_ROUTE_VBUCKETS));
+    }
+
+    static boolean resolveDynamicBalancingEnabled(Map<String, String> env, Properties properties) {
+        String configured = env.get("FDB_DYNAMIC_BALANCING_ENABLED");
+        if (configured == null || configured.isBlank()) {
+            configured = properties.getProperty("fdb.dynamic.balancing.enabled");
+        }
+        return configured != null && "true".equalsIgnoreCase(configured.trim());
     }
 
     static int resolveParallelism(Map<String, String> env, Properties properties) {
@@ -298,14 +332,14 @@ public class FlinkJobMain {
             configured = properties.getProperty("fdb.flink.parallelism");
         }
         if (configured == null || configured.isBlank()) {
-            return 1;
+            return DEFAULT_PARALLELISM;
         }
         try {
             int parallelism = Integer.parseInt(configured.trim());
-            return parallelism > 0 ? parallelism : 1;
+            return parallelism > 0 ? parallelism : DEFAULT_PARALLELISM;
         } catch (NumberFormatException e) {
-            log.warn("Invalid Flink parallelism '{}', falling back to 1", configured);
-            return 1;
+            log.warn("Invalid Flink parallelism '{}', falling back to {}", configured, DEFAULT_PARALLELISM);
+            return DEFAULT_PARALLELISM;
         }
     }
 

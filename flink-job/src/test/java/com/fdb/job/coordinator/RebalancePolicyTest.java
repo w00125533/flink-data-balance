@@ -1,5 +1,7 @@
 package com.fdb.job.coordinator;
 
+import com.fdb.common.hash.Hashes;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -89,5 +91,68 @@ class RebalancePolicyTest {
         hbs.put(3, new HeartbeatPayload(3, 50, null, 1000));
         var decisions = policy.evaluate(hbs, Map.of("0", 1000L), 200_000, 1);
         assertThat(decisions).extracting(d -> d.site().siteId()).containsExactly("SITE-000017");
+    }
+
+    @Test
+    void rebalance_shift_moves_hotspot_to_target_subtask_using_flink_key_groups() {
+        int parallelism = 4;
+        int numVBuckets = 1024;
+        int maxParallelism = KeyGroupRangeAssignment.computeDefaultMaxParallelism(parallelism);
+        RouteScenario scenario = routeScenarioWhereXorShiftDoesNotReachTarget(
+            parallelism, maxParallelism, numVBuckets);
+        RebalancePolicy policy = new RebalancePolicy(1.5, 60_000, 3, numVBuckets);
+
+        double[] buckets = new double[numVBuckets];
+        buckets[scenario.currentVbucket()] = 500;
+        Map<Integer, HeartbeatPayload> hbs = new HashMap<>();
+        for (int subtask = 0; subtask < parallelism; subtask++) {
+            if (subtask == scenario.currentSubtask()) {
+                hbs.put(subtask, new HeartbeatPayload(
+                    subtask, 500, buckets, 1000, scenario.routeKey(), scenario.currentVbucket()));
+            } else if (subtask == scenario.targetSubtask()) {
+                hbs.put(subtask, new HeartbeatPayload(subtask, 50, null, 1000));
+            } else {
+                hbs.put(subtask, new HeartbeatPayload(subtask, 100, null, 1000));
+            }
+        }
+
+        var decisions = policy.evaluate(hbs, Map.of(String.valueOf(scenario.currentSubtask()), 1000L),
+            200_000, 1);
+
+        assertThat(decisions).hasSize(1);
+        RebalancePolicy.RebalanceDecision decision = decisions.get(0);
+        int shiftedVbucket = Hashes.toVBucketWithShift(
+            scenario.routeKey(), numVBuckets, decision.newSlotShift());
+        assertThat(KeyGroupRangeAssignment.assignKeyToParallelOperator(
+            shiftedVbucket, maxParallelism, parallelism))
+            .isEqualTo(decision.targetSubtask());
+    }
+
+    private record RouteScenario(
+        String routeKey,
+        int currentVbucket,
+        int currentSubtask,
+        int targetSubtask
+    ) {}
+
+    private static RouteScenario routeScenarioWhereXorShiftDoesNotReachTarget(
+            int parallelism, int maxParallelism, int numVBuckets) {
+        for (int i = 0; i < 10_000; i++) {
+            String routeKey = "CELL-" + i;
+            int currentVbucket = Hashes.toVBucket(routeKey, numVBuckets);
+            int currentSubtask = KeyGroupRangeAssignment.assignKeyToParallelOperator(
+                currentVbucket, maxParallelism, parallelism);
+            for (int targetSubtask = 0; targetSubtask < parallelism; targetSubtask++) {
+                if (targetSubtask == currentSubtask) continue;
+                int oldShift = (currentSubtask ^ targetSubtask) & (numVBuckets - 1);
+                int oldShiftedVbucket = Hashes.toVBucketWithShift(routeKey, numVBuckets, oldShift);
+                int oldAssignedSubtask = KeyGroupRangeAssignment.assignKeyToParallelOperator(
+                    oldShiftedVbucket, maxParallelism, parallelism);
+                if (oldAssignedSubtask != targetSubtask) {
+                    return new RouteScenario(routeKey, currentVbucket, currentSubtask, targetSubtask);
+                }
+            }
+        }
+        throw new AssertionError("No route-key scenario found");
     }
 }
