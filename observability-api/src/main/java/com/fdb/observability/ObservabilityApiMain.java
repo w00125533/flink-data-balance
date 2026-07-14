@@ -4,17 +4,24 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fdb.observability.service.ExecutionRunHistoryService;
 import com.fdb.observability.service.ObservabilitySnapshotService;
 import com.fdb.observability.service.StageMetricKafkaConsumer;
+import com.fdb.observability.service.StarRocksQueryService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ObservabilityApiMain {
+  private static final Logger log = LoggerFactory.getLogger(ObservabilityApiMain.class);
   private static final ObjectMapper JSON = new ObjectMapper();
 
   private ObservabilityApiMain() {
@@ -29,18 +36,36 @@ public final class ObservabilityApiMain {
     metricConsumer.start();
     Runtime.getRuntime().addShutdownHook(new Thread(metricConsumer::close));
     Path runsRoot = Path.of(System.getenv().getOrDefault("FDB_RUN_HISTORY_DIR", "/observability-runs"));
-    HttpServer server = createServer(port, service, new ExecutionRunHistoryService(runsRoot));
+    HttpServer server = createServer(port, service, new ExecutionRunHistoryService(runsRoot),
+        new StarRocksQueryService());
     server.start();
   }
 
   static HttpServer createServer(int port, ObservabilitySnapshotService service) throws IOException {
-    return createServer(port, service, new ExecutionRunHistoryService(Path.of("docker/data/observability-runs")));
+    return createServer(port, service, new ExecutionRunHistoryService(Path.of("docker/data/observability-runs")),
+        new StarRocksQueryService());
+  }
+
+  static HttpServer createServer(
+      int port,
+      ObservabilitySnapshotService service,
+      StarRocksQueryService queryService) throws IOException {
+    return createServer(port, service, new ExecutionRunHistoryService(Path.of("docker/data/observability-runs")),
+        queryService);
   }
 
   static HttpServer createServer(
       int port,
       ObservabilitySnapshotService service,
       ExecutionRunHistoryService runHistoryService) throws IOException {
+    return createServer(port, service, runHistoryService, new StarRocksQueryService());
+  }
+
+  static HttpServer createServer(
+      int port,
+      ObservabilitySnapshotService service,
+      ExecutionRunHistoryService runHistoryService,
+      StarRocksQueryService queryService) throws IOException {
     HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0);
     server.createContext("/api/flow/status", exchange -> writeJson(exchange, service.stageStatuses()));
     server.createContext("/api/flow/sources", exchange -> writeJson(exchange, service.sourceSummaries()));
@@ -51,6 +76,20 @@ public final class ObservabilityApiMain {
         "sources", service.sourceSummaries(),
         "migrations", service.migrationEvents(),
         "sinks", service.sinkSummaries())));
+    server.createContext("/api/results/kpi/1m",
+        exchange -> writeQueryJson(exchange, () -> queryService.queryKpi1m(queryParameters(exchange))));
+    server.createContext("/api/results/kpi/5m",
+        exchange -> writeQueryJson(exchange, () -> queryService.queryKpi5m(queryParameters(exchange))));
+    server.createContext("/api/results/anomalies/cell",
+        exchange -> writeQueryJson(exchange, () -> queryService.queryCellAnomalies(queryParameters(exchange))));
+    server.createContext("/api/results/anomalies/grid",
+        exchange -> writeQueryJson(exchange, () -> queryService.queryGridAnomalies(queryParameters(exchange))));
+    server.createContext("/api/results/sink-latency", exchange -> writeJson(exchange, service.sinkLatencySummaries()));
+    server.createContext("/api/runtime/config", exchange -> writeJson(exchange, Map.of(
+        "dynamicBalancingEnabled", service.dynamicBalancingEnabled(),
+        "resultQueryLayer", "starrocks",
+        "kpiStorage", "starrocks",
+        "anomalyStorage", "starrocks")));
     server.createContext("/api/events/stream", exchange -> writeSse(exchange, service));
     server.createContext("/api/runs", exchange -> writeRuns(exchange, runHistoryService));
     server.createContext("/metrics", exchange -> writeText(exchange, toPrometheusMetrics(service)));
@@ -104,6 +143,43 @@ public final class ObservabilityApiMain {
     try (OutputStream output = exchange.getResponseBody()) {
       output.write(bytes);
     }
+  }
+
+  private static void writeQueryJson(HttpExchange exchange, QueryHandler query) throws IOException {
+    try {
+      writeJson(exchange, query.execute());
+    } catch (IllegalArgumentException e) {
+      log.warn("Rejected result query request: {}", e.getMessage());
+      writeError(exchange, 400, "bad request");
+    } catch (SQLException e) {
+      log.error("Result query failed", e);
+      writeError(exchange, 500, "query failed");
+    } catch (RuntimeException e) {
+      log.error("Result query failed", e);
+      writeError(exchange, 500, "query failed");
+    }
+  }
+
+  private static Map<String, String> queryParameters(HttpExchange exchange) {
+    String rawQuery = exchange.getRequestURI().getRawQuery();
+    if (rawQuery == null || rawQuery.isBlank()) {
+      return Map.of();
+    }
+    Map<String, String> parameters = new LinkedHashMap<>();
+    for (String part : rawQuery.split("&")) {
+      if (part.isBlank()) {
+        continue;
+      }
+      String[] keyValue = part.split("=", 2);
+      String key = urlDecode(keyValue[0]);
+      String value = keyValue.length == 2 ? urlDecode(keyValue[1]) : "";
+      parameters.putIfAbsent(key, value);
+    }
+    return parameters;
+  }
+
+  private static String urlDecode(String value) {
+    return URLDecoder.decode(value, StandardCharsets.UTF_8);
   }
 
   private static void writeRuns(HttpExchange exchange, ExecutionRunHistoryService runHistoryService)
@@ -170,5 +246,19 @@ public final class ObservabilityApiMain {
     try (OutputStream output = exchange.getResponseBody()) {
       output.write(bytes);
     }
+  }
+
+  private static void writeError(HttpExchange exchange, int statusCode, String error) throws IOException {
+    byte[] bytes = toJson(Map.of("error", error)).getBytes(StandardCharsets.UTF_8);
+    exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+    exchange.sendResponseHeaders(statusCode, bytes.length);
+    try (OutputStream output = exchange.getResponseBody()) {
+      output.write(bytes);
+    }
+  }
+
+  private interface QueryHandler {
+    Object execute() throws SQLException;
   }
 }

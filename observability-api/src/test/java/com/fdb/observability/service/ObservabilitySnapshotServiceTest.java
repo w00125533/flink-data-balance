@@ -3,6 +3,8 @@ package com.fdb.observability.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fdb.common.metrics.StageMetricSample;
+import java.util.Map;
+import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
 class ObservabilitySnapshotServiceTest {
@@ -98,5 +100,31 @@ class ObservabilitySnapshotServiceTest {
         .singleElement()
         .extracting("latencyP50Ms")
         .isEqualTo(35L);
+  }
+
+  @Test
+  void keepsLatestSinkLatencySampleWhenOlderSampleArrivesLater() {
+    service.applyMetricSample(StageMetricSample.sinkLatency(
+        "iceberg-kpi-1m", "Cell KPI 1m Iceberg Sink", "healthy", "iceberg", "kpi_1m", "MIN_1",
+        200, 20_000, 40, 20, 40, 60, 0, "", 8, 1_717_400_002_000L));
+    service.applyMetricSample(StageMetricSample.sinkLatency(
+        "iceberg-kpi-1m", "Cell KPI 1m Iceberg Sink", "degraded", "iceberg", "kpi_1m", "MIN_1",
+        1, 100, 999, 900, 999, 1_200, 3, "old failure", 7, 1_717_400_001_000L));
+
+    assertThat(service.sinkLatencySummaries())
+        .filteredOn(summary -> summary.sinkName().equals("iceberg-kpi-1m"))
+        .singleElement()
+        .satisfies(summary -> {
+          assertThat(summary.records()).isEqualTo(200L);
+          assertThat(summary.p95Ms()).isEqualTo(40L);
+          assertThat(summary.checkpointId()).isEqualTo(8L);
+          assertThat(summary.updatedAt()).isEqualTo("2024-06-03T07:33:22Z");
+        });
+  }
+
+  @Test
+  void resolveDynamicBalancingDefaultsToDisabled() {
+    assertThat(ObservabilitySnapshotService.resolveDynamicBalancingEnabled(Map.<String, String>of(), new Properties()))
+        .isFalse();
   }
 }

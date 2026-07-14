@@ -2,6 +2,7 @@ package com.fdb.observability.service;
 
 import com.fdb.common.metrics.StageMetricSample;
 import com.fdb.observability.model.MigrationEvent;
+import com.fdb.observability.model.SinkLatencySummary;
 import com.fdb.observability.model.SinkSummary;
 import com.fdb.observability.model.SourceSummary;
 import com.fdb.observability.model.StageStatus;
@@ -31,7 +32,9 @@ public final class ObservabilitySnapshotService {
   }
 
   public void applyMetricSample(StageMetricSample sample) {
-    samples.put(sampleKey(sample), sample);
+    samples.merge(sampleKey(sample), sample,
+        (current, incoming) -> isUnknownSeed(current) || incoming.updatedAtEpochMs() >= current.updatedAtEpochMs()
+            ? incoming : current);
   }
 
   public List<StageStatus> stageStatuses() {
@@ -91,9 +94,36 @@ public final class ObservabilitySnapshotService {
         .toList();
   }
 
+  public List<SinkLatencySummary> sinkLatencySummaries() {
+    return samples.values().stream()
+        .filter(sample -> !sample.sink().isBlank())
+        .sorted(Comparator.comparing((StageMetricSample sample) -> sample.stageId())
+            .thenComparing(StageMetricSample::window))
+        .map(sample -> new SinkLatencySummary(
+            sample.stageId(),
+            sample.sinkType(),
+            sample.dataset(),
+            sample.windowKind(),
+            sample.records(),
+            sample.bytes(),
+            sample.durationMs(),
+            sample.latencyP50Ms(),
+            sample.latencyP95Ms(),
+            sample.latencyP99Ms(),
+            sample.failureCount(),
+            sample.errorMessage(),
+            sample.checkpointId(),
+            formatUpdatedAt(sample.updatedAtEpochMs())))
+        .toList();
+  }
+
   public long rebalanceTotal() {
     StageMetricSample coordinator = samples.get("load-coordinator");
     return coordinator == null ? 0L : coordinator.rebalanceTotal();
+  }
+
+  public boolean dynamicBalancingEnabled() {
+    return dynamicBalancingEnabled;
   }
 
   private void seedKnownStages() {
@@ -184,5 +214,9 @@ public final class ObservabilitySnapshotService {
       return sample.stageId() + ":" + sample.sink() + ":" + sample.window();
     }
     return sample.stageId();
+  }
+
+  private static boolean isUnknownSeed(StageMetricSample sample) {
+    return "unknown".equals(sample.status());
   }
 }
