@@ -148,9 +148,20 @@ export interface SinkLatencySummary {
   updatedAt: string;
 }
 
+export type ResultSink = 'starrocks' | 'iceberg' | 'hive' | 'kafka' | 'none' | (string & {});
+
+export type ReportStatusValue = 'collecting' | 'ready' | 'failed' | (string & {});
+
 export interface RuntimeConfig {
   dynamicBalancingEnabled: boolean;
-  resultQueryLayer: string;
-  kpiStorage: string;
-  anomalyStorage: string;
+  resultSink: ResultSink;
+  dlqEnabled: boolean;
+  metricsEnabled: boolean;
+  metricsHistoryEnabled: boolean;
+  runId: string;
+  runLabel: string;
+  parallelism: number;
+  checkpointIntervalMs: number;
+  jobStatus: string;
+  reportStatus: ReportStatusValue;
 }

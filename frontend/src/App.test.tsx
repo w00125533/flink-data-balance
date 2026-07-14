@@ -146,9 +146,16 @@ vi.mock('antd', () => {
 beforeEach(() => {
   client.fetchRuntimeConfig.mockResolvedValue({
     dynamicBalancingEnabled: false,
-    resultQueryLayer: 'starrocks',
-    kpiStorage: 'iceberg',
-    anomalyStorage: 'starrocks'
+    resultSink: 'starrocks',
+    dlqEnabled: true,
+    metricsEnabled: true,
+    metricsHistoryEnabled: true,
+    runId: 'run-test',
+    runLabel: '',
+    parallelism: 4,
+    checkpointIntervalMs: 30_000,
+    jobStatus: 'running',
+    reportStatus: 'collecting'
   });
   client.fetchKpiResults.mockResolvedValue([]);
   client.fetchCellAnomalies.mockResolvedValue([]);

@@ -36,7 +36,11 @@ const nodePositions: Record<string, { x: number; y: number; group: string }> = {
   'kafka-cell-anomaly': { x: 1922, y: 128, group: 'Sink' },
   'kafka-grid-anomaly': { x: 1922, y: 342, group: 'Sink' },
   'starrocks-cell-anomaly': { x: 1922, y: 556, group: 'Sink' },
-  'starrocks-grid-anomaly': { x: 1922, y: 770, group: 'Sink' }
+  'starrocks-grid-anomaly': { x: 1922, y: 770, group: 'Sink' },
+  'hive-cell-anomaly': { x: 1922, y: 984, group: 'Sink' },
+  'hive-grid-anomaly': { x: 1922, y: 1198, group: 'Sink' },
+  'iceberg-cell-anomaly': { x: 1922, y: 1412, group: 'Sink' },
+  'iceberg-grid-anomaly': { x: 1922, y: 1626, group: 'Sink' }
 };
 
 Shape.HTML.register({

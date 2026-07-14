@@ -14,7 +14,11 @@ describe('resolveFlowEdges', () => {
     'kafka-cell-anomaly',
     'kafka-grid-anomaly',
     'starrocks-cell-anomaly',
-    'starrocks-grid-anomaly'
+    'starrocks-grid-anomaly',
+    'hive-cell-anomaly',
+    'hive-grid-anomaly',
+    'iceberg-cell-anomaly',
+    'iceberg-grid-anomaly'
   ];
 
   it('uses direct routing when dynamic balancing stages are absent', () => {
@@ -43,5 +47,45 @@ describe('resolveFlowEdges', () => {
     expect(edges).not.toContainEqual(['enrichment', 'grid-anomaly-kafka-sink']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-sink']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-sink']);
+  });
+
+  it('only connects active starrocks sink nodes when only starrocks sinks are active', () => {
+    const edges = resolveFlowEdges([
+      'chr-source',
+      'pm-source',
+      'cfg-source',
+      'kafka',
+      'enrichment',
+      'starrocks-kpi-1m',
+      'starrocks-kpi-5m',
+      'starrocks-cell-anomaly',
+      'starrocks-grid-anomaly'
+    ]);
+
+    expect(edges).toContainEqual(['enrichment', 'starrocks-kpi-1m']);
+    expect(edges).toContainEqual(['enrichment', 'starrocks-kpi-5m']);
+    expect(edges).toContainEqual(['enrichment', 'starrocks-cell-anomaly']);
+    expect(edges).toContainEqual(['enrichment', 'starrocks-grid-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'kafka-kpi-1m']);
+    expect(edges).not.toContainEqual(['enrichment', 'kafka-kpi-5m']);
+    expect(edges).not.toContainEqual(['enrichment', 'kafka-cell-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'kafka-grid-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'hive-kpi-1m']);
+    expect(edges).not.toContainEqual(['enrichment', 'hive-kpi-5m']);
+    expect(edges).not.toContainEqual(['enrichment', 'hive-cell-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'hive-grid-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'iceberg-kpi-1m']);
+    expect(edges).not.toContainEqual(['enrichment', 'iceberg-kpi-5m']);
+    expect(edges).not.toContainEqual(['enrichment', 'iceberg-cell-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'iceberg-grid-anomaly']);
+  });
+
+  it('keeps only source, kafka, and enrichment base edges in none mode', () => {
+    expect(resolveFlowEdges(['chr-source', 'pm-source', 'cfg-source', 'kafka', 'enrichment'])).toEqual([
+      ['chr-source', 'kafka'],
+      ['pm-source', 'kafka'],
+      ['cfg-source', 'kafka'],
+      ['kafka', 'enrichment']
+    ]);
   });
 });

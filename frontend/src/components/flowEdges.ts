@@ -17,7 +17,7 @@ const directRoutingEdges: FlowEdge[] = [
   ['kafka', 'enrichment']
 ];
 
-const sinkEdges: FlowEdge[] = [
+const possibleSinkEdges: FlowEdge[] = [
   ['enrichment', 'kafka-kpi-1m'],
   ['enrichment', 'kafka-kpi-5m'],
   ['enrichment', 'starrocks-kpi-1m'],
@@ -29,7 +29,11 @@ const sinkEdges: FlowEdge[] = [
   ['enrichment', 'kafka-cell-anomaly'],
   ['enrichment', 'kafka-grid-anomaly'],
   ['enrichment', 'starrocks-cell-anomaly'],
-  ['enrichment', 'starrocks-grid-anomaly']
+  ['enrichment', 'starrocks-grid-anomaly'],
+  ['enrichment', 'hive-cell-anomaly'],
+  ['enrichment', 'hive-grid-anomaly'],
+  ['enrichment', 'iceberg-cell-anomaly'],
+  ['enrichment', 'iceberg-grid-anomaly']
 ];
 
 export function resolveFlowEdges(stageIds: Iterable<string>): FlowEdge[] {
@@ -39,6 +43,6 @@ export function resolveFlowEdges(stageIds: Iterable<string>): FlowEdge[] {
   return [
     ...sourceEdges,
     ...(dynamicBalancingEnabled ? dynamicRoutingEdges : directRoutingEdges),
-    ...sinkEdges
+    ...possibleSinkEdges.filter(([source, target]) => ids.has(source) && ids.has(target))
   ];
 }

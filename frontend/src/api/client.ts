@@ -74,7 +74,7 @@ export function fetchSinkLatency(): Promise<SinkLatencySummary[]> {
 }
 
 export function fetchRuntimeConfig(): Promise<RuntimeConfig> {
-  return getJson<RuntimeConfig>('/api/runtime/config');
+  return getJson<RuntimeConfig>('/api/flow/runtime');
 }
 
 export function subscribeObservabilityEvents(handlers: {
