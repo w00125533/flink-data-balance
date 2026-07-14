@@ -24,13 +24,14 @@ class IcebergSinksTest {
         PartitionSpec spec = IcebergSinks.cellKpiPartitionSpec(schema);
 
         assertThat(identifier.toString()).isEqualTo("fdb.cell_kpi");
-        assertThat(schema.columns()).hasSize(18);
+        assertThat(schema.columns()).hasSize(21);
         assertThat(schema.columns().stream().map(field -> field.name()))
             .containsExactly(
                 "window_start_ts", "window_end_ts", "site_id", "cell_id", "grid_id",
-                "num_chr_events", "num_users", "avg_rsrp", "avg_sinr", "avg_prb_usage_dl",
-                "throughput_dl_mbps_avg", "drop_rate", "ho_success_rate", "attach_success_rate",
-                "join_quality", "window_kind", "dt", "hour");
+                "num_chr_events", "num_users", "rsrp_sample_count", "sinr_sample_count",
+                "attach_attempts", "avg_rsrp", "avg_sinr", "avg_prb_usage_dl",
+                "throughput_dl_mbps_avg", "drop_rate", "ho_success_rate",
+                "attach_success_rate", "join_quality", "window_kind", "dt", "hour");
         assertThat(spec.fields().stream().map(field -> field.name()))
             .containsExactly("window_kind", "dt", "hour");
         assertThat(IcebergSinks.tableProperties()).containsEntry("format-version", "2");

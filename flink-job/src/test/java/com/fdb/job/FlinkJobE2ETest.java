@@ -102,6 +102,9 @@ class FlinkJobE2ETest {
         assertThat(result.getSiteId()).isEqualTo(SITE_ID);
         assertThat(result.getCellId()).isEqualTo(CELL_ID);
         assertThat(result.getNumChrEvents()).isEqualTo(2);
+        assertThat(result.getRsrpSampleCount()).isEqualTo(2);
+        assertThat(result.getSinrSampleCount()).isEqualTo(2);
+        assertThat(result.getAttachAttempts()).isZero();
         assertThat(result.getAvgRsrp()).isEqualTo(-90f);
         assertThat(result.getAvgSinr()).isEqualTo(10f);
         assertThat(result.getDropRate()).isZero();

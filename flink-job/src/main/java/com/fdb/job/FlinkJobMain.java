@@ -19,7 +19,6 @@ import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.table.data.RowData;
 import org.slf4j.Logger;
@@ -229,12 +228,16 @@ public class FlinkJobMain {
             .sinkTo(HiveSinks.cellKpiSink("MIN_1"))
             .name("cell-kpi-hive-sink");
 
-        DataStream<CellKpi> cellKpi5m = enriched
-            .keyBy(ec -> ec.chrEvent().getCellId().toString())
-            .window(TumblingProcessingTimeWindows.of(Time.minutes(5)))
-            .process(new CellKpiWindowFunction(WindowKind.MIN_5), new GenericTypeInfo<>(CellKpi.class))
-            .name("kpi-5m")
-            .uid("kpi-5m");
+        DataStream<CellKpi> cellKpi5m = cellKpi1m
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy.<CellKpi>forBoundedOutOfOrderness(Duration.ofMinutes(2))
+                    .withIdleness(Duration.ofMinutes(1))
+                    .withTimestampAssigner((kpi, ts) -> Math.subtractExact(kpi.getWindowEndTs(), 1L)))
+            .keyBy(kpi -> kpi.getCellId().toString())
+            .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+            .process(new CellKpiRollupAggregator(), new GenericTypeInfo<>(CellKpi.class))
+            .name("kpi-5m-rollup")
+            .uid("kpi-5m-rollup");
 
         KafkaSink<CellKpi> cellKpi5mSink = KafkaSink.<CellKpi>builder()
             .setBootstrapServers(bootstrap)

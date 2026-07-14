@@ -164,7 +164,7 @@ public final class SinkPerformanceProbe extends ProcessFunction<CellKpi, CellKpi
     }
 
     private static long estimateBytes(CellKpi value) {
-        return 8L * 4L
+        return 8L * 7L
             + 4L * 7L
             + utf8Bytes(value.getSiteId())
             + utf8Bytes(value.getCellId())

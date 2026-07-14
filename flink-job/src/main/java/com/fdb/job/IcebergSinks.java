@@ -35,17 +35,20 @@ public final class IcebergSinks {
             Types.NestedField.required(5, "grid_id", Types.StringType.get()),
             Types.NestedField.required(6, "num_chr_events", Types.LongType.get()),
             Types.NestedField.required(7, "num_users", Types.LongType.get()),
-            Types.NestedField.required(8, "avg_rsrp", Types.FloatType.get()),
-            Types.NestedField.required(9, "avg_sinr", Types.FloatType.get()),
-            Types.NestedField.required(10, "avg_prb_usage_dl", Types.FloatType.get()),
-            Types.NestedField.required(11, "throughput_dl_mbps_avg", Types.FloatType.get()),
-            Types.NestedField.required(12, "drop_rate", Types.FloatType.get()),
-            Types.NestedField.required(13, "ho_success_rate", Types.FloatType.get()),
-            Types.NestedField.required(14, "attach_success_rate", Types.FloatType.get()),
-            Types.NestedField.required(15, "join_quality", Types.StringType.get()),
-            Types.NestedField.required(16, "window_kind", Types.StringType.get()),
-            Types.NestedField.required(17, "dt", Types.StringType.get()),
-            Types.NestedField.required(18, "hour", Types.StringType.get()));
+            Types.NestedField.required(8, "rsrp_sample_count", Types.LongType.get()),
+            Types.NestedField.required(9, "sinr_sample_count", Types.LongType.get()),
+            Types.NestedField.required(10, "attach_attempts", Types.LongType.get()),
+            Types.NestedField.required(11, "avg_rsrp", Types.FloatType.get()),
+            Types.NestedField.required(12, "avg_sinr", Types.FloatType.get()),
+            Types.NestedField.required(13, "avg_prb_usage_dl", Types.FloatType.get()),
+            Types.NestedField.required(14, "throughput_dl_mbps_avg", Types.FloatType.get()),
+            Types.NestedField.required(15, "drop_rate", Types.FloatType.get()),
+            Types.NestedField.required(16, "ho_success_rate", Types.FloatType.get()),
+            Types.NestedField.required(17, "attach_success_rate", Types.FloatType.get()),
+            Types.NestedField.required(18, "join_quality", Types.StringType.get()),
+            Types.NestedField.required(19, "window_kind", Types.StringType.get()),
+            Types.NestedField.required(20, "dt", Types.StringType.get()),
+            Types.NestedField.required(21, "hour", Types.StringType.get()));
     }
 
     static PartitionSpec cellKpiPartitionSpec(Schema schema) {

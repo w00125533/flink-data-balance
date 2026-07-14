@@ -58,6 +58,8 @@ public class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumula
             .setWindowKind(windowKind).setJoinQuality(JoinQuality.JOINED).setSiteId(valueOrEmpty(acc.siteId))
             .setCellId(valueOrEmpty(acc.cellId)).setGridId(valueOrEmpty(acc.gridId))
             .setNumChrEvents(acc.count).setNumUsers((long) acc.users.size())
+            .setRsrpSampleCount(acc.rsrpCount).setSinrSampleCount(acc.sinrCount)
+            .setAttachAttempts(acc.attachAttempts)
             .setAvgRsrp(avg(acc.rsrpSum, acc.rsrpCount)).setAvgSinr(avg(acc.sinrSum, acc.sinrCount))
             .setAvgPrbUsageDl(avg(acc.prbUsageDlSum, acc.pmCount))
             .setThroughputDlMbpsAvg(avg(acc.throughputDlSum, acc.pmCount))

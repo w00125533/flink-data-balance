@@ -25,6 +25,9 @@ class CellKpiSchemaTest {
             .setGridId("wx4g0ec")
             .setNumChrEvents(1234L)
             .setNumUsers(456L)
+            .setRsrpSampleCount(1200L)
+            .setSinrSampleCount(1100L)
+            .setAttachAttempts(50L)
             .setAvgRsrp(-93.5f)
             .setAvgSinr(10.2f)
             .setAvgPrbUsageDl(0.65f)
@@ -46,5 +49,8 @@ class CellKpiSchemaTest {
         assertThat(decoded.getWindowKind()).isEqualTo(WindowKind.MIN_1);
         assertThat(decoded.getJoinQuality()).isEqualTo(JoinQuality.JOINED);
         assertThat(decoded.getNumChrEvents()).isEqualTo(1234L);
+        assertThat(decoded.getRsrpSampleCount()).isEqualTo(1200L);
+        assertThat(decoded.getSinrSampleCount()).isEqualTo(1100L);
+        assertThat(decoded.getAttachAttempts()).isEqualTo(50L);
     }
 }

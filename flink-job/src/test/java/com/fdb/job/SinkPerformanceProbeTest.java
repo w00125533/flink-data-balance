@@ -17,17 +17,17 @@ class SinkPerformanceProbeTest {
 
         assertThat(probe.record(first)).isSameAs(first);
         assertThat(probe.records()).isEqualTo(1);
-        assertThat(probe.approxBytes()).isEqualTo(83);
+        assertThat(probe.approxBytes()).isEqualTo(107);
 
         probe.record(second);
 
         assertThat(probe.records()).isEqualTo(2);
-        assertThat(probe.approxBytes()).isEqualTo(169);
+        assertThat(probe.approxBytes()).isEqualTo(217);
         assertThat(probe.summaryLine()).contains(
             "[summary-code]",
             "sink=hive-cell-kpi-1m",
             "records=2",
-            "approx_bytes=169",
+            "approx_bytes=217",
             "first_record_ts=1000",
             "latest_record_ts=2000",
             "records_per_sec=");
@@ -44,6 +44,9 @@ class SinkPerformanceProbeTest {
             "grid-" + suffix,
             1L,
             2L,
+            3L,
+            4L,
+            5L,
             3.0f,
             4.0f,
             5.0f,

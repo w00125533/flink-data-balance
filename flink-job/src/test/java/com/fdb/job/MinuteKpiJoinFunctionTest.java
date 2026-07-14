@@ -41,6 +41,9 @@ class MinuteKpiJoinFunctionTest {
             assertThat(kpi.getWindowKind()).isEqualTo(WindowKind.MIN_1);
             assertThat(kpi.getJoinQuality()).isEqualTo(JoinQuality.JOINED);
             assertThat(kpi.getNumChrEvents()).isEqualTo(2L);
+            assertThat(kpi.getRsrpSampleCount()).isEqualTo(2L);
+            assertThat(kpi.getSinrSampleCount()).isEqualTo(2L);
+            assertThat(kpi.getAttachAttempts()).isEqualTo(2L);
             assertThat(kpi.getAvgPrbUsageDl()).isEqualTo(0.60f);
 
             harness.processWatermark(3 * MINUTE);
@@ -83,6 +86,9 @@ class MinuteKpiJoinFunctionTest {
             assertThat(output).hasSize(1);
             assertThat(output.get(0).getJoinQuality()).isEqualTo(JoinQuality.CHR_ONLY);
             assertThat(output.get(0).getNumChrEvents()).isEqualTo(2L);
+            assertThat(output.get(0).getRsrpSampleCount()).isEqualTo(1L);
+            assertThat(output.get(0).getSinrSampleCount()).isEqualTo(1L);
+            assertThat(output.get(0).getAttachAttempts()).isEqualTo(1L);
             assertThat(output.get(0).getAvgRsrp()).isEqualTo(-90.0f);
         }
     }
