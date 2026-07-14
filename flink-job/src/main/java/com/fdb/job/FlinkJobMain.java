@@ -110,7 +110,7 @@ public class FlinkJobMain {
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((event, ts) -> event.getEventTs()),
             "chr-source")
-            .process(new StageMetricsProbe<>("chr-source", "CHR Source", "healthy", 5_000L, metricConfig))
+            .process(stageMetricsProbe("chr-source", "CHR Source", "healthy", resultSinkConfig, metricConfig))
             .name("chr-source-metrics");
 
         DataStream<PmStat> pmStream = env.fromSource(pmSource,
@@ -118,14 +118,14 @@ public class FlinkJobMain {
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((pm, ts) -> pmEventTimestamp(pm)),
             "pm-source")
-            .process(new StageMetricsProbe<>("pm-source", "PM Source", "healthy", 5_000L, metricConfig))
+            .process(stageMetricsProbe("pm-source", "PM Source", "healthy", resultSinkConfig, metricConfig))
             .name("pm-source-metrics");
 
         DataStream<CfgConfig> cfgStream = env.fromSource(cfgSource,
             WatermarkStrategy.<CfgConfig>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
             "cfg-source")
-            .process(new StageMetricsProbe<>("cfg-source", "CFG Source", "healthy", 5_000L, metricConfig))
+            .process(stageMetricsProbe("cfg-source", "CFG Source", "healthy", resultSinkConfig, metricConfig))
             .name("cfg-source-metrics");
 
         // Enrichment pipeline: unify CHR + PM + CFG, enrich, detect anomalies and KPI
@@ -144,12 +144,13 @@ public class FlinkJobMain {
             .name("to-cfg-env");
 
         DataStream<InputEnvelope> mergedInput = chrEnv.union(pmEnv, cfgEnv)
-            .process(new StageMetricsProbe<>("kafka", "Kafka Topics", "healthy", 5_000L, metricConfig))
+            .process(stageMetricsProbe("kafka", "Kafka Topics", "healthy", resultSinkConfig, metricConfig))
             .name("kafka-topics-metrics");
 
         DataStream<RoutedEnvelope> assigned;
         if (dynamicBalancingEnabled) {
-            assigned = buildDynamicallyAssignedStream(env, mergedInput, bootstrap, groupId, metricConfig);
+            assigned = buildDynamicallyAssignedStream(env, mergedInput, bootstrap, groupId,
+                resultSinkConfig, metricConfig);
         } else {
             assigned = mergedInput
                 .map(FlinkJobMain::directRoute)
@@ -163,7 +164,7 @@ public class FlinkJobMain {
             .name("enrichment")
             .uid("enrichment");
         DataStream<EnrichedChr> enriched = enrichedRaw
-            .process(new StageMetricsProbe<>("enrichment", "Enrichment Process", "healthy", 5_000L, metricConfig))
+            .process(stageMetricsProbe("enrichment", "Enrichment Process", "healthy", resultSinkConfig, metricConfig))
             .name("enrichment-metrics");
 
         if (resultSinkConfig.dlqEnabled()) {
@@ -260,6 +261,7 @@ public class FlinkJobMain {
         DataStream<InputEnvelope> mergedInput,
         String bootstrap,
         String groupId,
+        ResultSinkConfig resultSinkConfig,
         MetricRuntimeConfig metricConfig) {
         KafkaSource<String> routingSource = KafkaSource.<String>builder()
             .setBootstrapServers(bootstrap).setTopics("lb-routing")
@@ -274,7 +276,7 @@ public class FlinkJobMain {
             .process(new VBucketLoadMeter(), new GenericTypeInfo<>(RoutedEnvelope.class))
             .name("vbucket-load-meter");
         DataStream<RoutedEnvelope> assigned = metered
-            .process(new StageMetricsProbe<>("assigner", "VBucket Assigner", "healthy", 5_000L, metricConfig))
+            .process(stageMetricsProbe("assigner", "VBucket Assigner", "healthy", resultSinkConfig, metricConfig))
             .name("vbucket-assigner-metrics");
 
         KafkaSink<String> heartbeatKafkaSink = KafkaSink.<String>builder()
@@ -307,8 +309,8 @@ public class FlinkJobMain {
             .process(new LoadCoordinator(metricConfig), new GenericTypeInfo<>(RoutingEntry.class))
             .name("load-coordinator")
             .setParallelism(1)
-            .process(new StageMetricsProbe<>("load-coordinator", "Load Coordinator", "healthy", 5_000L,
-                metricConfig))
+            .process(stageMetricsProbe("load-coordinator", "Load Coordinator", "healthy",
+                resultSinkConfig, metricConfig))
             .name("load-coordinator-metrics");
 
         KafkaSink<String> routingSink = KafkaSink.<String>builder()
@@ -323,6 +325,13 @@ public class FlinkJobMain {
             .name("lb-routing-sink");
 
         return assigned;
+    }
+
+    static <T> StageMetricsProbe<T> stageMetricsProbe(String stageId, String displayName, String status,
+                                                      ResultSinkConfig resultSinkConfig,
+                                                      MetricRuntimeConfig metricConfig) {
+        return new StageMetricsProbe<>(
+            stageId, displayName, status, resultSinkConfig.metricsEmitIntervalMs(), metricConfig);
     }
 
     static RoutedEnvelope directRoute(InputEnvelope envelope) {

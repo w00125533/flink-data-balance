@@ -53,11 +53,15 @@ class ObservabilitySnapshotServiceTest {
         .contains("kafka-kpi-1m", "starrocks-kpi-1m", "hive-kpi-1m", "iceberg-kpi-1m",
             "kafka-kpi-5m", "starrocks-kpi-5m", "hive-kpi-5m", "iceberg-kpi-5m",
             "kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-cell-anomaly", "starrocks-grid-anomaly");
+            "starrocks-cell-anomaly", "starrocks-grid-anomaly",
+            "hive-cell-anomaly", "hive-grid-anomaly",
+            "iceberg-cell-anomaly", "iceberg-grid-anomaly");
     assertThat(service.stageStatuses())
         .extracting("stageId")
         .contains("kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-cell-anomaly", "starrocks-grid-anomaly");
+            "starrocks-cell-anomaly", "starrocks-grid-anomaly",
+            "hive-cell-anomaly", "hive-grid-anomaly",
+            "iceberg-cell-anomaly", "iceberg-grid-anomaly");
   }
 
   @Test
@@ -71,7 +75,20 @@ class ObservabilitySnapshotServiceTest {
         .filteredOn(summary -> summary.window().equals("ANOMALY"))
         .extracting("sink")
         .contains("kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-cell-anomaly", "starrocks-grid-anomaly");
+            "starrocks-cell-anomaly", "starrocks-grid-anomaly",
+            "hive-cell-anomaly", "hive-grid-anomaly",
+            "iceberg-cell-anomaly", "iceberg-grid-anomaly");
+  }
+
+  @Test
+  void includesAllBusinessResultStagesForEachSinkType() {
+    assertThat(service.stageStatuses())
+        .extracting("stageId")
+        .contains(
+            "kafka-kpi-1m", "kafka-kpi-5m", "kafka-cell-anomaly", "kafka-grid-anomaly",
+            "starrocks-kpi-1m", "starrocks-kpi-5m", "starrocks-cell-anomaly", "starrocks-grid-anomaly",
+            "hive-kpi-1m", "hive-kpi-5m", "hive-cell-anomaly", "hive-grid-anomaly",
+            "iceberg-kpi-1m", "iceberg-kpi-5m", "iceberg-cell-anomaly", "iceberg-grid-anomaly");
   }
 
   @Test
@@ -143,6 +160,25 @@ class ObservabilitySnapshotServiceTest {
     assertThat(config.checkpointIntervalMs()).isEqualTo(30_000L);
     assertThat(config.jobStatus()).isEqualTo("unknown");
     assertThat(config.reportStatus()).isEqualTo("collecting");
+  }
+
+  @Test
+  void runtimeConfigInfersRunningJobStatusAfterRuntimeMetricArrives() {
+    service.applyMetricSample(StageMetricSample.stage("enrichment", "Enrichment Process", "healthy",
+        1.0, 1.0, 0, 0, 0, 1_717_400_000_000L));
+
+    assertThat(service.runtimeConfig().jobStatus()).isEqualTo("running");
+  }
+
+  @Test
+  void runtimeConfigReflectsReportStatusState() {
+    service.markReportReady();
+
+    assertThat(service.runtimeConfig().reportStatus()).isEqualTo("ready");
+
+    service.markReportFailed();
+
+    assertThat(service.runtimeConfig().reportStatus()).isEqualTo("failed");
   }
 
   @Test

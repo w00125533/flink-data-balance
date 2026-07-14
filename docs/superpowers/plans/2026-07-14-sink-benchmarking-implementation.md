@@ -2153,7 +2153,7 @@ git commit -m "feat(frontend): show active benchmark topology"
 
 **Verification results from 2026-07-14 local run:**
 
-- `mvn test`: PASS, reactor `BUILD SUCCESS`, 204 Java tests run with 0 failures/errors.
+- `mvn test`: PASS, reactor `BUILD SUCCESS`, 208 Java tests run with 0 failures/errors.
 - `npm --prefix frontend test`: PASS, 3 files / 11 tests.
 - `bash -n scripts/deploy.sh`, `scripts/test-deploy-dispatch.sh`, `scripts/test-e2e-summary-lib.sh`, `scripts/test-init-kafka-topics.sh`, `scripts/test-retention-maintenance.sh`: PASS.
 - `docker compose -f docker/docker-compose.yml --profile e2e config`: PASS.

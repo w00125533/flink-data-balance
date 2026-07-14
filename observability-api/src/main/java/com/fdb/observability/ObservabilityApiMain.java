@@ -256,11 +256,14 @@ public final class ObservabilityApiMain {
     }
     try {
       Path reportPath = reportService.generate(runId);
+      service.markReportReady();
       writeJson(exchange, new ReportStatus(runId, "ready", reportPath.toString()));
     } catch (IllegalArgumentException e) {
+      service.markReportFailed();
       log.warn("Rejected benchmark report request: {}", e.getMessage());
       writeError(exchange, 400, "bad request");
     } catch (UncheckedIOException e) {
+      service.markReportFailed();
       log.error("Benchmark report generation failed", e);
       writeError(exchange, 500, "report generation failed");
     }

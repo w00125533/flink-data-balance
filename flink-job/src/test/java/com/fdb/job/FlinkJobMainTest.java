@@ -1,12 +1,16 @@
 package com.fdb.job;
 
+import com.fdb.job.config.ResultSinkConfig;
+import com.fdb.job.config.ResultSinkType;
+import com.fdb.job.metrics.MetricRuntimeConfig;
+import com.fdb.job.metrics.StageMetricsProbe;
 import com.fdb.job.model.InputEnvelope;
 import com.fdb.job.model.RoutedEnvelope;
-import com.fdb.job.config.ResultSinkType;
 import com.fdb.job.sink.IcebergConfig;
 import com.fdb.common.avro.PmStat;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Properties;
 
@@ -148,6 +152,20 @@ class FlinkJobMainTest {
         properties.setProperty("fdb.dynamic.balancing.enabled", "true");
 
         assertThat(FlinkJobMain.resolveDynamicBalancingEnabled(Map.of(), properties)).isTrue();
+    }
+
+    @Test
+    void stage_metrics_probe_uses_configured_emit_interval() throws Exception {
+        ResultSinkConfig resultSinkConfig = new ResultSinkConfig(
+            ResultSinkType.STARROCKS, true, true, true, 7_000L, false, "run-a", "");
+        MetricRuntimeConfig metricConfig = new MetricRuntimeConfig("run-a", "starrocks", 4, true);
+
+        StageMetricsProbe<Object> probe = FlinkJobMain.stageMetricsProbe(
+            "stage-a", "Stage A", "healthy", resultSinkConfig, metricConfig);
+
+        Field emitInterval = StageMetricsProbe.class.getDeclaredField("emitIntervalMs");
+        emitInterval.setAccessible(true);
+        assertThat(emitInterval.getLong(probe)).isEqualTo(7_000L);
     }
 
     @Test

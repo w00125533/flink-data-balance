@@ -47,7 +47,8 @@ class ObservabilityApiMainTest {
 
   @Test
   void runsReportEndpointGeneratesReportStatusJson() throws Exception {
-    HttpServer server = ObservabilityApiMain.createServer(0, new ObservabilitySnapshotService(),
+    ObservabilitySnapshotService service = new ObservabilitySnapshotService();
+    HttpServer server = ObservabilityApiMain.createServer(0, service,
         new ExecutionRunHistoryService(tempDir), new StarRocksQueryService(), new BenchmarkReportService(tempDir));
     server.start();
     try {
@@ -58,6 +59,7 @@ class ObservabilityApiMainTest {
       assertThat(status.status()).isEqualTo("ready");
       assertThat(status.path()).endsWith("report.md");
       assertThat(Files.exists(Path.of(status.path()))).isTrue();
+      assertThat(service.runtimeConfig().reportStatus()).isEqualTo("ready");
     } finally {
       server.stop(0);
     }

@@ -17,11 +17,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class ObservabilitySnapshotService {
   private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
   private final Map<String, StageMetricSample> samples = new ConcurrentHashMap<>();
   private final boolean dynamicBalancingEnabled;
+  private final AtomicReference<String> reportStatus = new AtomicReference<>("collecting");
 
   public ObservabilitySnapshotService() {
     this(resolveDynamicBalancingEnabled(System.getenv(), System.getProperties()));
@@ -147,8 +149,16 @@ public final class ObservabilitySnapshotService {
         resolveText(env, properties, "FDB_RUN_LABEL", "fdb.run.label", ""),
         resolveInt(env, properties, "FDB_FLINK_PARALLELISM", "fdb.flink.parallelism", 4),
         checkpointIntervalMs,
-        resolveText(env, properties, "FDB_JOB_STATUS", "fdb.job.status", "unknown"),
-        resolveText(env, properties, "FDB_REPORT_STATUS", "fdb.report.status", "collecting"));
+        resolveText(env, properties, "FDB_JOB_STATUS", "fdb.job.status", inferredJobStatus()),
+        resolveText(env, properties, "FDB_REPORT_STATUS", "fdb.report.status", reportStatus.get()));
+  }
+
+  public void markReportReady() {
+    reportStatus.set("ready");
+  }
+
+  public void markReportFailed() {
+    reportStatus.set("failed");
   }
 
   private void seedKnownStages() {
@@ -177,6 +187,10 @@ public final class ObservabilitySnapshotService {
     defaults.add(sinkDefault("kafka-grid-anomaly", "Grid Anomaly Kafka Sink", "kafka", "grid_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("starrocks-cell-anomaly", "Cell Anomaly StarRocks Sink", "starrocks", "cell_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("starrocks-grid-anomaly", "Grid Anomaly StarRocks Sink", "starrocks", "grid_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("hive-cell-anomaly", "Cell Anomaly Hive Sink", "hive", "cell_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("hive-grid-anomaly", "Grid Anomaly Hive Sink", "hive", "grid_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("iceberg-cell-anomaly", "Cell Anomaly Iceberg Sink", "iceberg", "cell_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("iceberg-grid-anomaly", "Grid Anomaly Iceberg Sink", "iceberg", "grid_anomaly_events", "ANOMALY", now));
     defaults.forEach(sample -> samples.put(sampleKey(sample), sample));
   }
 
@@ -205,8 +219,16 @@ public final class ObservabilitySnapshotService {
     order.put("kafka-cell-anomaly", next++);
     order.put("kafka-grid-anomaly", next++);
     order.put("starrocks-cell-anomaly", next++);
-    order.put("starrocks-grid-anomaly", next);
+    order.put("starrocks-grid-anomaly", next++);
+    order.put("hive-cell-anomaly", next++);
+    order.put("hive-grid-anomaly", next++);
+    order.put("iceberg-cell-anomaly", next++);
+    order.put("iceberg-grid-anomaly", next);
     return order;
+  }
+
+  private String inferredJobStatus() {
+    return samples.values().stream().anyMatch(sample -> !isUnknownSeed(sample)) ? "running" : "unknown";
   }
 
   private static StageMetricSample sinkDefault(String stageId, String displayName, String sinkType,
