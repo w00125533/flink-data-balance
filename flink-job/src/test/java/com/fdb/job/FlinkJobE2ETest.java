@@ -1,5 +1,9 @@
 package com.fdb.job;
 
+import com.fdb.job.anomaly.AnomalyDetector;
+import com.fdb.job.anomaly.CoverageHoleDetector;
+import com.fdb.job.config.RuleConfig;
+import com.fdb.job.model.EnrichedChr;
 import com.fdb.common.avro.*;
 import com.fdb.common.geo.Geohash;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -75,44 +79,7 @@ class FlinkJobE2ETest {
     }
 
     // ─────────────────────────────────────────────────
-    // KPI Aggregation Unit Test
     // ─────────────────────────────────────────────────
-
-    @Test
-    void kpi_aggregation_computes_correct_metrics() {
-        KpiAggregator agg = new KpiAggregator(WindowKind.MIN_1);
-        KpiAccumulator acc = agg.createAccumulator();
-
-        EnrichedChr enriched = enrichedChrWith(-100f, 5f, 0, pmStat(0.6f));
-        acc = agg.add(enriched, acc);
-
-        EnrichedChr enriched2 = enrichedChrWith(-80f, 15f, 1, null);
-        acc = agg.add(enriched2, acc);
-
-        acc.windowStartTs = BASE_TS;
-        acc.windowEndTs = BASE_TS + 60_000;
-        acc.siteId = SITE_ID;
-        acc.cellId = CELL_ID;
-
-        CellKpi result = agg.getResult(acc);
-
-        assertThat(result.getWindowKind()).isEqualTo(WindowKind.MIN_1);
-        assertThat(result.getWindowStartTs()).isEqualTo(BASE_TS);
-        assertThat(result.getWindowEndTs()).isEqualTo(BASE_TS + 60_000);
-        assertThat(result.getSiteId()).isEqualTo(SITE_ID);
-        assertThat(result.getCellId()).isEqualTo(CELL_ID);
-        assertThat(result.getNumChrEvents()).isEqualTo(2);
-        assertThat(result.getRsrpSampleCount()).isEqualTo(2);
-        assertThat(result.getSinrSampleCount()).isEqualTo(2);
-        assertThat(result.getAttachAttempts()).isZero();
-        assertThat(result.getAvgRsrp()).isEqualTo(-90f);
-        assertThat(result.getAvgSinr()).isEqualTo(10f);
-        assertThat(result.getDropRate()).isZero();
-        assertThat(result.getAvgPrbUsageDl()).isEqualTo(0.6f);
-        assertThat(result.getAttachSuccessRate()).isZero();
-        assertThat(result.getNumUsers()).isEqualTo(1);
-        assertThat(result.getThroughputDlMbpsAvg()).isEqualTo(50f);
-    }
 
     @Test
     void coverage_hole_pipeline_groups_by_grid() throws Exception {

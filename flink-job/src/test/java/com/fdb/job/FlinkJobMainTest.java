@@ -1,5 +1,8 @@
 package com.fdb.job;
 
+import com.fdb.job.model.InputEnvelope;
+import com.fdb.job.model.RoutedEnvelope;
+import com.fdb.job.sink.IcebergConfig;
 import com.fdb.common.avro.PmStat;
 import org.junit.jupiter.api.Test;
 
