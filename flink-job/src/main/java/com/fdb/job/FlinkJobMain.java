@@ -169,11 +169,8 @@ public class FlinkJobMain {
         anomalies.sinkTo(anomalySink)
             .name("anomaly-kafka-sink");
 
-        anomalies
-            .process(new StageMetricsProbe<>("starrocks-sink", "StarRocks Sink", "healthy", 5_000L))
-            .name("starrocks-anomaly-sink-metrics")
-            .sinkTo(JdbcSinks.anomalySink())
-            .name("anomaly-jdbc-sink");
+        cellAnomalies.sinkTo(StarRocksSinks.cellAnomalySink()).name("cell-anomaly-starrocks-sink");
+        coverageAnomalies.sinkTo(StarRocksSinks.gridAnomalySink()).name("grid-anomaly-starrocks-sink");
 
         // KPI aggregation (1-minute CHR/PM event-time full join)
 
