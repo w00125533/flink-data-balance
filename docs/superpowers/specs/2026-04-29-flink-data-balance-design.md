@@ -1,7 +1,7 @@
 # Flink 数据均衡处理工程 - 设计文档
 
 - **创建日期**: 2026-04-29
-- **最近刷新**: 2026-07-09
+- **最近刷新**: 2026-07-14
 - **状态**: 待评审
 - **关键技术栈**: Java 21 · Flink 1.20 · Maven · Avro · Kafka · StarRocks · Hive HMS · Iceberg · React 18 · TypeScript · Vite · Ant Design · AntV X6 · Prometheus
 
@@ -21,11 +21,12 @@
    - 产出 1 分钟小区 KPI，5 分钟 KPI 从 1 分钟 KPI rollup。
    - 产出小区级异常与栅格级异常。
 4. **动态均衡可选**：默认关闭；关闭时 Flink DAG 不创建动态均衡相关算子。
-5. **统一查询入口**：KPI 主持久化在 Iceberg，StarRocks 通过外部目录/视图查询 KPI；异常直接写入 StarRocks 内表。
-6. **湖表保留**：Hive Parquet 与 Iceberg 保留为湖表落地和本地对比路径，查询通过 StarRocks 层统一进入。
-7. **实时观测控制台**：展示流处理状态、KPI 结果、异常结果、栅格异常、每次 sink 写入耗时与存储健康状态。
+5. **单类型业务结果 Sink**：通过 `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 控制本次运行全部业务结果只写一种 sink，便于压测不同存储的上限。
+6. **统一业务结果口径**：KPI 1m、KPI 5m、小区异常、栅格异常均纳入同一个 result sink 开关；Hive/Iceberg 模式下异常结果也落成对应表。
+7. **实时观测控制台**：展示当前 run、实际启用的 DAG、KPI 结果、异常结果、每次 sink 写入耗时、瓶颈候选与压测报告入口。
 8. **数据老化治理**：业务流和结果数据按 1 小时、10GB 上限治理；compact 配置类 topic 保留最新配置。
 9. **多目标部署入口**：通过统一 `scripts/deploy.sh <target> <command>` 管理本地 Docker 调试和外部 YARN 部署；本地复用 `../shared-data-infra`，外部环境通过 `.env` 连接已部署的 Kafka、HDFS、Hive、StarRocks、YARN 等基础设施。
+10. **压测报告**：每次压测以 `runId` 归档 metrics 历史并生成 `report.md`，用于对比不同 sink、并行度和 checkpoint 配置下的瓶颈。
 
 ### 1.2 非目标
 
@@ -43,8 +44,8 @@
 - **PM 语义统一**：话统数据统一命名为 PM，topic、schema、类名、算子、指标、文档和前端都使用 PM。
 - **动态均衡按需启用**：默认不启用，减少 DAG 复杂度和本地资源消耗；需要压测倾斜时再打开。
 - **结果可解释**：Full JOIN 输出质量标记，明确区分 `JOINED`、`CHR_ONLY`、`PM_ONLY`。
-- **查询不复制 KPI 主数据**：KPI 以 Iceberg 为主表，StarRocks 负责统一查询和加速入口。
-- **观测面与数据面分离**：业务结果、sink 耗时、Flink 指标分别采集，前端统一呈现。
+- **业务结果 Sink 单选**：业务结果落地不再并行写 Iceberg、StarRocks、Hive、Kafka；每次运行只构建一种业务 sink 分支。
+- **观测面与数据面分离**：业务结果 sink 与观测 metrics 分离；metrics 走 Kafka 轻量采样和 API 本地历史文件，不污染被测 result sink。
 - **部署目标显式化**：local 与 external-yarn 共享生命周期命令，但不共享执行假设；local 使用 Docker Compose 和 shared-data-infra 容器，external-yarn 使用 Linux CLI 和外部 endpoint。
 
 ---
@@ -73,10 +74,10 @@ Flink job
       -> grid anomaly detector
 
 Outputs
-  - KPI 1m / 5m -> Kafka result topics -> Iceberg table -> StarRocks external view
-  - KPI 1m / 5m -> Hive Parquet path
-  - anomalies   -> StarRocks internal tables
-  - sink metrics -> fdb-stage-metrics / Prometheus
+  - KPI 1m / 5m -> selected result sink only
+  - cell/grid anomalies -> selected result sink only
+  - sink metrics -> fdb-stage-metrics -> Observability API memory + local JSONL history
+  - benchmark report -> docker/data/observability-runs/<runId>/report.md
 ```
 
 默认链路中不创建动态均衡相关算子。Flink Web UI 和观测控制台都只展示实际存在的 source、aggregation、join、anomaly、sink 和 observability 节点。
@@ -125,6 +126,17 @@ flink-data-balance/
 ├── topology-service/        # 拓扑发布服务
 ├── simulator/               # CHR/PM/CFG 三模式模拟器
 ├── flink-job/               # Flink 主作业
+│   └── src/main/java/com/fdb/job/
+│       ├── config/          # 作业配置、规则配置、result sink 开关
+│       ├── source/          # Kafka source / Avro serde
+│       ├── model/           # Flink 作业内 envelope 与 minute fact
+│       ├── enrich/          # CHR/PM/CFG 富化
+│       ├── kpi/             # CHR/PM 预聚合、分钟拼接、5 分钟 rollup
+│       ├── anomaly/         # 小区级与栅格级异常检测
+│       ├── balance/         # vbucket 路由与负载均衡
+│       ├── sink/            # ResultSinks、StarRocks/Hive/Iceberg/Kafka sink
+│       ├── metrics/         # StageMetricsProbe、SinkLatencyProbe、metrics publisher
+│       └── maintenance/     # Iceberg/存储老化维护工具
 ├── observability-api/       # 观测与结果查询 API
 ├── frontend/                # React 观测控制台
 ├── docker/                  # 项目侧 compose，仅保留本工程服务
@@ -371,7 +383,7 @@ CellKpi MIN_1 / enriched CHR context
   -> keyBy(cellId)
   -> CellAnomalyDetector
   -> cell-anomaly-events
-  -> StarRocks internal table
+  -> selected result sink
 ```
 
 栅格级异常：
@@ -381,7 +393,7 @@ Enriched location / CellKpi
   -> keyBy(gridId)
   -> GridAnomalyDetector
   -> grid-anomaly-events
-  -> StarRocks internal table
+  -> selected result sink
 ```
 
 v1 规则：
@@ -419,117 +431,112 @@ FDB_FLINK_PARALLELISM=4
 taskmanager.numberOfTaskSlots=4
 ```
 
-KPI window 与重 sink 拆链。观测阶段使用 SinkLatencyProbe stage ID，实际 Flink sink name 仍保留在 sinkTo 节点上：
+KPI window 与重 sink 拆链。观测阶段使用 SinkLatencyProbe stage ID，实际 Flink sink name 仍保留在 sinkTo 节点上。业务结果 sink 按 `FDB_RESULT_SINK` 单选构建：
 
-- `kpi-1m`
-- `kpi-5m-rollup`
-- `kafka-kpi-1m` -> actual sink `cell-kpi-kafka-sink`
-- `starrocks-kpi-1m` -> actual sink `cell-kpi-jdbc-sink`
-- `hive-kpi-1m` -> actual sink `cell-kpi-hive-sink`
-- `iceberg-kpi-1m` -> actual sink `cell-kpi-iceberg-sink`
-- `kafka-kpi-5m` -> actual sink `cell-kpi-5m-kafka-sink`
-- `starrocks-kpi-5m` -> actual sink `cell-kpi-5m-jdbc-sink`
-- `hive-kpi-5m` -> actual sink `cell-kpi-5m-hive-sink`
-- `iceberg-kpi-5m` -> actual sink `cell-kpi-5m-iceberg-sink`
-- `kafka-cell-anomaly` -> actual sink `cell-anomaly-kafka-sink`
-- `kafka-grid-anomaly` -> actual sink `grid-anomaly-kafka-sink`
-- `starrocks-cell-anomaly` -> actual sink `cell-anomaly-starrocks-sink`
-- `starrocks-grid-anomaly` -> actual sink `grid-anomaly-starrocks-sink`
+| `FDB_RESULT_SINK` | 创建的业务 sink 分支 |
+|---|---|
+| `starrocks` | `starrocks-kpi-1m`、`starrocks-kpi-5m`、`starrocks-cell-anomaly`、`starrocks-grid-anomaly` |
+| `iceberg` | `iceberg-kpi-1m`、`iceberg-kpi-5m`、`iceberg-cell-anomaly`、`iceberg-grid-anomaly` |
+| `hive` | `hive-kpi-1m`、`hive-kpi-5m`、`hive-cell-anomaly`、`hive-grid-anomaly` |
+| `kafka` | `kafka-kpi-1m`、`kafka-kpi-5m`、`kafka-cell-anomaly`、`kafka-grid-anomaly` |
+| `none` | 不创建业务结果 sink，仅保留计算链路和可选 metrics |
 
 通过 `startNewChain` / `disableChaining` 或显式算子边界避免 UI 上把窗口和多个 sink 合并为一个 vertex，方便定位 busy、backpressure 和 sink 延迟。
+
+### 5.9 Result Sink 开关
+
+统一结果 sink 配置：
+
+```text
+FDB_RESULT_SINK=starrocks | iceberg | hive | kafka | none
+FDB_DLQ_ENABLED=true | false
+```
+
+`FDB_RESULT_SINK` 控制 KPI 1m、KPI 5m、小区异常、栅格异常四类业务结果。未选中的业务 sink 分支不创建，Flink Web UI、前端流程图和压测报告中也不展示这些分支。
+
+DLQ 不属于业务结果 sink。`FDB_DLQ_ENABLED=true` 时，配置缺失、迟到或无法富化的数据可以写入 Kafka 兜底 topic；压测时可关闭以减少额外 Kafka 写入干扰。
+
+Kafka metrics、动态均衡 heartbeat/routing、checkpoint/savepoint 不受 `FDB_RESULT_SINK` 控制。
 
 ---
 
 ## 6. Sink 与存储
 
-### 6.1 KPI 主持久化：Iceberg
+### 6.1 Result Sink 类型
 
-1 分钟和 5 分钟 KPI 继续写入 Iceberg `fdb.cell_kpi`。表中通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`。
+业务结果由 `FDB_RESULT_SINK` 单选落地：
 
-默认配置：
+| 类型 | 落地范围 | 说明 |
+|---|---|---|
+| `starrocks` | `cell_kpi`、`cell_anomaly_events`、`grid_anomaly_events` | 面向在线查询和高吞吐 JDBC 写入压测。 |
+| `iceberg` | `cell_kpi`、`cell_anomaly_events`、`grid_anomaly_events` | 面向湖表写入、checkpoint commit 和小文件成本压测。 |
+| `hive` | `kpi`、`cell_anomaly_events`、`grid_anomaly_events` Parquet 路径 | 面向 HDFS/Hive FileSink 写入压测。 |
+| `kafka` | `cell-kpi-1m`、`cell-kpi-5m`、`cell-anomaly-events`、`grid-anomaly-events` | 面向 Kafka 输出链路压测。 |
+| `none` | 无业务结果落地 | 面向纯计算链路压测。 |
+
+### 6.2 Iceberg 表
+
+Iceberg 模式写入 3 张表：
 
 ```text
-FDB_ICEBERG_ENABLED=true
-FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
-FDB_ICEBERG_CATALOG=fdb_iceberg
-FDB_ICEBERG_DATABASE=iceberg_db
-FDB_ICEBERG_TABLE=cell_kpi
+iceberg_db.cell_kpi
+iceberg_db.cell_anomaly_events
+iceberg_db.grid_anomaly_events
 ```
 
-Iceberg 分区：
+`cell_kpi` 通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`，分区为：
 
 ```text
 window_kind, dt, hour
 ```
 
-其中 `dt/hour` 由 `window_start_ts` 派生。
-
-### 6.2 Hive Parquet
-
-Hive Parquet 保留为湖表输出路径：
+异常表分区为：
 
 ```text
-hdfs://namenode:8020/warehouse/fdb/cell_kpi/window_kind=<kind>/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
+dt, hour
 ```
 
-Hive 主要用于本地验证和湖表对比。控制台查询不直接连 Hive，而是通过 StarRocks 外部目录或外表统一查询。
+`dt/hour` 均由业务事件时间或窗口起始时间派生。Iceberg sink 的数据可见性依赖 checkpoint commit，压测报告需要展示 checkpoint duration、snapshot commit 延迟、文件数和平均文件大小。
 
-### 6.3 StarRocks 查询层
+### 6.3 Hive Parquet 路径
 
-StarRocks 由 `../shared-data-infra` 的 `starrocks` profile 提供，本工程不重复定义 FE/BE 容器。
+Hive 模式按 dataset 分开写入：
 
-StarRocks 职责：
-
-1. 提供控制台统一查询入口。
-2. 通过 Iceberg external catalog / view 查询 KPI。
-3. 通过 Hive external catalog / view 查询 Parquet 湖表对比结果。
-4. 存储异常内表，支撑在线查询。
-
-第一版不创建异步物化视图。若 KPI 查询慢，再新增 StarRocks async materialized view 或 API 缓存。
-
-### 6.4 StarRocks 内表
-
-小区异常内表：
-
-```sql
-CREATE TABLE cell_anomaly_events (
-  detection_ts BIGINT NOT NULL,
-  event_ts BIGINT NOT NULL,
-  site_id VARCHAR(64),
-  cell_id VARCHAR(64) NOT NULL,
-  grid_id VARCHAR(16),
-  anomaly_type VARCHAR(64) NOT NULL,
-  severity VARCHAR(16) NOT NULL,
-  rule_version VARCHAR(32),
-  context_json STRING
-)
-DUPLICATE KEY(detection_ts, cell_id, anomaly_type)
-PARTITION BY RANGE(detection_ts) ()
-DISTRIBUTED BY HASH(cell_id) BUCKETS 16;
+```text
+hdfs://namenode:8020/warehouse/fdb/kpi/window_kind=MIN_1/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
+hdfs://namenode:8020/warehouse/fdb/kpi/window_kind=MIN_5/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
+hdfs://namenode:8020/warehouse/fdb/cell_anomaly_events/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
+hdfs://namenode:8020/warehouse/fdb/grid_anomaly_events/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
 ```
 
-栅格异常内表：
+Hive FileSink 同样受 checkpoint 提交影响。Hive/Iceberg 模式默认 checkpoint interval 为 30 秒；用户可以调大，但 `FDB_FLINK_CHECKPOINT_INTERVAL_MS` 对 file-based result sink 不应超过 180 秒，避免实时可见性过差。小文件风险通过 rolling policy、checkpoint 配置和压测报告显式暴露，不通过隐藏异常结果来规避。
 
-```sql
-CREATE TABLE grid_anomaly_events (
-  detection_ts BIGINT NOT NULL,
-  event_ts BIGINT NOT NULL,
-  grid_id VARCHAR(16) NOT NULL,
-  latitude DOUBLE,
-  longitude DOUBLE,
-  anomaly_type VARCHAR(64) NOT NULL,
-  severity VARCHAR(16) NOT NULL,
-  rule_version VARCHAR(32),
-  context_json STRING
-)
-DUPLICATE KEY(detection_ts, grid_id, anomaly_type)
-PARTITION BY RANGE(detection_ts) ()
-DISTRIBUTED BY HASH(grid_id) BUCKETS 16;
+### 6.4 StarRocks 表
+
+StarRocks 由 `../shared-data-infra` 的 `starrocks` profile 提供，本工程不重复定义 FE/BE 容器。StarRocks 模式写入：
+
+```text
+fdb.cell_kpi
+fdb.cell_anomaly_events
+fdb.grid_anomaly_events
 ```
 
-分区由维护脚本按小时创建与删除。
+`cell_kpi` 中通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`。异常表使用稳定业务 key 或可容忍重复的 DUPLICATE KEY 设计；分区由维护脚本按小时创建与删除。
 
-### 6.5 Sink 耗时指标
+### 6.5 Kafka Result Topics
+
+Kafka 模式写入：
+
+```text
+cell-kpi-1m
+cell-kpi-5m
+cell-anomaly-events
+grid-anomaly-events
+```
+
+这些 topic 是业务结果 topic，受 `FDB_RESULT_SINK=kafka` 控制。DLQ topic 和 metrics topic 不属于业务结果，不由 `FDB_RESULT_SINK` 控制。
+
+### 6.6 Sink 耗时指标
 
 每个 sink 分支都记录每次写入耗时。
 
@@ -554,14 +561,16 @@ DISTRIBUTED BY HASH(grid_id) BUCKETS 16;
 SinkLatencyProbe
   -> fdb-stage-metrics
   -> Observability API
-  -> 控制台 Sink 耗时页
+  -> 内存最新态
+  -> docker/data/observability-runs/<runId>/metrics.jsonl
+  -> 控制台 Sink 耗时页 / 压测报告
 
 Flink metrics
   -> Prometheus
   -> 指标面板
 ```
 
-Iceberg 额外展示 checkpoint commit 和 snapshot commit 耗时，因为数据可见性依赖 commit 完成。
+Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小、小于 1MB 文件数量，因为 file-based sink 的数据可见性和小文件成本会直接影响性能规格。
 
 ---
 
@@ -576,14 +585,17 @@ Iceberg 额外展示 checkpoint commit 和 snapshot commit 耗时，因为数据
 | `GET /api/results/anomalies/cell` | 查询小区级异常 |
 | `GET /api/results/anomalies/grid` | 查询栅格级异常 |
 | `GET /api/results/sink-latency` | 查询 sink 耗时统计 |
+| `GET /api/flow/runtime` | 查询当前 run 配置、result sink、DLQ、metrics、Flink job 状态、并行度和 checkpoint 配置 |
 | `GET /api/flow/stages` | 查询 Flink 阶段状态 |
+| `GET /api/runs` | 查询历史压测 run |
+| `GET /api/runs/{runId}` | 查询单次 run 明细、metrics 历史摘要和报告状态 |
 | `GET /api/events/stream` | SSE 推送阶段、sink、异常摘要 |
 
-KPI API 通过 StarRocks 查询 Iceberg view。异常 API 查询 StarRocks 内表。
+结果 API 按当前 result sink 的查询能力读取结果。StarRocks 模式直接查询 StarRocks；Iceberg/Hive 模式优先通过 StarRocks external catalog 或可配置查询入口读取；Kafka/none 模式下结果页可降级为 topic/运行摘要，不假定具备完整历史查询能力。
 
 ### 7.2 前端页面
 
-采用“业务结果优先”的布局：
+采用“当前运行态优先”的布局：
 
 ```text
 流处理总览
@@ -595,6 +607,33 @@ Sink 耗时
 执行历史
 指标面板
 ```
+
+`流处理总览` 顶部显示当前 run 条：
+
+```text
+Run ID | Result Sink | Metrics | DLQ | Parallelism | Checkpoint | Job Status | Report
+```
+
+中间流程图只显示当前实际创建的 DAG 节点：
+
+- `starrocks` 模式只显示 StarRocks 业务结果 sink。
+- `iceberg` 模式只显示 Iceberg 业务结果 sink。
+- `hive` 模式只显示 Hive 业务结果 sink。
+- `kafka` 模式只显示 Kafka 业务结果 sink。
+- `none` 模式只显示计算链路，sink 区显示 disabled。
+
+右侧显示瓶颈候选：
+
+```text
+Backpressure
+Checkpoint duration
+Sink P95
+Input lag
+Small files
+Failures / restarts
+```
+
+`Report` 显示 `collecting / ready / failed`；ready 时可打开 `report.md` 或 API 渲染后的摘要。
 
 `KPI 1m` / `KPI 5m`：
 
@@ -618,9 +657,9 @@ Sink 耗时
 
 `Sink 耗时`：
 
-- 按 `sinkType + dataset + windowKind` 展示最近一次耗时。
+- 按 `sinkType + dataset + windowKind` 展示当前启用 sink 的最近一次耗时。
 - 展示 p50 / p95 / p99、失败数、记录数、字节数。
-- Iceberg 展示 checkpoint/snapshot commit 耗时。
+- Iceberg/Hive 展示 checkpoint/snapshot commit 耗时和小文件摘要。
 
 ### 7.3 流程图显示规则
 
@@ -639,6 +678,34 @@ load-coordinator
 
 动态均衡开启时，显示动态均衡闭环和迁移统计。
 
+### 7.4 压测报告
+
+每次压测使用 `runId` 归档运行配置、metrics 历史和报告：
+
+```text
+docker/data/observability-runs/<runId>/run.json
+docker/data/observability-runs/<runId>/metrics.jsonl
+docker/data/observability-runs/<runId>/report.md
+```
+
+报告生成入口：
+
+```bash
+bash scripts/deploy.sh local report
+bash scripts/deploy.sh external-yarn report
+```
+
+`FDB_REPORT_ON_STOP=true` 时，`stop` 后自动尝试生成报告。报告内容包括：
+
+- run 基本信息：时间、git commit、jar SHA、target、result sink、parallelism、checkpoint interval。
+- Flink 资源：TaskManager、slots、job 状态、restart/fail/cancel 次数。
+- 输入吞吐：CHR/PM/CFG records/s、bytes/s。
+- 处理阶段：enrichment、kpi join、5m rollup 的吞吐、busy/idle/backpressure。
+- sink 指标：dataset、records、bytes、records/s、p50/p95/p99、失败数。
+- checkpoint 指标：成功次数、失败次数、平均/最大 duration、alignment time。
+- 存储状态：Kafka/StarRocks/Hive/Iceberg 数据量、文件数、小文件数量和最近老化结果。
+- 自动结论：标记高 backpressure、checkpoint 变慢、sink p95 异常、失败重启、小文件过多等瓶颈候选。
+
 ---
 
 ## 8. 数据老化与容量上限
@@ -653,10 +720,10 @@ retention.bytes=10GB
 覆盖范围：
 
 - CHR、PM、KPI、异常、DLQ、指标等 delete topic。
-- StarRocks 异常内表。
-- Hive Parquet 数据。
-- Iceberg KPI 数据与快照。
-- 本地运行历史与 sink summary 文件。
+- StarRocks 业务结果表。
+- Hive Parquet 业务结果数据。
+- Iceberg 业务结果数据与快照。
+- 本地运行历史、metrics JSONL 与压测报告。
 
 排除范围：
 
@@ -682,7 +749,7 @@ cleanup.policy=compact
 
 ### 8.2 StarRocks
 
-异常内表按小时分区。维护脚本定时：
+业务结果表按小时分区或按事件时间治理。维护脚本定时：
 
 1. 创建未来 2 小时分区。
 2. 删除早于 1 小时的分区。
@@ -690,13 +757,13 @@ cleanup.policy=compact
 
 ### 8.3 Hive Parquet
 
-按 `window_kind/dt/hour` 删除过期目录。需要在删除后刷新元数据。
+按 dataset 与 `dt/hour` 删除过期目录。KPI 额外按 `window_kind` 分区。删除后需要刷新元数据。
 
 ### 8.4 Iceberg
 
 维护任务：
 
-1. 删除早于 1 小时的 KPI 数据文件。
+1. 删除早于 1 小时的业务结果数据文件。
 2. 过期旧 snapshot。
 3. 删除 orphan files。
 4. 统计表目录大小，超过 10GB 时触发更激进的过期策略。
@@ -713,10 +780,18 @@ cleanup.policy=compact
 |---|---|---|
 | `FDB_FLINK_PARALLELISM` | `4` | Flink 作业默认并发 |
 | `taskmanager.numberOfTaskSlots` | `4` | 本地 TaskManager slots |
-| `FDB_FLINK_CHECKPOINT_INTERVAL_MS` | `60000` | checkpoint 间隔 |
+| `FDB_FLINK_CHECKPOINT_INTERVAL_MS` | `30000` | checkpoint 间隔；Hive/Iceberg result sink 不应超过 180000ms |
 | `FDB_DYNAMIC_BALANCING_ENABLED` | `false` | 是否启用动态均衡 |
 | `FDB_VBUCKET_COUNT` | `1024` | 动态均衡启用时的虚拟分片数 |
 | `FDB_JOIN_ALLOWED_LATENESS_MS` | `120000` | CHR/PM Full JOIN 等待时间 |
+| `FDB_RESULT_SINK` | `starrocks` | 业务结果 sink：`starrocks` / `iceberg` / `hive` / `kafka` / `none` |
+| `FDB_DLQ_ENABLED` | `true` | 是否启用 DLQ 兜底 topic |
+| `FDB_METRICS_ENABLED` | `true` | 是否启用 Flink metrics probe 上报 |
+| `FDB_METRICS_EMIT_INTERVAL_MS` | `5000` | metrics 采样输出间隔 |
+| `FDB_METRICS_HISTORY_ENABLED` | `true` | Observability API 是否写本地 JSONL 历史 |
+| `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
+| `FDB_RUN_ID` | 自动生成 | 当前压测 run 标识 |
+| `FDB_RUN_LABEL` | 空 | 当前压测 run 可读标签 |
 
 ### 9.2 Kafka topic
 
@@ -745,13 +820,23 @@ StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external netw
 
 | 配置 | 默认值 |
 |---|---|
-| `FDB_ICEBERG_ENABLED` | `true` |
 | `FDB_ICEBERG_WAREHOUSE` | `hdfs://namenode:8020/warehouse/iceberg` |
 | `FDB_ICEBERG_CATALOG` | `fdb_iceberg` |
 | `FDB_ICEBERG_DATABASE` | `iceberg_db` |
-| `FDB_ICEBERG_TABLE` | `cell_kpi` |
+| `FDB_ICEBERG_KPI_TABLE` | `cell_kpi` |
+| `FDB_ICEBERG_CELL_ANOMALY_TABLE` | `cell_anomaly_events` |
+| `FDB_ICEBERG_GRID_ANOMALY_TABLE` | `grid_anomaly_events` |
 
-### 9.5 部署目标
+### 9.5 Hive / File Sink
+
+| 配置 | 默认值 |
+|---|---|
+| `FDB_HIVE_WAREHOUSE` | `hdfs://namenode:8020/warehouse/fdb` |
+| `FDB_FILE_SINK_ROLLOVER_INTERVAL_MS` | `600000` |
+| `FDB_FILE_SINK_INACTIVITY_INTERVAL_MS` | `300000` |
+| `FDB_FILE_SINK_MAX_PART_SIZE_BYTES` | `134217728` |
+
+### 9.6 部署目标
 
 部署入口统一为：
 
@@ -892,7 +977,7 @@ logs/external-yarn-current.env
 | CHR/PM minute aggregate | exactly-once state | 依赖 Flink checkpoint |
 | Full JOIN | exactly-once state | 到期输出最终结果 |
 | Kafka result sink | at-least-once | Avro topic，可重放 |
-| StarRocks anomaly sink | at-least-once + 幂等 key | 内表按业务 key 去重或容忍重复 |
+| StarRocks result sink | at-least-once + 幂等 key | 业务结果表按业务 key 去重或容忍重复 |
 | Hive sink | checkpoint rolling | 文件可见性受 checkpoint 影响 |
 | Iceberg sink | exactly-once append | checkpoint 触发 commit |
 | Sink metrics | at-least-once | 指标允许重复，API 聚合时按时间窗口处理 |
@@ -914,11 +999,17 @@ DLQ：
 | Unit | `JOINED/CHR_ONLY/PM_ONLY` 输出质量 |
 | Unit | 5 分钟 rollup 从 1 分钟 KPI 聚合 |
 | Unit | 动态均衡开关关闭时不构建相关 DAG 分支 |
+| Unit | `FDB_RESULT_SINK` 只构建一种业务结果 sink，未选 sink 不出现在 StreamGraph/plan |
+| Unit | `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink |
 | Unit | SinkLatencyProbe 统计 duration、records、bytes、failure |
+| Unit | metrics disabled 时 probe 不向 Kafka 发布样本 |
+| Unit | Observability API 将 metrics sample 追加到 `metrics.jsonl` 并生成报告摘要 |
 | Integration | Embedded Kafka + Flink MiniCluster 小流量端到端 |
-| Integration | StarRocks DDL 与异常写入 |
-| Integration | Iceberg data files 与 snapshot commit 可见 |
+| Integration | StarRocks DDL 与 KPI/异常写入 |
+| Integration | Hive/Iceberg KPI 与异常 data files、checkpoint commit、snapshot 可见 |
+| Integration | Hive/Iceberg checkpoint interval 默认 30s，配置值不超过 180s |
 | E2E | 共享 Kafka/Hive/HDFS/StarRocks + 项目 Flink + 控制台 API |
+| Frontend | 总览页按当前 `resultSink` 只渲染真实 sink 节点，并展示报告入口 |
 | Deploy | `deploy.sh local` 生命周期命令覆盖本地 Docker 调试 |
 | Deploy | `deploy.sh external-yarn` 生命周期命令覆盖外部 Linux/YARN 部署 |
 
@@ -943,12 +1034,18 @@ DLQ：
 - [ ] CHR 与 PM 先生成 1 分钟事实，再按 `cellId + minuteTs` Full JOIN。
 - [ ] PM 或 CHR 单侧缺失时仍输出 `CHR_ONLY` 或 `PM_ONLY`。
 - [ ] 5 分钟 KPI 从 1 分钟 KPI rollup。
-- [ ] 1 分钟和 5 分钟 KPI 写入 Iceberg，并可通过 StarRocks 查询。
-- [ ] 小区级异常和栅格级异常写入 StarRocks 内表。
+- [ ] `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 时，业务结果 sink 每次只创建一种分支。
+- [ ] KPI 1m、KPI 5m、小区异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
+- [ ] `FDB_RESULT_SINK=none` 时不创建业务结果 sink，但计算链路可运行。
+- [ ] `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink；开启时 DLQ 仅作为 Kafka 兜底链路。
 - [ ] 控制台提供 KPI 1m、KPI 5m、小区异常、栅格异常、Sink 耗时页面。
+- [ ] 流处理总览页展示当前 run、result sink、metrics、DLQ、parallelism、checkpoint、job status 和 report 状态。
+- [ ] 流处理总览页只显示当前真实启用的 sink 节点，并展示瓶颈候选摘要。
 - [ ] 栅格异常至少有表格展示；GIS 展示可用时显示地图或栅格。
 - [ ] 每个 sink 分支记录最近一次耗时、p50/p95/p99、记录数、字节数、失败数。
-- [ ] Iceberg 展示 checkpoint/snapshot commit 耗时。
+- [ ] Hive/Iceberg 展示 checkpoint/snapshot commit 耗时、文件数、平均文件大小和小文件数量。
+- [ ] Hive/Iceberg result sink 默认 checkpoint interval 为 30s，配置值不超过 180s。
+- [ ] Observability API 将 metrics 写入本地 JSONL 历史，并能按 run 生成压测报告。
 - [ ] Kafka、StarRocks、Hive、Iceberg 数据按 1 小时和 10GB 上限治理。
 - [ ] Flink 默认并发与 TaskManager slots 为 4。
 - [ ] KPI window 与重 sink 在 Flink UI 中拆成可辨识 vertex。
