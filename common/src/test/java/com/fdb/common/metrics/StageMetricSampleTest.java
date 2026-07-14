@@ -96,4 +96,46 @@ class StageMetricSampleTest {
         assertThat(parsed.sink()).isEqualTo("iceberg");
         assertThat(parsed.window()).isEqualTo("1m");
     }
+
+    @Test
+    void deserializes_legacy_json_with_default_run_metadata() {
+        String legacyJson = """
+            {
+              "stageId": "iceberg-sink",
+              "displayName": "Iceberg Sink",
+              "status": "warning",
+              "inEps": 340.0,
+              "outEps": 340.0,
+              "latencyP95Ms": 420,
+              "watermarkLagMs": 0,
+              "errorCount": 0,
+              "rowsWritten": 340,
+              "rebalanceTotal": 0,
+              "source": "",
+              "sink": "iceberg",
+              "window": "1m",
+              "updatedAtEpochMs": 1717400000000
+            }
+            """;
+
+        StageMetricSample parsed = StageMetricSample.fromJson(legacyJson);
+
+        assertThat(parsed.runId()).isEqualTo("unknown-run");
+        assertThat(parsed.resultSink()).isEqualTo("");
+        assertThat(parsed.parallelism()).isEqualTo(-1);
+    }
+
+    @Test
+    void round_trips_sink_latency_run_metadata_as_json() {
+        StageMetricSample sample = StageMetricSample.sinkLatency(
+                "starrocks-cell-kpi-1m", "StarRocks KPI 1m Sink", "healthy", "starrocks", "kpi_1m", "MIN_1",
+                120L, 12000L, 45L, 30L, 45L, 80L, 0L, "", 42L, 1717400000000L)
+            .withRunMetadata("run-a", "starrocks", 4);
+
+        StageMetricSample parsed = StageMetricSample.fromJson(sample.toJson());
+
+        assertThat(parsed.runId()).isEqualTo("run-a");
+        assertThat(parsed.resultSink()).isEqualTo("starrocks");
+        assertThat(parsed.parallelism()).isEqualTo(4);
+    }
 }

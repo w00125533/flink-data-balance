@@ -22,6 +22,7 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     private final String dataset;
     private final String windowKind;
     private final long emitEveryRecords;
+    private final MetricRuntimeConfig metricConfig;
     private long records;
     private long approxBytes;
     private long startedAtNanos = -1L;
@@ -29,17 +30,24 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
 
     public SinkLatencyProbe(String stageId, String displayName, String sinkType, String dataset,
                             String windowKind, long emitEveryRecords) {
+        this(stageId, displayName, sinkType, dataset, windowKind, emitEveryRecords,
+            MetricRuntimeConfig.fromEnvironment());
+    }
+
+    public SinkLatencyProbe(String stageId, String displayName, String sinkType, String dataset,
+                            String windowKind, long emitEveryRecords, MetricRuntimeConfig metricConfig) {
         this.stageId = stageId;
         this.displayName = displayName;
         this.sinkType = sinkType;
         this.dataset = dataset;
         this.windowKind = windowKind;
         this.emitEveryRecords = emitEveryRecords > 0 ? emitEveryRecords : 100L;
+        this.metricConfig = metricConfig;
     }
 
     @Override
     public void open(Configuration parameters) {
-        metricPublisher = new MetricSamplePublisher();
+        metricPublisher = new MetricSamplePublisher(metricConfig.metricsEnabled());
     }
 
     @Override
@@ -81,7 +89,8 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
         long latencyP50Ms = latencyP95Ms / 2L;
         long latencyP99Ms = latencyP95Ms;
         return StageMetricSample.sinkLatency(stageId, displayName, "healthy", sinkType, dataset, windowKind,
-            records, approxBytes, durationMs(), latencyP50Ms, latencyP95Ms, latencyP99Ms, 0L, "", -1L, nowMs);
+            records, approxBytes, durationMs(), latencyP50Ms, latencyP95Ms, latencyP99Ms, 0L, "", -1L, nowMs)
+            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism());
     }
 
     String summaryLine() {
@@ -161,4 +170,5 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     private static int utf8Bytes(Object value) {
         return value == null ? 0 : value.toString().getBytes(StandardCharsets.UTF_8).length;
     }
+
 }

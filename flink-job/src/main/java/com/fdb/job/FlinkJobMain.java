@@ -14,6 +14,7 @@ import com.fdb.job.kpi.ChrMinuteFactWindowFunction;
 import com.fdb.job.kpi.MinuteKpiJoinFunction;
 import com.fdb.job.kpi.PmMinuteFactWindowFunction;
 import com.fdb.job.metrics.StageMetricsProbe;
+import com.fdb.job.metrics.MetricRuntimeConfig;
 import com.fdb.job.model.ChrMinuteFact;
 import com.fdb.job.model.EnrichedChr;
 import com.fdb.job.model.InputEnvelope;
@@ -73,8 +74,10 @@ public class FlinkJobMain {
             resultSinkConfig.resultSink(),
             resolveCheckpointIntervalMs(envVars, systemProperties)));
         env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(envVars, systemProperties));
-        env.setParallelism(resolveParallelism(envVars, systemProperties));
+        int parallelism = resolveParallelism(envVars, systemProperties);
+        env.setParallelism(parallelism);
         boolean dynamicBalancingEnabled = resolveDynamicBalancingEnabled(envVars, systemProperties);
+        MetricRuntimeConfig metricConfig = MetricRuntimeConfig.from(resultSinkConfig, parallelism);
 
         // Main pipeline: CHR + PM + CFG
 
@@ -107,7 +110,7 @@ public class FlinkJobMain {
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((event, ts) -> event.getEventTs()),
             "chr-source")
-            .process(new StageMetricsProbe<>("chr-source", "CHR Source", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("chr-source", "CHR Source", "healthy", 5_000L, metricConfig))
             .name("chr-source-metrics");
 
         DataStream<PmStat> pmStream = env.fromSource(pmSource,
@@ -115,14 +118,14 @@ public class FlinkJobMain {
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((pm, ts) -> pmEventTimestamp(pm)),
             "pm-source")
-            .process(new StageMetricsProbe<>("pm-source", "PM Source", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("pm-source", "PM Source", "healthy", 5_000L, metricConfig))
             .name("pm-source-metrics");
 
         DataStream<CfgConfig> cfgStream = env.fromSource(cfgSource,
             WatermarkStrategy.<CfgConfig>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
             "cfg-source")
-            .process(new StageMetricsProbe<>("cfg-source", "CFG Source", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("cfg-source", "CFG Source", "healthy", 5_000L, metricConfig))
             .name("cfg-source-metrics");
 
         // Enrichment pipeline: unify CHR + PM + CFG, enrich, detect anomalies and KPI
@@ -141,12 +144,12 @@ public class FlinkJobMain {
             .name("to-cfg-env");
 
         DataStream<InputEnvelope> mergedInput = chrEnv.union(pmEnv, cfgEnv)
-            .process(new StageMetricsProbe<>("kafka", "Kafka Topics", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("kafka", "Kafka Topics", "healthy", 5_000L, metricConfig))
             .name("kafka-topics-metrics");
 
         DataStream<RoutedEnvelope> assigned;
         if (dynamicBalancingEnabled) {
-            assigned = buildDynamicallyAssignedStream(env, mergedInput, bootstrap, groupId);
+            assigned = buildDynamicallyAssignedStream(env, mergedInput, bootstrap, groupId, metricConfig);
         } else {
             assigned = mergedInput
                 .map(FlinkJobMain::directRoute)
@@ -160,7 +163,7 @@ public class FlinkJobMain {
             .name("enrichment")
             .uid("enrichment");
         DataStream<EnrichedChr> enriched = enrichedRaw
-            .process(new StageMetricsProbe<>("enrichment", "Enrichment Process", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("enrichment", "Enrichment Process", "healthy", 5_000L, metricConfig))
             .name("enrichment-metrics");
 
         if (resultSinkConfig.dlqEnabled()) {
@@ -247,7 +250,7 @@ public class FlinkJobMain {
 
         ResultSinks.attachBusinessResultSinks(
             cellKpi1m, cellKpi5m, cellAnomalies, coverageAnomalies,
-            resultSinkConfig, bootstrap, icebergConfig);
+            resultSinkConfig, bootstrap, icebergConfig, metricConfig);
 
         env.execute("fdb-flink-job");
     }
@@ -256,7 +259,8 @@ public class FlinkJobMain {
         StreamExecutionEnvironment env,
         DataStream<InputEnvelope> mergedInput,
         String bootstrap,
-        String groupId) {
+        String groupId,
+        MetricRuntimeConfig metricConfig) {
         KafkaSource<String> routingSource = KafkaSource.<String>builder()
             .setBootstrapServers(bootstrap).setTopics("lb-routing")
             .setGroupId(groupId + "-routing").setStartingOffsets(OffsetsInitializer.earliest())
@@ -270,7 +274,7 @@ public class FlinkJobMain {
             .process(new VBucketLoadMeter(), new GenericTypeInfo<>(RoutedEnvelope.class))
             .name("vbucket-load-meter");
         DataStream<RoutedEnvelope> assigned = metered
-            .process(new StageMetricsProbe<>("assigner", "VBucket Assigner", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("assigner", "VBucket Assigner", "healthy", 5_000L, metricConfig))
             .name("vbucket-assigner-metrics");
 
         KafkaSink<String> heartbeatKafkaSink = KafkaSink.<String>builder()
@@ -300,10 +304,11 @@ public class FlinkJobMain {
             .returns(new GenericTypeInfo<>(HeartbeatPayload.class))
             .name("heartbeat-parser")
             .keyBy(hb -> "coordinator")
-            .process(new LoadCoordinator(), new GenericTypeInfo<>(RoutingEntry.class))
+            .process(new LoadCoordinator(metricConfig), new GenericTypeInfo<>(RoutingEntry.class))
             .name("load-coordinator")
             .setParallelism(1)
-            .process(new StageMetricsProbe<>("load-coordinator", "Load Coordinator", "healthy", 5_000L))
+            .process(new StageMetricsProbe<>("load-coordinator", "Load Coordinator", "healthy", 5_000L,
+                metricConfig))
             .name("load-coordinator-metrics");
 
         KafkaSink<String> routingSink = KafkaSink.<String>builder()

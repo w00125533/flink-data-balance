@@ -6,15 +6,11 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
 public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     private static final Logger log = LoggerFactory.getLogger(StageMetricsProbe.class);
@@ -23,19 +19,25 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     private final String displayName;
     private final String status;
     private final long emitIntervalMs;
+    private final MetricRuntimeConfig metricConfig;
 
-    private transient KafkaProducer<String, String> producer;
-    private transient String topic;
+    private transient MetricSamplePublisher metricPublisher;
     private transient Counter eventCounter;
     private long eventsSinceLastEmit;
     private long lastEmitAtMs = -1L;
     private double lastEps;
 
     public StageMetricsProbe(String stageId, String displayName, String status, long emitIntervalMs) {
+        this(stageId, displayName, status, emitIntervalMs, MetricRuntimeConfig.fromEnvironment());
+    }
+
+    public StageMetricsProbe(String stageId, String displayName, String status, long emitIntervalMs,
+                             MetricRuntimeConfig metricConfig) {
         this.stageId = stageId;
         this.displayName = displayName;
         this.status = status;
         this.emitIntervalMs = emitIntervalMs > 0 ? emitIntervalMs : 5_000L;
+        this.metricConfig = metricConfig;
     }
 
     @Override
@@ -49,13 +51,7 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
             .addGroup("stage", stageId)
             .gauge("eps", (Gauge<Double>) () -> lastEps);
 
-        String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
-        topic = System.getenv().getOrDefault("FDB_METRICS_TOPIC", "fdb-stage-metrics");
-        Properties properties = new Properties();
-        properties.put("bootstrap.servers", bootstrap);
-        properties.put("key.serializer", StringSerializer.class.getName());
-        properties.put("value.serializer", StringSerializer.class.getName());
-        producer = new KafkaProducer<>(properties);
+        metricPublisher = new MetricSamplePublisher(metricConfig.metricsEnabled());
     }
 
     @Override
@@ -67,9 +63,8 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
 
     @Override
     public void close() {
-        if (producer != null) {
-            producer.flush();
-            producer.close();
+        if (metricPublisher != null) {
+            metricPublisher.close();
         }
     }
 
@@ -91,7 +86,8 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
         double elapsedSeconds = Math.max((nowMs - lastEmitAtMs) / 1000.0d, 0.001d);
         lastEps = eventsSinceLastEmit / elapsedSeconds;
         StageMetricSample sample = StageMetricSample.stage(stageId, displayName, status,
-            lastEps, lastEps, 0L, 0L, 0L, nowMs);
+            lastEps, lastEps, 0L, 0L, 0L, nowMs)
+            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism());
         eventsSinceLastEmit = 0L;
         lastEmitAtMs = nowMs;
         List<StageMetricSample> samples = new ArrayList<>();
@@ -100,15 +96,16 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     }
 
     private void publish(List<StageMetricSample> samples) {
-        if (producer == null || samples.isEmpty()) {
+        if (metricPublisher == null || samples.isEmpty()) {
             return;
         }
         for (StageMetricSample sample : samples) {
             try {
-                producer.send(new ProducerRecord<>(topic, sample.stageId(), sample.toJson()));
+                metricPublisher.publish(sample);
             } catch (Exception e) {
                 log.warn("Failed to publish stage metric sample for {}", sample.stageId(), e);
             }
         }
     }
+
 }

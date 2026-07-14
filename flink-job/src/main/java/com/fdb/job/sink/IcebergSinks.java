@@ -2,6 +2,7 @@ package com.fdb.job.sink;
 
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.CellKpi;
+import com.fdb.job.metrics.MetricRuntimeConfig;
 import com.fdb.job.metrics.SinkLatencyProbe;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -185,7 +186,8 @@ public final class IcebergSinks {
         DataStream<CellKpi> kpi5m,
         DataStream<AnomalyEvent> cellAnomalies,
         DataStream<AnomalyEvent> gridAnomalies,
-        IcebergConfig config) {
+        IcebergConfig config,
+        MetricRuntimeConfig metricConfig) {
         Schema kpiSchema = cellKpiSchema();
         PartitionSpec kpiSpec = cellKpiPartitionSpec(kpiSchema);
         Schema anomalySchema = anomalySchema();
@@ -193,7 +195,7 @@ public final class IcebergSinks {
 
         DataStream<RowData> icebergKpi1m = kpi1m
             .process(new SinkLatencyProbe<>("iceberg-kpi-1m", "Cell KPI 1m Iceberg Sink", "iceberg",
-                "kpi_1m", "MIN_1", 100), new GenericTypeInfo<>(CellKpi.class))
+                "kpi_1m", "MIN_1", 100, metricConfig), new GenericTypeInfo<>(CellKpi.class))
             .startNewChain()
             .name("iceberg-kpi-1m")
             .map(new CellKpiIcebergMapper())
@@ -204,7 +206,7 @@ public final class IcebergSinks {
 
         DataStream<RowData> icebergKpi5m = kpi5m
             .process(new SinkLatencyProbe<>("iceberg-kpi-5m", "Cell KPI 5m Iceberg Sink", "iceberg",
-                "kpi_5m", "MIN_5", 100), new GenericTypeInfo<>(CellKpi.class))
+                "kpi_5m", "MIN_5", 100, metricConfig), new GenericTypeInfo<>(CellKpi.class))
             .startNewChain()
             .name("iceberg-kpi-5m")
             .map(new CellKpiIcebergMapper())
@@ -215,7 +217,7 @@ public final class IcebergSinks {
 
         DataStream<RowData> icebergCellAnomalies = cellAnomalies
             .process(new SinkLatencyProbe<>("iceberg-cell-anomaly", "Cell Anomaly Iceberg Sink", "iceberg",
-                "cell_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
+                "cell_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
             .name("iceberg-cell-anomaly")
             .map(new AnomalyEventIcebergMapper())
@@ -226,7 +228,7 @@ public final class IcebergSinks {
 
         DataStream<RowData> icebergGridAnomalies = gridAnomalies
             .process(new SinkLatencyProbe<>("iceberg-grid-anomaly", "Grid Anomaly Iceberg Sink", "iceberg",
-                "grid_anomaly_events", "ANOMALY", 100), new GenericTypeInfo<>(AnomalyEvent.class))
+                "grid_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
             .name("iceberg-grid-anomaly")
             .map(new AnomalyEventIcebergMapper())

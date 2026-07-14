@@ -56,6 +56,32 @@ class SinkLatencyProbeTest {
     }
 
     @Test
+    void tags_sink_latency_sample_with_run_metadata() {
+        SinkLatencyProbe<CellKpi> probe = new SinkLatencyProbe<>(
+            "starrocks-kpi-1m", "StarRocks KPI 1m Sink", "starrocks",
+            "kpi_1m", "MIN_1", 2, new MetricRuntimeConfig("run-a", "starrocks", 4, true));
+
+        probe.record(kpi(1000L, "a"));
+
+        StageMetricSample sample = probe.metricSample(1_717_400_000_000L);
+
+        assertThat(sample.runId()).isEqualTo("run-a");
+        assertThat(sample.resultSink()).isEqualTo("starrocks");
+        assertThat(sample.parallelism()).isEqualTo(4);
+    }
+
+    @Test
+    void open_uses_disabled_noop_publisher_without_creating_real_producer() throws Exception {
+        SinkLatencyProbe<CellKpi> probe = new SinkLatencyProbe<>(
+            "starrocks-kpi-1m", "StarRocks KPI 1m Sink", "starrocks",
+            "kpi_1m", "MIN_1", 1, new MetricRuntimeConfig("run-a", "starrocks", 4, false));
+
+        probe.open(new org.apache.flink.configuration.Configuration());
+
+        assertThat(publisher(probe).enabled()).isFalse();
+    }
+
+    @Test
     void publish_metric_is_best_effort_when_publisher_fails() throws Exception {
         SinkLatencyProbe<CellKpi> probe = new SinkLatencyProbe<>(
             "hive-kpi-1m", "Hive KPI 1m Sink", "hive", "kpi_1m", "MIN_1", 1);
@@ -72,6 +98,12 @@ class SinkLatencyProbeTest {
         Field field = SinkLatencyProbe.class.getDeclaredField("metricPublisher");
         field.setAccessible(true);
         field.set(probe, publisher);
+    }
+
+    private static MetricSamplePublisher publisher(SinkLatencyProbe<?> probe) throws Exception {
+        Field field = SinkLatencyProbe.class.getDeclaredField("metricPublisher");
+        field.setAccessible(true);
+        return (MetricSamplePublisher) field.get(probe);
     }
 
     private static void invokePublishMetric(SinkLatencyProbe<?> probe, long nowMs) throws Exception {

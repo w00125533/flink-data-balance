@@ -2,6 +2,7 @@ package com.fdb.job.balance.coordinator;
 
 import com.fdb.common.metrics.StageMetricSample;
 import com.fdb.job.metrics.MetricSamplePublisher;
+import com.fdb.job.metrics.MetricRuntimeConfig;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -31,6 +32,7 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
     private static final long OVERLOAD_DURATION_MS = 60_000;
     private static final int NUM_HOTSPOTS = 3;
     private static final int NUM_VBUCKETS = 1024;
+    private final MetricRuntimeConfig metricConfig;
 
     private transient MapState<Integer, HeartbeatPayload> heartbeatState;
     private transient MapState<String, RoutingEntry> routingState;
@@ -44,6 +46,14 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
     private transient long rebalanceTotal;
 
     private transient long lastTimerTime = 0;
+
+    public LoadCoordinator() {
+        this(MetricRuntimeConfig.fromEnvironment());
+    }
+
+    public LoadCoordinator(MetricRuntimeConfig metricConfig) {
+        this.metricConfig = metricConfig;
+    }
 
     @Override
     public void open(Configuration parameters) {
@@ -61,7 +71,7 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
         policy = new RebalancePolicy(OVERLOAD_THRESHOLD, OVERLOAD_DURATION_MS,
             NUM_HOTSPOTS, NUM_VBUCKETS);
         snapshotDir = System.getProperty("fdb.snapshot.dir", "/tmp/fdb-state");
-        metricPublisher = new MetricSamplePublisher();
+        metricPublisher = new MetricSamplePublisher(metricConfig.metricsEnabled());
     }
 
     @Override
@@ -239,7 +249,13 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
         if (metricPublisher == null) {
             return;
         }
-        metricPublisher.publish(StageMetricSample.stage("load-coordinator", "Load Coordinator", "healthy",
-            0.0d, rebalanceTotal, 0L, 0L, 0L, now).withRebalanceTotal(rebalanceTotal));
+        metricPublisher.publish(rebalanceMetricSample(now));
+    }
+
+    StageMetricSample rebalanceMetricSample(long now) {
+        return StageMetricSample.stage("load-coordinator", "Load Coordinator", "healthy",
+                0.0d, rebalanceTotal, 0L, 0L, 0L, now)
+            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism())
+            .withRebalanceTotal(rebalanceTotal);
     }
 }

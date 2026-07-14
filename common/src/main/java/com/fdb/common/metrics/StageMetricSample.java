@@ -32,6 +32,9 @@ public record StageMetricSample(
     long failureCount,
     String errorMessage,
     long checkpointId,
+    String runId,
+    String resultSink,
+    int parallelism,
     long updatedAtEpochMs
 ) {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -50,6 +53,8 @@ public record StageMetricSample(
             records = rowsWritten;
         }
         errorMessage = blankToDefault(errorMessage, "");
+        runId = blankToDefault(runId, "unknown-run");
+        resultSink = blankToDefault(resultSink, "");
     }
 
     public static StageMetricSample stage(String stageId, String displayName, String status,
@@ -58,7 +63,7 @@ public record StageMetricSample(
                                           long updatedAtEpochMs) {
         return new StageMetricSample(stageId, displayName, status, inEps, outEps, latencyP95Ms,
             watermarkLagMs, errorCount, 0L, 0L, sourceName(stageId), "", "", "", "", "", 0L, 0L, 0L,
-            0L, 0L, 0L, "", -1L, updatedAtEpochMs);
+            0L, 0L, 0L, "", -1L, "unknown-run", "", -1, updatedAtEpochMs);
     }
 
     public static StageMetricSample sink(String stageId, String displayName, String status,
@@ -78,14 +83,21 @@ public record StageMetricSample(
         return new StageMetricSample(stageId, displayName, status, records, records, latencyP95Ms,
             0L, failureCount, records, 0L, "", sinkType, windowLabel(windowKind), sinkType, dataset,
             windowKind, records, bytes, durationMs, latencyP50Ms, latencyP99Ms, failureCount,
-            errorMessage, checkpointId, updatedAtEpochMs);
+            errorMessage, checkpointId, "unknown-run", "", -1, updatedAtEpochMs);
     }
 
     public StageMetricSample withRebalanceTotal(long rebalanceTotal) {
         return new StageMetricSample(stageId, displayName, status, inEps, outEps, latencyP95Ms,
             watermarkLagMs, errorCount, rowsWritten, rebalanceTotal, source, sink, window, sinkType,
             dataset, windowKind, records, bytes, durationMs, latencyP50Ms, latencyP99Ms,
-            failureCount, errorMessage, checkpointId, updatedAtEpochMs);
+            failureCount, errorMessage, checkpointId, runId, resultSink, parallelism, updatedAtEpochMs);
+    }
+
+    public StageMetricSample withRunMetadata(String runId, String resultSink, int parallelism) {
+        return new StageMetricSample(stageId, displayName, status, inEps, outEps, latencyP95Ms,
+            watermarkLagMs, errorCount, rowsWritten, rebalanceTotal, source, sink, window, sinkType,
+            dataset, windowKind, records, bytes, durationMs, latencyP50Ms, latencyP99Ms,
+            failureCount, errorMessage, checkpointId, runId, resultSink, parallelism, updatedAtEpochMs);
     }
 
     public String toJson() {
@@ -101,6 +113,15 @@ public record StageMetricSample(
             JsonNode node = JSON.readTree(json);
             if (node instanceof ObjectNode object && !object.hasNonNull("checkpointId")) {
                 object.put("checkpointId", -1L);
+            }
+            if (node instanceof ObjectNode object && !object.hasNonNull("runId")) {
+                object.put("runId", "unknown-run");
+            }
+            if (node instanceof ObjectNode object && !object.hasNonNull("resultSink")) {
+                object.put("resultSink", "");
+            }
+            if (node instanceof ObjectNode object && !object.hasNonNull("parallelism")) {
+                object.put("parallelism", -1);
             }
             return JSON.treeToValue(node, StageMetricSample.class);
         } catch (IOException e) {
