@@ -13,6 +13,8 @@ trap 'rm -rf "$TEST_TMP_DIR"' EXIT
 mkdir -p "$FAKE_BIN_DIR"
 FAKE_RM_LOG="$TEST_TMP_DIR/hdfs-rm.log"
 export FAKE_RM_LOG
+FAKE_CURL_LOG="$TEST_TMP_DIR/curl.log"
+export FAKE_CURL_LOG
 cat > "$FAKE_BIN_DIR/docker" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -24,6 +26,9 @@ if [[ "${1:-}" == "compose" ]]; then
       exit 0
     fi
   done
+  if [[ "$*" == *" up -d --no-deps --force-recreate observability-api"* ]]; then
+    exit 0
+  fi
   if [[ "$*" == *" exec -T starrocks-fe mysql "* ]]; then
     cat >/dev/null
     exit 0
@@ -56,6 +61,14 @@ OUT
 fi
 
 if [[ "${1:-}" == "exec" ]]; then
+  if [[ "$*" == *" fdb-flink-jobmanager "* ]]; then
+    if [[ "$*" == *" flink run "* ]]; then
+      echo "JobID local-job-${RANDOM}"
+      exit 0
+    fi
+    [[ "$*" == *" flink cancel "* ]] && exit 0
+  fi
+
   shift
   container="${1:-}"
   shift || true
@@ -94,6 +107,13 @@ echo "unexpected docker invocation: docker $*" >&2
 exit 1
 SH
 chmod +x "$FAKE_BIN_DIR/docker"
+cat > "$FAKE_BIN_DIR/curl" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_CURL_LOG:?}"
+echo '{"ok":true}'
+SH
+chmod +x "$FAKE_BIN_DIR/curl"
 export PATH="$FAKE_BIN_DIR:$PATH"
 
 fail() {
@@ -214,5 +234,72 @@ run_expect_success "local check missing default env file" \
   env -u FDB_ENV_FILE bash -c 'cd "$1" && bash scripts/deploy.sh local check' bash "$tmp_repo"
 grep -F "[WARN] optional env file not found: .env" "$ERR_FILE" \
   || fail "local check should warn when default env file is missing"
+
+submit_repo="$TEST_TMP_DIR/submit-repo"
+mkdir -p "$submit_repo/scripts" "$submit_repo/docker" "$submit_repo/logs"
+cp scripts/deploy.sh "$submit_repo/scripts/deploy.sh"
+cat > "$submit_repo/docker/docker-compose.yml" <<'YAML'
+services:
+  observability-api:
+    image: busybox
+    profiles:
+      - e2e
+YAML
+
+fixed_date_bin="$TEST_TMP_DIR/fixed-date-bin"
+mkdir -p "$fixed_date_bin"
+cat > "$fixed_date_bin/date" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  *%Y%m%d-%H%M%S*) echo "20260714-120000" ;;
+  *%Y-%m-%dT%H:%M:%SZ*) echo "2026-07-14T12:00:00Z" ;;
+  *) command date "$@" ;;
+esac
+SH
+chmod +x "$fixed_date_bin/date"
+
+run_expect_success "first local submit generates run id" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-1.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+first_run_id="$(awk -F= '/^FDB_RUN_ID=/ {print $2}' "$submit_repo/logs/local-current-1.env")"
+
+run_expect_success "second local submit generates distinct run id" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-2.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+second_run_id="$(awk -F= '/^FDB_RUN_ID=/ {print $2}' "$submit_repo/logs/local-current-2.env")"
+
+[[ -n "$first_run_id" && -n "$second_run_id" ]] \
+  || fail "local submit should write generated run ids"
+[[ "$first_run_id" != "$second_run_id" ]] \
+  || fail "generated run ids should differ across consecutive submits"
+
+run_expect_failure "local report without run id or state" env \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/missing-current.env" \
+  bash "$submit_repo/scripts/deploy.sh" local report
+grep -F "no run id found; run local submit first or set FDB_RUN_ID" "$ERR_FILE" \
+  || fail "local report without run id should fail with submit guidance"
+
+report_env="$TEST_TMP_DIR/report-on-stop.env"
+cat > "$report_env" <<'ENV'
+FDB_DEPLOY_TARGET=local
+FDB_REPORT_ON_STOP=false
+FDB_OBSERVABILITY_API_URL=http://env-file-api
+ENV
+report_state="$TEST_TMP_DIR/report-on-stop-current.env"
+cat > "$report_state" <<'ENV'
+FDB_LOCAL_FLINK_JOB_ID=local-stop-job
+FDB_RUN_ID=stop-run
+ENV
+: > "$FAKE_CURL_LOG"
+FDB_ENV_FILE="$report_env" FDB_LOCAL_STATE_FILE="$report_state" FDB_REPORT_ON_STOP=true \
+  run_expect_success "local stop preserves command-line report-on-stop" bash scripts/deploy.sh local stop
+grep -F "http://env-file-api/api/runs/report?runId=stop-run" "$FAKE_CURL_LOG" \
+  || fail "local stop should call report when FDB_REPORT_ON_STOP=true is provided by the caller"
 
 echo "[test-ok] deploy dispatch"

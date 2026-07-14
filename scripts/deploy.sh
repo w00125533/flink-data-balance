@@ -22,6 +22,9 @@ done
 
 usage() {
   echo "Usage: scripts/deploy.sh <target> <command> [options]"
+  echo "Targets:"
+  echo "  local commands: check, up, init, submit, stop, smoke, prune, status, report, down"
+  echo "  external-yarn commands: check, init, submit, stop, smoke, prune, status, report"
 }
 
 log() {
@@ -68,6 +71,69 @@ load_env_optional() {
   source "$env_file"
   set +a
   ok "loaded env file: $env_file"
+}
+
+generate_run_id() {
+  echo "run-$(date -u +%Y%m%d-%H%M%S)-$$-${RANDOM}"
+}
+
+ensure_run_context() {
+  if [[ -z "${FDB_RUN_ID:-}" ]]; then
+    export FDB_RUN_ID
+    FDB_RUN_ID="$(generate_run_id)"
+  fi
+
+  export FDB_RUN_LABEL="${FDB_RUN_LABEL:-}"
+  export FDB_RESULT_SINK="${FDB_RESULT_SINK:-starrocks}"
+  export FDB_METRICS_HISTORY_ENABLED="${FDB_METRICS_HISTORY_ENABLED:-true}"
+  export FDB_METRICS_ENABLED="${FDB_METRICS_ENABLED:-true}"
+  export FDB_METRICS_EMIT_INTERVAL_MS="${FDB_METRICS_EMIT_INTERVAL_MS:-5000}"
+  export FDB_DLQ_ENABLED="${FDB_DLQ_ENABLED:-true}"
+  export FDB_FLINK_PARALLELISM="${FDB_FLINK_PARALLELISM:-4}"
+  export FDB_FLINK_CHECKPOINT_INTERVAL_MS="${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-30000}"
+}
+
+write_current_run_env() {
+  local state_file=$1
+
+  {
+    printf 'FDB_RUN_ID=%q\n' "${FDB_RUN_ID:-}"
+    printf 'FDB_RUN_LABEL=%q\n' "${FDB_RUN_LABEL:-}"
+    printf 'FDB_RESULT_SINK=%q\n' "${FDB_RESULT_SINK:-}"
+    printf 'FDB_FLINK_PARALLELISM=%q\n' "${FDB_FLINK_PARALLELISM:-}"
+    printf 'FDB_FLINK_CHECKPOINT_INTERVAL_MS=%q\n' "${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-}"
+    printf 'FDB_METRICS_ENABLED=%q\n' "${FDB_METRICS_ENABLED:-}"
+    printf 'FDB_METRICS_HISTORY_ENABLED=%q\n' "${FDB_METRICS_HISTORY_ENABLED:-}"
+    printf 'FDB_DLQ_ENABLED=%q\n' "${FDB_DLQ_ENABLED:-}"
+  } >> "$state_file"
+}
+
+current_run_id() {
+  local state_file=$1
+  local state_run_id
+
+  if [[ -n "${FDB_RUN_ID:-}" ]]; then
+    echo "$FDB_RUN_ID"
+    return 0
+  fi
+
+  if [[ -f "$state_file" ]]; then
+    state_run_id="$( (
+      set +u
+      # shellcheck disable=SC1090
+      source "$state_file"
+      printf '%s' "${FDB_RUN_ID:-}"
+    ) 2>/dev/null || true)"
+    if [[ -n "$state_run_id" ]]; then
+      echo "$state_run_id"
+      return 0
+    fi
+    warn "run state file does not contain FDB_RUN_ID: $state_file"
+  else
+    warn "run state file not found: $state_file; set FDB_RUN_ID or run ${TARGET:-target} submit first"
+  fi
+
+  die "no run id found; run ${TARGET:-target} submit first or set FDB_RUN_ID"
 }
 
 warn_or_fail() {
@@ -426,18 +492,73 @@ local_init() {
 }
 
 local_submit() {
+  local explicit_run_id="${FDB_RUN_ID:-}"
   load_env_optional
+  if [[ -n "$explicit_run_id" ]]; then
+    export FDB_RUN_ID="$explicit_run_id"
+  fi
+  ensure_run_context
   local jar="${FDB_FLINK_JOB_JAR:-/opt/fdb/flink-job-0.1.0-SNAPSHOT.jar}"
   local submit_log="logs-local-flink-submit.out"
+  local state_file="${FDB_LOCAL_STATE_FILE:-logs/local-current.env}"
+  local state_dir
+  local flink_job_id
+  local runtime_env_args=(
+    -e "FDB_RUN_ID=${FDB_RUN_ID}"
+    -e "FDB_RUN_LABEL=${FDB_RUN_LABEL}"
+    -e "FDB_RESULT_SINK=${FDB_RESULT_SINK}"
+    -e "FDB_DLQ_ENABLED=${FDB_DLQ_ENABLED}"
+    -e "FDB_METRICS_ENABLED=${FDB_METRICS_ENABLED}"
+    -e "FDB_METRICS_HISTORY_ENABLED=${FDB_METRICS_HISTORY_ENABLED}"
+    -e "FDB_METRICS_EMIT_INTERVAL_MS=${FDB_METRICS_EMIT_INTERVAL_MS}"
+    -e "FDB_FLINK_PARALLELISM=${FDB_FLINK_PARALLELISM}"
+    -e "FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS}"
+  )
+
+  log "recreating observability-api with run context: ${FDB_RUN_ID}"
+  docker compose -f docker/docker-compose.yml --profile e2e up -d --no-deps --force-recreate observability-api
 
   log "submitting local Flink job: $jar"
-  docker exec --user flink fdb-flink-jobmanager flink run -d "$jar" | tee "$submit_log"
+  docker exec --user flink "${runtime_env_args[@]}" fdb-flink-jobmanager \
+    flink run -d -p "$FDB_FLINK_PARALLELISM" "$jar" | tee "$submit_log"
+
+  state_dir="$(dirname "$state_file")"
+  if [[ "$state_dir" != "." ]]; then
+    mkdir -p "$state_dir"
+  fi
+
+  flink_job_id="$(awk '/JobID|Job ID|job id/ {job_id=$NF} END {print job_id}' "$submit_log")"
+  {
+    printf 'FDB_LOCAL_SUBMITTED_AT=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf 'FDB_LOCAL_ENV_FILE=%q\n' "${FDB_ENV_FILE:-.env}"
+    printf 'FDB_LOCAL_FLINK_JOB_ID=%q\n' "$flink_job_id"
+  } > "$state_file"
+  write_current_run_env "$state_file"
+
+  if [[ -z "$flink_job_id" ]]; then
+    warn "wrote local runtime state without parsed Flink job id: $state_file"
+    warn "set FDB_FLINK_JOB_ID explicitly when stopping this job"
+  else
+    ok "wrote local runtime state: $state_file"
+  fi
 }
 
 local_stop() {
+  local requested_report_on_stop="${FDB_REPORT_ON_STOP:-}"
   load_env_optional
+  if [[ -n "$requested_report_on_stop" ]]; then
+    export FDB_REPORT_ON_STOP="$requested_report_on_stop"
+  fi
   local submit_log="logs-local-flink-submit.out"
   local job_id="${FDB_FLINK_JOB_ID:-}"
+  local state_file="${FDB_LOCAL_STATE_FILE:-logs/local-current.env}"
+  local stop_status=0
+
+  if [[ -z "$job_id" && -f "$state_file" ]]; then
+    # shellcheck disable=SC1090
+    source "$state_file"
+    job_id="${FDB_LOCAL_FLINK_JOB_ID:-}"
+  fi
 
   if [[ -z "$job_id" && -f "$submit_log" ]]; then
     job_id="$(awk '/JobID/ {job_id=$NF} END {print job_id}' "$submit_log")"
@@ -448,12 +569,16 @@ local_stop() {
   fi
 
   log "cancelling local Flink job: $job_id"
-  if docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id"; then
-    return 0
+  if ! docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id"; then
+    warn "Flink CLI cancel failed; falling back to REST cancel"
+    curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null || stop_status=$?
   fi
 
-  warn "Flink CLI cancel failed; falling back to REST cancel"
-  curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null
+  if [[ "${FDB_REPORT_ON_STOP:-false}" == "true" ]]; then
+    run_report || true
+  fi
+
+  return "$stop_status"
 }
 
 local_smoke() {
@@ -907,6 +1032,8 @@ build_external_flink_env_args() {
     FDB_STARROCKS_JDBC_BATCH_SIZE
     FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS
     FDB_STARROCKS_JDBC_MAX_RETRIES
+    FDB_RESULT_SINK
+    FDB_DLQ_ENABLED
     FDB_HIVE_WAREHOUSE
     FDB_ICEBERG_ENABLED
     FDB_ICEBERG_WAREHOUSE
@@ -921,13 +1048,18 @@ build_external_flink_env_args() {
     FDB_FLINK_TASKMANAGER_SLOTS
     FDB_FLINK_RETAINED_CHECKPOINTS
     FDB_METRICS_TOPIC
+    FDB_METRICS_ENABLED
+    FDB_METRICS_HISTORY_ENABLED
+    FDB_METRICS_EMIT_INTERVAL_MS
+    FDB_RUN_ID
+    FDB_RUN_LABEL
     FDB_E2E_SUMMARY
   )
 
   EXTERNAL_FLINK_ENV_ARGS=()
   for key in "${env_keys[@]}"; do
     value="${!key:-}"
-    if [[ -n "$value" ]]; then
+    if [[ -n "$value" || "${!key+x}" == "x" ]]; then
       EXTERNAL_FLINK_ENV_ARGS+=("-Dcontainerized.master.env.$key=$value")
       EXTERNAL_FLINK_ENV_ARGS+=("-Dcontainerized.taskmanager.env.$key=$value")
     fi
@@ -988,6 +1120,7 @@ record_external_submit_output() {
     printf 'FDB_EXTERNAL_FLINK_JOB_ID=%q\n' "$flink_job_id"
     printf 'FDB_EXTERNAL_YARN_APPLICATION_ID=%q\n' "$yarn_app_id"
   } > "$state_file"
+  write_current_run_env "$state_file"
 
   if [[ -z "$flink_job_id" && -z "$yarn_app_id" ]]; then
     warn "wrote external runtime state without parsed Flink/YARN ids: $state_file"
@@ -1116,7 +1249,11 @@ external_init() {
 }
 
 external_submit() {
+  local explicit_run_id="${FDB_RUN_ID:-}"
   load_env
+  if [[ -n "$explicit_run_id" ]]; then
+    export FDB_RUN_ID="$explicit_run_id"
+  fi
   [[ "${FDB_DEPLOY_TARGET:-}" == "external-yarn" ]] || die "FDB_DEPLOY_TARGET must be external-yarn"
   require_env FDB_KAFKA_BOOTSTRAP
   require_env FDB_HDFS_URI
@@ -1125,6 +1262,7 @@ external_submit() {
   require_env HADOOP_CONF_DIR
   require_env YARN_CONF_DIR
   [[ -x "$(external_flink_bin)" ]] || die "flink command not executable: $(external_flink_bin)"
+  ensure_run_context
   external_apply_runtime_defaults
   require_env FDB_STARROCKS_JDBC_URL
   require_env FDB_HIVE_WAREHOUSE
@@ -1201,7 +1339,11 @@ external_submit() {
 }
 
 external_stop() {
+  local requested_report_on_stop="${FDB_REPORT_ON_STOP:-}"
   load_env
+  if [[ -n "$requested_report_on_stop" ]]; then
+    export FDB_REPORT_ON_STOP="$requested_report_on_stop"
+  fi
   local explicit_flink_job_id="${FDB_FLINK_JOB_ID:-}"
   local explicit_yarn_app_id="${FDB_YARN_APPLICATION_ID:-}"
   local state_file="${FDB_EXTERNAL_STATE_FILE:-logs/external-yarn-current.env}"
@@ -1229,6 +1371,9 @@ external_stop() {
 
     log "canceling Flink job: $flink_job_id"
     if "$(external_flink_bin)" "${cancel_args[@]}"; then
+      if [[ "${FDB_REPORT_ON_STOP:-false}" == "true" ]]; then
+        run_report || true
+      fi
       return 0
     fi
     warn "Flink cancel failed"
@@ -1237,6 +1382,9 @@ external_stop() {
   if [[ -n "$yarn_app_id" ]]; then
     log "killing YARN application: $yarn_app_id"
     yarn application -kill "$yarn_app_id"
+    if [[ "${FDB_REPORT_ON_STOP:-false}" == "true" ]]; then
+      run_report || true
+    fi
     return 0
   fi
 
@@ -1306,6 +1454,41 @@ SQL
   external_hdfs_exec -count -h "$(external_iceberg_warehouse_path)/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}" || true
 }
 
+run_report() {
+  local explicit_run_id="${FDB_RUN_ID:-}"
+  local state_file
+  local run_id
+  local api_url
+
+  case "$TARGET" in
+    local)
+      load_env_optional
+      state_file="${FDB_LOCAL_STATE_FILE:-logs/local-current.env}"
+      ;;
+    external-yarn)
+      load_env
+      state_file="${FDB_EXTERNAL_STATE_FILE:-logs/external-yarn-current.env}"
+      ;;
+    *)
+      die "unsupported target for report: $TARGET"
+      ;;
+  esac
+
+  if [[ -n "$explicit_run_id" ]]; then
+    export FDB_RUN_ID="$explicit_run_id"
+  fi
+
+  run_id="$(current_run_id "$state_file")"
+  if [[ ! "$run_id" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+    die "FDB_RUN_ID contains unsafe characters for report URL: $run_id"
+  fi
+
+  api_url="${FDB_OBSERVABILITY_API_URL:-http://localhost:18080}"
+  api_url="${api_url%/}"
+  curl -fsS "${api_url}/api/runs/report?runId=${run_id}"
+  echo
+}
+
 dispatch_local() {
   case "$COMMAND" in
     check) local_check ;;
@@ -1316,6 +1499,7 @@ dispatch_local() {
     smoke) local_smoke ;;
     prune) local_prune ;;
     status) local_status ;;
+    report) run_report ;;
     down) local_down "${ARGS[@]}" ;;
     *) die "unsupported command for local: $COMMAND" ;;
   esac
@@ -1330,6 +1514,7 @@ dispatch_external_yarn() {
     smoke) external_smoke ;;
     prune) external_prune ;;
     status) external_status ;;
+    report) run_report ;;
     *) die "unsupported command for external-yarn: $COMMAND" ;;
   esac
 }

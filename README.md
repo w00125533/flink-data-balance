@@ -85,6 +85,44 @@ set `FDB_FLINK_SECRET_ENV_KEYS=FDB_STARROCKS_PASSWORD` only after accepting that
 tradeoff. For complex Flink arguments, use `FDB_FLINK_EXTRA_ARGS_FILE` with one
 argument per line.
 
+## Sink Benchmarking
+
+Set `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` before submit to choose
+one business result sink for a run. Only one result sink is active at a time for
+benchmark comparability; DLQ output is controlled independently by
+`FDB_DLQ_ENABLED=true|false`.
+
+Local submit/report:
+
+```bash
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local submit
+FDB_ENV_FILE=.env.local bash scripts/deploy.sh local report
+```
+
+External YARN submit/report:
+
+```bash
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn submit
+FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn report
+```
+
+Each `submit` generates `FDB_RUN_ID=run-<UTC timestamp>` when it is not already
+set, passes that value into the Flink runtime, and writes the current run state
+to `logs/local-current.env` or `logs/external-yarn-current.env`. You can also set
+`FDB_RUN_ID` manually in the env file or command environment when rerunning a
+known benchmark label.
+
+`bash scripts/deploy.sh <target> report` calls
+`${FDB_OBSERVABILITY_API_URL:-http://localhost:18080}/api/runs/report` with the
+current run id and prints the JSON response. The API writes the Markdown report
+to `FDB_RUN_HISTORY_DIR/<runId>/report.md`; in the local Docker profile this is
+mapped to `docker/data/observability-runs/<runId>/report.md`.
+
+The default checkpoint interval is `FDB_FLINK_CHECKPOINT_INTERVAL_MS=30000`.
+Hive and Iceberg writers have an effective cap of 180s. For sink benchmarking,
+adjust the interval per sink only when the sink needs it, and do not set it below
+or far below 30s unless you are intentionally testing checkpoint pressure.
+
 ## 实时观测控制台
 
 The local observability stack adds an embedded frontend console, a lightweight
@@ -131,10 +169,10 @@ The script builds the project, starts the Docker `e2e` profile with Flink,
 starts topology and simulators, submits the job, and checks shared Kafka, StarRocks,
 HDFS Parquet, Iceberg and shared Hive outputs.
 
-StarRocks receives JDBC batches from the Flink checkpoint path. Keep
-`FDB_FLINK_CHECKPOINT_INTERVAL_MS` at `60000` or higher for local smoke tests
-unless you also tune StarRocks compaction. The default StarRocks JDBC settings
-are `FDB_STARROCKS_JDBC_BATCH_SIZE=100000`,
+StarRocks receives JDBC batches from the Flink checkpoint path. The default
+checkpoint interval is `FDB_FLINK_CHECKPOINT_INTERVAL_MS=30000`; keep it near
+that default for local smoke tests unless you also tune StarRocks compaction.
+The default StarRocks JDBC settings are `FDB_STARROCKS_JDBC_BATCH_SIZE=100000`,
 `FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS=60000` and
 `FDB_STARROCKS_JDBC_MAX_RETRIES=1` to avoid many small loads creating too many
 tablet versions. Keep `rewriteBatchedStatements=true` and
