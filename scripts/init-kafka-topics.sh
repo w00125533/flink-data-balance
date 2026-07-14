@@ -20,6 +20,7 @@ create_topic() {
   local cleanup=$3
   local retention_ms=${4:-}
   local segment_ms=${5:-}
+  local retention_bytes=${6:-}
 
   local extra=()
   local alter_config="cleanup.policy=$cleanup"
@@ -28,6 +29,10 @@ create_topic() {
     extra+=(--config "retention.ms=$retention_ms")
     extra+=(--config "segment.ms=$segment_ms")
     alter_config+=",retention.ms=$retention_ms,segment.ms=$segment_ms"
+    if [[ -n "$retention_bytes" ]]; then
+      extra+=(--config "retention.bytes=$retention_bytes")
+      alter_config+=",retention.bytes=$retention_bytes"
+    fi
   fi
 
   echo "[create] $name partitions=$partitions cleanup=$cleanup retention=${retention_ms:-default} segment=${segment_ms:-default}"
@@ -48,27 +53,34 @@ create_topic() {
     --add-config "$alter_config" >/dev/null
 }
 
+RETENTION_MS=${FDB_RETENTION_MS:-3600000}
+RETENTION_BYTES=${FDB_RETENTION_BYTES:-10737418240}
+DYNAMIC_BALANCING_ENABLED=${FDB_DYNAMIC_BALANCING_ENABLED:-false}
+
 # Business topics
-create_topic chr-events       64 delete  "${FDB_CHR_RETENTION_MS:-604800000}"      # default 7d
-create_topic pm-stats         16 delete  "${FDB_PM_RETENTION_MS:-259200000}"       # default 3d
+create_topic chr-events       64 delete  "${FDB_CHR_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"
+create_topic pm-stats         16 delete  "${FDB_PM_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"
 create_topic cfg-config        8 compact
 create_topic topology          4 compact
 
 # Load balancing control flow
-create_topic lb-heartbeat      1 delete  3600000       # 1h
-create_topic lb-routing        1 compact
-create_topic fdb-stage-metrics 1 delete  "${FDB_METRICS_RETENTION_MS:-3600000}"    # default 1h
+if [[ "$DYNAMIC_BALANCING_ENABLED" == "true" ]]; then
+  create_topic lb-heartbeat    1 delete  "$RETENTION_MS" "" "$RETENTION_BYTES"
+  create_topic lb-routing      1 compact
+fi
+create_topic fdb-stage-metrics 1 delete  "${FDB_METRICS_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"
 
 # Flink output
-create_topic anomaly-events   16 delete  "${FDB_ANOMALY_RETENTION_MS:-604800000}"  # default 7d
-create_topic cell-kpi-1m       8 delete  "${FDB_KPI_1M_RETENTION_MS:-259200000}"   # default 3d
-create_topic cell-kpi-5m       8 delete  "${FDB_KPI_5M_RETENTION_MS:-604800000}"   # default 7d
+create_topic cell-anomaly-events 16 delete  "${FDB_CELL_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-$RETENTION_MS}}" "" "$RETENTION_BYTES"
+create_topic grid-anomaly-events 16 delete  "${FDB_GRID_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-$RETENTION_MS}}" "" "$RETENTION_BYTES"
+create_topic cell-kpi-1m       8 delete  "${FDB_KPI_1M_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"
+create_topic cell-kpi-5m       8 delete  "${FDB_KPI_5M_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"
 
 # DLQ / late events
-create_topic chr-dlq           4 delete  604800000
-create_topic mr-dlq            4 delete  604800000
-create_topic cm-dlq            4 delete  604800000
-create_topic enrichment-late   4 delete  604800000
+create_topic chr-dlq           4 delete  "$RETENTION_MS" "" "$RETENTION_BYTES"
+create_topic pm-dlq            4 delete  "$RETENTION_MS" "" "$RETENTION_BYTES"
+create_topic cfg-dlq           4 delete  "$RETENTION_MS" "" "$RETENTION_BYTES"
+create_topic enrichment-late   4 delete  "$RETENTION_MS" "" "$RETENTION_BYTES"
 
 echo
 echo "[done] Current topic list:"

@@ -41,4 +41,22 @@ grep -F -- "--add-config cleanup.policy=delete,retention.ms=3600000,segment.ms=6
 grep -F -- "--config segment.ms=600000" "$FAKE_DOCKER_LOG" >/dev/null \
   || fail "delete topics with retention should create with segment.ms"
 
+grep -F -- "--topic cell-anomaly-events" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should create cell anomaly topic"
+grep -F -- "--topic grid-anomaly-events" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should create grid anomaly topic"
+grep -F -- "--topic pm-dlq" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should create PM DLQ topic"
+grep -F -- "--topic cfg-dlq" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should create CFG DLQ topic"
+if grep -F -- "--topic anomaly-events" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "init should not create legacy anomaly-events topic"
+fi
+if grep -F -- "--topic mr-dlq" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "init should not create legacy MR DLQ topic"
+fi
+if grep -F -- "--topic cm-dlq" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "init should not create legacy CM DLQ topic"
+fi
+
 echo "[test-ok] init kafka topics"

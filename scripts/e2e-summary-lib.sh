@@ -55,6 +55,28 @@ observability_links() {
   printf '[e2e] Observability API metrics | %s/metrics\n' "$(observability_api_url)"
 }
 
+assert_sink_latency_runtime_samples() {
+  local dataset=${1:-kpi_1m}
+  local payload
+  if ! payload="$(curl -fsS "$(observability_api_url)/api/results/sink-latency")"; then
+    return 1
+  fi
+
+  printf '%s\n' "$payload" |
+    tr '{' '\n' |
+    awk -v dataset="$dataset" '
+      /"sinkName":/ && $0 ~ "\"dataset\":\"" dataset "\"" {
+        if (match($0, /"records":[0-9]+/)) {
+          records = substr($0, RSTART + 10, RLENGTH - 10) + 0
+          if (records > 0) {
+            found = 1
+          }
+        }
+      }
+      END { exit(found ? 0 : 1) }
+    '
+}
+
 shared_infra_dir() {
   printf '%s\n' "${SHARED_INFRA_DIR:-../shared-data-infra}"
 }
@@ -279,6 +301,79 @@ SELECT 'distinct_site_cell_grid', CONCAT(COUNT(DISTINCT site_id), '/', COUNT(DIS
     while IFS=$'\t' read -r metric value; do
       summary_line "StarRocks KPI" "$metric" "${value:-empty}"
     done
+}
+
+summary_starrocks_scalar() {
+  local query=$1
+  shared_starrocks_mysql -N -B -e "$query"
+}
+
+summary_starrocks_query() {
+  summary_enabled || return 0
+  local metric=$1
+  local query=$2
+  local value
+  if value="$(summary_starrocks_scalar "$query" 2>/dev/null | tail -1)"; then
+    value="${value:-empty}"
+  else
+    value="unavailable"
+  fi
+  summary_line "StarRocks" "$metric" "$value"
+}
+
+flink_rest_url() {
+  printf '%s\n' "${FDB_FLINK_REST_URL:-http://localhost:8081}"
+}
+
+flink_dynamic_balancing_vertex_pattern() {
+  printf '%s\n' 'routing-assigner|vbucket-load-meter|load-coordinator'
+}
+
+fetch_flink_job_plan() {
+  local job_id=$1
+  curl -fsS "$(flink_rest_url)/jobs/${job_id}/plan"
+}
+
+assert_flink_dynamic_balancing_vertices_absent() {
+  local job_id=$1
+  local plan
+  if ! plan="$(fetch_flink_job_plan "$job_id")"; then
+    echo "[fail] Unable to fetch Flink DAG plan for job $job_id"
+    return 1
+  fi
+
+  local pattern
+  pattern="$(flink_dynamic_balancing_vertex_pattern)"
+  if printf '%s\n' "$plan" | grep -Eiq "$pattern"; then
+    echo "[fail] Flink DAG contains dynamic-balancing vertices while FDB_DYNAMIC_BALANCING_ENABLED is false"
+    printf '%s\n' "$plan" |
+      grep -Eio "$pattern" |
+      sort -u |
+      sed 's/^/[fail] unexpected vertex: /'
+    return 1
+  fi
+
+  echo "[ok] Flink DAG has no dynamic-balancing vertices by default"
+}
+
+summary_flink_dynamic_balancing_vertices() {
+  summary_enabled || return 0
+  local job_id=$1
+  local plan
+  if ! plan="$(fetch_flink_job_plan "$job_id" 2>/dev/null)"; then
+    summary_line "Flink DAG" "dynamic balancing vertices" "unavailable"
+    return 0
+  fi
+
+  local pattern
+  pattern="$(flink_dynamic_balancing_vertex_pattern)"
+  local vertices
+  vertices="$(printf '%s\n' "$plan" | { grep -Eio "$pattern" || true; } | sort -u | tr '\n' ',' | sed 's/,$//')"
+  if [ -n "$vertices" ]; then
+    summary_line "Flink DAG" "dynamic balancing vertices" "present:$vertices"
+  else
+    summary_line "Flink DAG" "dynamic balancing vertices" "absent"
+  fi
 }
 
 hdfs_find_files() {

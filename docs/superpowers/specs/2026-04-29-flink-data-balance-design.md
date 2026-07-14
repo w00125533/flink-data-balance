@@ -419,15 +419,22 @@ FDB_FLINK_PARALLELISM=4
 taskmanager.numberOfTaskSlots=4
 ```
 
-KPI window 与重 sink 拆链：
+KPI window 与重 sink 拆链。观测阶段使用 SinkLatencyProbe stage ID，实际 Flink sink name 仍保留在 sinkTo 节点上：
 
 - `kpi-1m`
 - `kpi-5m-rollup`
-- `cell-kpi-kafka-sink`
-- `cell-kpi-hive-sink`
-- `cell-kpi-iceberg-sink`
-- `cell-anomaly-starrocks-sink`
-- `grid-anomaly-starrocks-sink`
+- `kafka-kpi-1m` -> actual sink `cell-kpi-kafka-sink`
+- `starrocks-kpi-1m` -> actual sink `cell-kpi-jdbc-sink`
+- `hive-kpi-1m` -> actual sink `cell-kpi-hive-sink`
+- `iceberg-kpi-1m` -> actual sink `cell-kpi-iceberg-sink`
+- `kafka-kpi-5m` -> actual sink `cell-kpi-5m-kafka-sink`
+- `starrocks-kpi-5m` -> actual sink `cell-kpi-5m-jdbc-sink`
+- `hive-kpi-5m` -> actual sink `cell-kpi-5m-hive-sink`
+- `iceberg-kpi-5m` -> actual sink `cell-kpi-5m-iceberg-sink`
+- `kafka-cell-anomaly` -> actual sink `cell-anomaly-kafka-sink`
+- `kafka-grid-anomaly` -> actual sink `grid-anomaly-kafka-sink`
+- `starrocks-cell-anomaly` -> actual sink `cell-anomaly-starrocks-sink`
+- `starrocks-grid-anomaly` -> actual sink `grid-anomaly-starrocks-sink`
 
 通过 `startNewChain` / `disableChaining` 或显式算子边界避免 UI 上把窗口和多个 sink 合并为一个 vertex，方便定位 busy、backpressure 和 sink 延迟。
 

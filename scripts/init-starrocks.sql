@@ -67,6 +67,12 @@ PROPERTIES (
   "replication_num" = "1"
 );
 
+CREATE VIEW IF NOT EXISTS kpi_1m AS
+SELECT * FROM cell_kpi WHERE window_kind = 'MIN_1';
+
+CREATE VIEW IF NOT EXISTS kpi_5m AS
+SELECT * FROM cell_kpi WHERE window_kind = 'MIN_5';
+
 CREATE EXTERNAL CATALOG IF NOT EXISTS fdb_iceberg
 PROPERTIES (
   "type" = "iceberg",

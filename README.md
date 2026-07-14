@@ -111,11 +111,15 @@ Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> 
 ```
 
 The Flink job emits samples for `chr-source`, `pm-source`, `cfg-source`, `kafka`,
-`assigner`, `enrichment`, `load-coordinator`, `starrocks-sink`, `hive-sink` and
-`iceberg-sink`. The observability API keeps the latest sample per stage and
-renders the `fdb_*` Prometheus series. The Flink containers also enable the
-Flink Prometheus reporter on port `9249` for native JobManager/TaskManager
-metrics.
+`enrichment` and the sink probe stages `kafka-kpi-1m`, `starrocks-kpi-1m`,
+`hive-kpi-1m`, `iceberg-kpi-1m`, `kafka-kpi-5m`, `starrocks-kpi-5m`,
+`hive-kpi-5m`, `iceberg-kpi-5m`, `kafka-cell-anomaly`,
+`kafka-grid-anomaly`, `starrocks-cell-anomaly` and `starrocks-grid-anomaly`.
+When `FDB_DYNAMIC_BALANCING_ENABLED=true`, it also emits `assigner` and
+`load-coordinator` samples. The observability API keeps the latest sample per
+stage and renders the `fdb_*` Prometheus series. The Flink containers also
+enable the Flink Prometheus reporter on port `9249` for native
+JobManager/TaskManager metrics.
 
 ## End-to-End Smoke Test
 
@@ -194,9 +198,11 @@ use:
 FDB_ENV_FILE=.env.local FDB_E2E_KEEP_RUNNING_ON_SUCCESS=1 FDB_E2E_SUMMARY=1 bash scripts/deploy.sh local smoke
 ```
 
-After the script reports success, the script verifies that `fdb-stage-metrics` has runtime samples,
-`http://localhost:18080/metrics` exposes non-zero `fdb_*` values, and
-Prometheus can query `fdb_stage_out_eps > 0`.
+Before the script reports success, it verifies that `fdb-stage-metrics` has
+runtime samples, `http://localhost:18080/metrics` exposes non-zero `fdb_*`
+values, Prometheus can query `fdb_stage_out_eps > 0`, the default Flink DAG does
+not contain `routing-assigner`, `vbucket-load-meter` or `load-coordinator`, and
+`/api/results/sink-latency` contains runtime KPI samples.
 
 Accepted truthy values are `1`, `true`, `TRUE`, `yes` and `on`.
 Summary lines are printed to the console and persisted to `logs-summary.log` by
@@ -217,10 +223,13 @@ main stages:
 | Infrastructure | Running container count and Kafka topic count |
 | Data Generation | Topology log line count and simulator process count |
 | Flink Submit | Submitted Flink JobID |
-| Kafka Input | Partition count and current records for `cfg-config`, `pm-stats`, `chr-events` |
+| Kafka Input | Partition count and current records for `cfg-config`, `pm-stats`, `chr-events`, KPI and anomaly topics |
 | StarRocks KPI | KPI rows by `window_kind`, KPI window timestamp range, distinct `site_id/cell_id/grid_id` counts |
-| Load Balancing | `lb-heartbeat` and `lb-routing` records, running Flink jobs, latest completed checkpoints |
+| StarRocks | KPI view row counts and anomaly internal table row counts |
+| Flink DAG | Dynamic balancing vertex presence; absent by default |
+| Load Balancing | `lb-heartbeat` and `lb-routing` records when dynamic balancing is enabled |
 | Parquet KPI | `.parquet` file count, total bytes, partition count, sample partition paths |
+| Iceberg KPI | Iceberg data files, metadata JSON, snapshots and partition samples |
 | Hive KPI | Hive row count and repaired partition count |
 
 With the switch enabled, Java components also emit code-level summaries as
@@ -258,34 +267,48 @@ flowchart LR
     KCfg --> Flink["Flink Job: enrichment, KPI, anomaly, load metering"]
     KPm --> Flink
     KCHR --> Flink
-    KRouting["Kafka: lb-routing"] --> Flink
+    KRouting["Kafka: lb-routing (dynamic only)"] --> Flink
 
-    Flink --> KHeartbeat["Kafka: lb-heartbeat"]
+    Flink --> KHeartbeat["Kafka: lb-heartbeat (dynamic only)"]
     KHeartbeat --> Coordinator["Load Coordinator"]
     Coordinator --> KRouting
 
     Flink --> KKpi1m["Kafka: cell-kpi-1m"]
     Flink --> KKpi5m["Kafka: cell-kpi-5m"]
-    Flink --> KAnomaly["Kafka: anomaly-events"]
-    Flink --> StarRocks["StarRocks: cell_kpi, anomaly_events"]
+    Flink --> KCellAnomaly["Kafka: cell-anomaly-events"]
+    Flink --> KGridAnomaly["Kafka: grid-anomaly-events"]
+    Flink --> StarRocks["StarRocks: cell_kpi, kpi_1m, kpi_5m, cell/grid anomalies"]
     Flink --> Parquet["Warehouse: cell_kpi/*.parquet"]
     Parquet --> Hive["Hive external table: fdb.cell_kpi"]
 
     CheckKafka{"Checkpoint: Kafka offsets > 0"} -.-> KCHR
     CheckStarRocks{"Checkpoint: StarRocks MIN_1 rows > 0"} -.-> StarRocks
-    CheckHeartbeat{"Checkpoint: heartbeat offsets > 0"} -.-> KHeartbeat
+    CheckHeartbeat{"Checkpoint: heartbeat offsets > 0 when dynamic"} -.-> KHeartbeat
     CheckParquet{"Checkpoint: .parquet files > 0"} -.-> Parquet
     CheckHive{"Checkpoint: Hive count > 0"} -.-> Hive
 ```
 
 ### Key Validation Checkpoints
 
-- Kafka input: `chr-events` must have at least one non-zero partition offset.
-- StarRocks KPI: `cell_kpi` must contain `MIN_1` rows.
-- Load balancing: `lb-heartbeat` must have non-zero offsets.
+- Kafka input and output: `cfg-config`, `pm-stats`, `chr-events`,
+  `cell-kpi-1m`, `cell-kpi-5m`, `cell-anomaly-events` and
+  `grid-anomaly-events` are summarized; PM messages and the CFG baseline must be
+  present.
+- StarRocks KPI: `cell_kpi` must contain `MIN_1` and `MIN_5` rows, and
+  `kpi_1m` / `kpi_5m` views are initialized for API queries.
+- StarRocks anomaly tables: `cell_anomaly_events` and `grid_anomaly_events`
+  must be queryable. Seeded smoke data is not guaranteed to produce non-zero
+  anomaly rows.
+- Flink DAG: by default, the REST plan must not contain `routing-assigner`,
+  `vbucket-load-meter` or `load-coordinator`.
+- Sink latency: `/api/results/sink-latency` must return runtime samples for the
+  expected KPI datasets; startup seed rows with `records=0` are rejected.
+- Load balancing: when `FDB_DYNAMIC_BALANCING_ENABLED=true`, `lb-heartbeat`
+  must have non-zero offsets.
 - Flink checkpointing: completed checkpoints are required before FileSink
   commits final Parquet files.
-- Parquet KPI: shared HDFS `/warehouse/fdb/cell_kpi` must contain `.parquet` files.
+- KPI files: shared HDFS `/warehouse/fdb/cell_kpi` and Iceberg
+  `/warehouse/iceberg/<database>/cell_kpi/data` must contain `.parquet` files.
 - Hive KPI: `MSCK REPAIR TABLE fdb.cell_kpi` must discover partitions, then
   `SELECT COUNT(*) FROM fdb.cell_kpi` must return rows.
 

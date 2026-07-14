@@ -272,7 +272,8 @@ prune_starrocks_sql() {
 
   cat <<SQL
 DELETE FROM cell_kpi WHERE window_end_ts < ${kpi_threshold};
-DELETE FROM anomaly_events WHERE event_ts < ${anomaly_threshold};
+DELETE FROM cell_anomaly_events WHERE event_ts < ${anomaly_threshold};
+DELETE FROM grid_anomaly_events WHERE event_ts < ${anomaly_threshold};
 SQL
 }
 
@@ -490,6 +491,9 @@ local_smoke() {
     return 1
   }
 
+  KPI_5M_WAIT_ATTEMPTS=${FDB_E2E_5M_WAIT_ATTEMPTS:-240}
+  ICEBERG_KPI_ROOT=${FDB_E2E_ICEBERG_KPI_ROOT:-/warehouse/iceberg/${FDB_ICEBERG_DATABASE:-fdb}/${FDB_ICEBERG_TABLE:-cell_kpi}}
+
   echo "[e2e] Building jars..."
   maven_cmd package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
   summary_section "Build"
@@ -526,14 +530,22 @@ local_smoke() {
 
   echo "[e2e] Submitting Flink job..."
   local_submit
+  FLINK_JOB_ID="$(awk '/JobID/ {job_id=$NF} END {print job_id}' logs-local-flink-submit.out)"
+  [ -n "$FLINK_JOB_ID" ] || { echo "[fail] Unable to parse Flink JobID"; exit 1; }
   summary_section "Flink Submit"
-  summary_line "Flink Submit" "job id" "$(awk '/JobID/ {job_id=$NF} END {print job_id}' logs-local-flink-submit.out)"
+  summary_line "Flink Submit" "job id" "$FLINK_JOB_ID"
 
+  local_smoke_wait_for "CFG baseline messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic cfg-config | grep -Eq ':[1-9][0-9]*$'"
+  local_smoke_wait_for "PM messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic pm-stats | grep -Eq ':[1-9][0-9]*$'"
   local_smoke_wait_for "CHR messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic chr-events | grep -Eq ':[1-9][0-9]*$'"
   summary_section "Kafka Input"
   summary_kafka_topic "cfg-config"
   summary_kafka_topic "pm-stats"
   summary_kafka_topic "chr-events"
+  summary_kafka_topic "cell-kpi-1m"
+  summary_kafka_topic "cell-kpi-5m"
+  summary_kafka_topic "cell-anomaly-events"
+  summary_kafka_topic "grid-anomaly-events"
   local_smoke_wait_for "1m KPI rows in StarRocks" "shared_starrocks_mysql -N -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'\" | grep -Eq '^[1-9][0-9]*$'" 90
   summary_section "StarRocks KPI"
   summary_starrocks_kpi
@@ -542,21 +554,41 @@ local_smoke() {
   local_smoke_wait_for "Prometheus fdb_stage_out_eps" "curl -fsS \"$(observability_prometheus_url)/api/v1/query?query=fdb_stage_out_eps%20%3E%200\" | grep -q '\"metric\"'" 60
   summary_section "Observability"
   summary_observability
-  local_smoke_wait_for "heartbeat messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic lb-heartbeat | grep -Eq ':[1-9][0-9]*$'"
-  summary_section "Load Balancing"
-  summary_kafka_topic "lb-heartbeat"
-  summary_kafka_topic "lb-routing"
+  if [ "${FDB_DYNAMIC_BALANCING_ENABLED:-false}" = "true" ]; then
+    local_smoke_wait_for "heartbeat messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic lb-heartbeat | grep -Eq ':[1-9][0-9]*$'"
+    summary_section "Load Balancing"
+    summary_kafka_topic "lb-heartbeat"
+    summary_kafka_topic "lb-routing"
+  fi
   summary_flink_job
+  summary_section "Flink DAG"
+  if [ "${FDB_DYNAMIC_BALANCING_ENABLED:-false}" = "true" ]; then
+    summary_flink_dynamic_balancing_vertices "$FLINK_JOB_ID"
+  else
+    local_smoke_wait_for "Flink DAG has no dynamic-balancing vertices" "assert_flink_dynamic_balancing_vertices_absent \"$FLINK_JOB_ID\"" 30
+    summary_flink_dynamic_balancing_vertices "$FLINK_JOB_ID"
+  fi
   summary_code_logs "Flink Code" docker logs fdb-flink-taskmanager
   local_smoke_wait_for "Parquet KPI files" "shared_hdfs_exec -find /warehouse/fdb/cell_kpi -name '*.parquet' | grep -q ."
   summary_section "Parquet KPI"
   summary_parquet_kpi "/warehouse/fdb/cell_kpi"
-  local_smoke_wait_for "Iceberg metadata" "shared_hdfs_exec -find /warehouse/iceberg/fdb/cell_kpi/metadata -name '*.metadata.json' | grep -q ."
-  local_smoke_wait_for "Iceberg data files" "shared_hdfs_exec -find /warehouse/iceberg/fdb/cell_kpi/data -name '*.parquet' | grep -q ."
+  local_smoke_wait_for "Iceberg metadata" "shared_hdfs_exec -find \"$ICEBERG_KPI_ROOT/metadata\" -name '*.metadata.json' | grep -q ."
+  local_smoke_wait_for "Iceberg 1m KPI data files" "shared_hdfs_exec -find \"$ICEBERG_KPI_ROOT/data\" -name '*.parquet' | grep 'window_kind=MIN_1' | grep -q ."
+  local_smoke_wait_for "Iceberg 5m KPI data files" "shared_hdfs_exec -find \"$ICEBERG_KPI_ROOT/data\" -name '*.parquet' | grep 'window_kind=MIN_5' | grep -q ." "$KPI_5M_WAIT_ATTEMPTS"
+  local_smoke_wait_for "5m KPI rows in StarRocks" "shared_starrocks_mysql -N -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_5'\" | grep -Eq '^[1-9][0-9]*$'" "$KPI_5M_WAIT_ATTEMPTS"
+  local_smoke_wait_for "cell anomaly table queryable in StarRocks" "summary_starrocks_scalar \"SELECT COUNT(*) FROM cell_anomaly_events\" | grep -Eq '^[0-9]+$'" 30
+  local_smoke_wait_for "grid anomaly table queryable in StarRocks" "summary_starrocks_scalar \"SELECT COUNT(*) FROM grid_anomaly_events\" | grep -Eq '^[0-9]+$'" 30
+  summary_section "StarRocks"
+  summary_starrocks_query "KPI 1m rows" "SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'"
+  summary_starrocks_query "KPI 5m rows" "SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_5'"
+  summary_starrocks_query "Cell anomaly rows" "SELECT COUNT(*) FROM cell_anomaly_events"
+  summary_starrocks_query "Grid anomaly rows" "SELECT COUNT(*) FROM grid_anomaly_events"
   summary_section "Iceberg KPI"
-  summary_iceberg_kpi "/warehouse/iceberg/fdb/cell_kpi"
+  summary_iceberg_kpi "$ICEBERG_KPI_ROOT"
   summary_section "Hive/Iceberg Compare"
-  summary_hive_iceberg_compare "/warehouse/fdb/cell_kpi" "/warehouse/iceberg/fdb/cell_kpi/data"
+  summary_hive_iceberg_compare "/warehouse/fdb/cell_kpi" "$ICEBERG_KPI_ROOT/data"
+  local_smoke_wait_for "1m sink latency runtime samples" "assert_sink_latency_runtime_samples kpi_1m" 60
+  local_smoke_wait_for "5m sink latency runtime samples" "assert_sink_latency_runtime_samples kpi_5m" 60
   summary_section "Sink Performance"
   summary_sink_performance
 
@@ -613,7 +645,8 @@ local_status() {
   echo "[status] starrocks"
   shared_starrocks_mysql -N -e "
     SELECT 'cell_kpi', COUNT(*), MIN(window_start_ts), MAX(window_start_ts) FROM cell_kpi;
-    SELECT 'anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM anomaly_events;
+    SELECT 'cell_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM cell_anomaly_events;
+    SELECT 'grid_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM grid_anomaly_events;
   " || true
 
   echo "[status] hdfs"
@@ -822,10 +855,22 @@ create_external_topic() {
   local partitions=$2
   local cleanup=$3
   local retention_ms=${4:-}
+  local retention_bytes=${5:-${FDB_RETENTION_BYTES:-}}
+  local segment_ms=${FDB_KAFKA_SEGMENT_MS:-}
   local extra=()
+  local config_values=("cleanup.policy=$cleanup")
 
   if [[ -n "$retention_ms" && "$cleanup" == "delete" ]]; then
     extra+=(--config "retention.ms=$retention_ms")
+    config_values+=("retention.ms=$retention_ms")
+    if [[ -n "$segment_ms" ]]; then
+      extra+=(--config "segment.ms=$segment_ms")
+      config_values+=("segment.ms=$segment_ms")
+    fi
+    if [[ -n "$retention_bytes" ]]; then
+      extra+=(--config "retention.bytes=$retention_bytes")
+      config_values+=("retention.bytes=$retention_bytes")
+    fi
   fi
 
   kafka-topics \
@@ -842,7 +887,7 @@ create_external_topic() {
     --alter \
     --entity-type topics \
     --entity-name "$name" \
-    --add-config "cleanup.policy=$cleanup${retention_ms:+,retention.ms=$retention_ms}" >/dev/null
+    --add-config "$(IFS=,; printf '%s' "${config_values[*]}")" >/dev/null
 }
 
 EXTERNAL_FLINK_ENV_ARGS=()
@@ -1032,7 +1077,8 @@ external_init() {
   create_external_topic "${FDB_LB_HEARTBEAT_TOPIC:-lb-heartbeat}" 1 delete 3600000
   create_external_topic "${FDB_LB_ROUTING_TOPIC:-lb-routing}" 1 compact
   create_external_topic "${FDB_METRICS_TOPIC:-fdb-stage-metrics}" 1 delete "${FDB_METRICS_RETENTION_MS:-3600000}"
-  create_external_topic "${FDB_ANOMALY_TOPIC:-anomaly-events}" 16 delete "${FDB_ANOMALY_RETENTION_MS:-604800000}"
+  create_external_topic "${FDB_CELL_ANOMALY_TOPIC:-cell-anomaly-events}" 16 delete "${FDB_CELL_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-604800000}}"
+  create_external_topic "${FDB_GRID_ANOMALY_TOPIC:-grid-anomaly-events}" 16 delete "${FDB_GRID_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-604800000}}"
   create_external_topic "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}" 8 delete "${FDB_KPI_1M_RETENTION_MS:-259200000}"
   create_external_topic "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}" 8 delete "${FDB_KPI_5M_RETENTION_MS:-604800000}"
   create_external_topic "${FDB_CHR_DLQ_TOPIC:-chr-dlq}" 4 delete 604800000
@@ -1248,7 +1294,8 @@ external_status() {
     "${FDB_STARROCKS_PASSWORD:-}" \
     "${FDB_STARROCKS_DATABASE:-fdb}" <<'SQL' || true
 SELECT 'cell_kpi', COUNT(*), MIN(window_start_ts), MAX(window_start_ts) FROM cell_kpi;
-SELECT 'anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM anomaly_events;
+SELECT 'cell_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM cell_anomaly_events;
+SELECT 'grid_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM grid_anomaly_events;
 SQL
   echo "[status] hdfs"
   external_hdfs_exec -count -h "${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}" || true
