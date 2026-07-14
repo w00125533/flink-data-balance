@@ -10,10 +10,11 @@ import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
+import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.FlinkSink;
-import org.apache.iceberg.hadoop.HadoopCatalog;
+import org.apache.iceberg.hive.HiveCatalog;
 import org.apache.iceberg.types.Types;
 
 import java.util.Map;
@@ -73,16 +74,22 @@ public final class IcebergSinks {
     }
 
     static Table ensureTable(IcebergConfig config) {
-        HadoopCatalog catalog = hadoopCatalog(config);
+        HiveCatalog catalog = hiveCatalog(config);
         Namespace namespace = Namespace.of(config.database());
         try {
-            catalog.createNamespace(namespace);
+            catalog.createNamespace(namespace, Map.of("location", config.warehouse() + "/" + config.database()));
         } catch (AlreadyExistsException ignored) {
             // Existing namespace is the normal path after the first run.
         }
         TableIdentifier identifier = tableIdentifier(config);
         if (catalog.tableExists(identifier)) {
-            Table table = catalog.loadTable(identifier);
+            Table table;
+            try {
+                table = catalog.loadTable(identifier);
+            } catch (NotFoundException e) {
+                catalog.dropTable(identifier, false);
+                return createCellKpiTable(catalog, identifier);
+            }
             Map<String, String> missingProperties = missingTableProperties(table.properties());
             if (!missingProperties.isEmpty()) {
                 org.apache.iceberg.UpdateProperties update = table.updateProperties();
@@ -92,21 +99,31 @@ public final class IcebergSinks {
             }
             return table;
         }
+        return createCellKpiTable(catalog, identifier);
+    }
+
+    private static Table createCellKpiTable(HiveCatalog catalog, TableIdentifier identifier) {
         Schema schema = cellKpiSchema();
         return catalog.createTable(identifier, schema, cellKpiPartitionSpec(schema), tableProperties());
     }
 
-    static HadoopCatalog hadoopCatalog(IcebergConfig config) {
-        HadoopCatalog catalog = new HadoopCatalog();
+    static HiveCatalog hiveCatalog(IcebergConfig config) {
+        HiveCatalog catalog = new HiveCatalog();
         catalog.setConf(new Configuration());
-        catalog.initialize(config.catalogName(), Map.of("warehouse", config.warehouse()));
+        catalog.initialize(config.catalogName(), catalogProperties(config));
         return catalog;
+    }
+
+    static Map<String, String> catalogProperties(IcebergConfig config) {
+        return Map.of(
+            "warehouse", config.warehouse(),
+            "uri", config.metastoreUri());
     }
 
     public static DataStreamSink<Void> appendCellKpiSink(DataStream<RowData> stream, IcebergConfig config) {
         ensureTable(config);
-        CatalogLoader catalogLoader = CatalogLoader.hadoop(
-            config.catalogName(), new Configuration(), Map.of("warehouse", config.warehouse()));
+        CatalogLoader catalogLoader = CatalogLoader.hive(
+            config.catalogName(), new Configuration(), catalogProperties(config));
         TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, tableIdentifier(config));
         return FlinkSink.forRowData(stream)
             .tableLoader(tableLoader)

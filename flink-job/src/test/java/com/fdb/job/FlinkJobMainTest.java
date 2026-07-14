@@ -95,6 +95,7 @@ class FlinkJobMainTest {
 
         assertThat(config.enabled()).isTrue();
         assertThat(config.warehouse()).isEqualTo("hdfs://namenode:8020/warehouse/iceberg");
+        assertThat(config.database()).isEqualTo("iceberg_db");
     }
 
     @Test

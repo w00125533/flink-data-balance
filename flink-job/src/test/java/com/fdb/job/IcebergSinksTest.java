@@ -3,7 +3,7 @@ package com.fdb.job;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.catalog.TableIdentifier;
-import org.apache.iceberg.hadoop.HadoopCatalog;
+import org.apache.iceberg.hive.HiveCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,13 +17,14 @@ class IcebergSinksTest {
     @Test
     void builds_cell_kpi_table_identifier_schema_and_partition_spec() {
         IcebergConfig config = new IcebergConfig(
-            true, "hdfs://namenode:8020/warehouse/iceberg", "fdb_iceberg", "fdb", "cell_kpi");
+            true, "hdfs://namenode:8020/warehouse/iceberg", "fdb_iceberg", "iceberg_db", "cell_kpi",
+            "thrift://hive-metastore:9083");
 
         TableIdentifier identifier = IcebergSinks.tableIdentifier(config);
         Schema schema = IcebergSinks.cellKpiSchema();
         PartitionSpec spec = IcebergSinks.cellKpiPartitionSpec(schema);
 
-        assertThat(identifier.toString()).isEqualTo("fdb.cell_kpi");
+        assertThat(identifier.toString()).isEqualTo("iceberg_db.cell_kpi");
         assertThat(schema.columns()).hasSize(21);
         assertThat(schema.columns().stream().map(field -> field.name()))
             .containsExactly(
@@ -41,13 +42,17 @@ class IcebergSinksTest {
     }
 
     @Test
-    void hadoop_catalog_has_configuration(@TempDir Path warehouseDir) {
+    void hive_catalog_has_configuration(@TempDir Path warehouseDir) {
         IcebergConfig config = new IcebergConfig(
-            true, warehouseDir.toUri().toString(), "fdb_iceberg", "fdb", "cell_kpi");
+            true, warehouseDir.toUri().toString(), "fdb_iceberg", "iceberg_db", "cell_kpi",
+            "thrift://hive-metastore:9083");
 
-        HadoopCatalog catalog = IcebergSinks.hadoopCatalog(config);
+        HiveCatalog catalog = IcebergSinks.hiveCatalog(config);
 
         assertThat(catalog.getConf()).isNotNull();
+        assertThat(IcebergSinks.catalogProperties(config))
+            .containsEntry("warehouse", warehouseDir.toUri().toString())
+            .containsEntry("uri", "thrift://hive-metastore:9083");
     }
 
     @Test

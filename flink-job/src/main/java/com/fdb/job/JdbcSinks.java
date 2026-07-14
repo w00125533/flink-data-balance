@@ -1,10 +1,8 @@
 package com.fdb.job;
 
-import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.CellKpi;
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
 import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
-import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.connector.jdbc.sink.JdbcSink;
 
 public final class JdbcSinks {
@@ -83,31 +81,6 @@ public final class JdbcSinks {
             return defaultValue;
         }
         return Long.parseLong(value);
-    }
-
-    public static JdbcSink<AnomalyEvent> anomalySink() {
-        return JdbcSink.<AnomalyEvent>builder()
-            .withQueryStatement(
-                "INSERT INTO anomaly_events (detection_ts, event_ts, imsi, site_id, cell_id, grid_id, " +
-                "latitude, longitude, anomaly_type, severity, rule_version, context_json) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (ps, ae) -> {
-                    ps.setLong(1, ae.getDetectionTs());
-                    ps.setLong(2, ae.getEventTs());
-                    ps.setString(3, ae.getImsi());
-                    ps.setString(4, ae.getSiteId());
-                    ps.setString(5, ae.getCellId());
-                    ps.setString(6, ae.getGridId());
-                    ps.setDouble(7, ae.getLatitude());
-                    ps.setDouble(8, ae.getLongitude());
-                    ps.setString(9, ae.getAnomalyType().toString());
-                    ps.setString(10, ae.getSeverity().toString());
-                    ps.setString(11, ae.getRuleVersion());
-                    ps.setString(12, ae.getContextJson());
-                }
-            )
-            .withExecutionOptions(execOpts())
-            .buildAtLeastOnce(connOpts());
     }
 
     public static JdbcSink<CellKpi> cellKpiSink() {

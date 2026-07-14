@@ -14,6 +14,7 @@ class IcebergRetentionToolTest {
     void parses_required_options() {
         IcebergRetentionTool.Options options = IcebergRetentionTool.Options.parse(
             "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+            "--metastore-uri", "thrift://hive-metastore:9083",
             "--database", "fdb",
             "--table", "cell_kpi",
             "--older-than-ms", "3600000",
@@ -22,6 +23,7 @@ class IcebergRetentionToolTest {
             "--allow-manual-orphan-delete", "true");
 
         assertThat(options.warehouse()).isEqualTo("hdfs://namenode:8020/warehouse/iceberg");
+        assertThat(options.metastoreUri()).isEqualTo("thrift://hive-metastore:9083");
         assertThat(options.database()).isEqualTo("fdb");
         assertThat(options.table()).isEqualTo("cell_kpi");
         assertThat(options.olderThanMs()).isEqualTo(3_600_000L);
@@ -34,6 +36,7 @@ class IcebergRetentionToolTest {
     void defaults_orphan_delete_mode_to_skip() {
         IcebergRetentionTool.Options options = IcebergRetentionTool.Options.parse(
             "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+            "--metastore-uri", "thrift://hive-metastore:9083",
             "--database", "fdb",
             "--table", "cell_kpi",
             "--older-than-ms", "3600000",
@@ -48,6 +51,7 @@ class IcebergRetentionToolTest {
         assertThatIllegalArgumentException()
             .isThrownBy(() -> IcebergRetentionTool.Options.parse(
                 "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+                "--metastore-uri", "thrift://hive-metastore:9083",
                 "--database", "fdb",
                 "--table", "cell_kpi",
                 "--older-than-ms", "3600000",
@@ -61,6 +65,7 @@ class IcebergRetentionToolTest {
         assertThatIllegalArgumentException()
             .isThrownBy(() -> IcebergRetentionTool.Options.parse(
                 "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+                "--metastore-uri", "thrift://hive-metastore:9083",
                 "--database", "fdb",
                 "--table", "cell_kpi",
                 "--older-than-ms", "3600000",
@@ -75,6 +80,7 @@ class IcebergRetentionToolTest {
         assertThatIllegalArgumentException()
             .isThrownBy(() -> IcebergRetentionTool.Options.parse(
                 "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+                "--metastore-uri", "thrift://hive-metastore:9083",
                 "--database", "fdb",
                 "--table", "cell_kpi",
                 "--older-than-ms", "3600000"))
@@ -86,6 +92,7 @@ class IcebergRetentionToolTest {
         assertThatIllegalArgumentException()
             .isThrownBy(() -> IcebergRetentionTool.Options.parse(
                 "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+                "--metastore-uri", "thrift://hive-metastore:9083",
                 "--database", "fdb",
                 "--table", "cell_kpi",
                 "--older-than-ms", "0",
@@ -99,6 +106,7 @@ class IcebergRetentionToolTest {
             .isThrownBy(() -> IcebergRetentionTool.Options.parse(
                 "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
                 "--warehouse", "hdfs://namenode:8020/other",
+                "--metastore-uri", "thrift://hive-metastore:9083",
                 "--database", "fdb",
                 "--table", "cell_kpi",
                 "--older-than-ms", "3600000",
@@ -111,6 +119,7 @@ class IcebergRetentionToolTest {
         assertThatIllegalArgumentException()
             .isThrownBy(() -> IcebergRetentionTool.Options.parse(
                 "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+                "--metastore-uri", "thrift://hive-metastore:9083",
                 "--database", "fdb",
                 "--table", "cell_kpi",
                 "--older-than-ms", "3600000",
@@ -153,6 +162,7 @@ class IcebergRetentionToolTest {
     void rejects_manual_orphan_delete_when_retention_window_is_under_one_hour() {
         IcebergRetentionTool.Options options = IcebergRetentionTool.Options.parse(
             "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+            "--metastore-uri", "thrift://hive-metastore:9083",
             "--database", "fdb",
             "--table", "cell_kpi",
             "--older-than-ms", "3599999",
@@ -169,6 +179,7 @@ class IcebergRetentionToolTest {
     void rejects_manual_orphan_delete_without_explicit_allow_flag() {
         IcebergRetentionTool.Options options = IcebergRetentionTool.Options.parse(
             "--warehouse", "hdfs://namenode:8020/warehouse/iceberg",
+            "--metastore-uri", "thrift://hive-metastore:9083",
             "--database", "fdb",
             "--table", "cell_kpi",
             "--older-than-ms", "3600000",

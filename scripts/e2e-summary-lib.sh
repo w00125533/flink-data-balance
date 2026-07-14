@@ -414,7 +414,7 @@ summary_parquet_kpi() {
 
 summary_iceberg_kpi() {
   summary_enabled || return 0
-  local root=${1:-/warehouse/iceberg/fdb/cell_kpi}
+  local root=${1:-/warehouse/iceberg/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}}
   local data_root="$root/data"
   local metadata_root="$root/metadata"
   local data_files_list
@@ -456,7 +456,7 @@ summary_iceberg_kpi() {
 summary_hive_iceberg_compare() {
   summary_enabled || return 0
   local hive_root=${1:-/warehouse/fdb/cell_kpi}
-  local iceberg_root=${2:-/warehouse/iceberg/fdb/cell_kpi/data}
+  local iceberg_root=${2:-/warehouse/iceberg/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}/data}
   local hive_files
   local hive_bytes
   local iceberg_files

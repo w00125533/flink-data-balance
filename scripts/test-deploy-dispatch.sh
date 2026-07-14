@@ -30,9 +30,9 @@ if [[ "${1:-}" == "compose" ]]; then
   fi
   if [[ "$*" == *" exec -T namenode "* ]]; then
     if [[ "$*" == *" -ls -R "* ]]; then
-      if [[ "$*" == *" /warehouse/iceberg/fdb/cell_kpi"* ]]; then
+      if [[ "$*" == *" /warehouse/iceberg/iceberg_db/cell_kpi"* ]]; then
         cat <<'OUT'
--rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/iceberg/fdb/cell_kpi/.metadata.inprogress.token
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/iceberg/iceberg_db/cell_kpi/.metadata.inprogress.token
 OUT
       else
         cat <<'OUT'
@@ -65,9 +65,9 @@ if [[ "${1:-}" == "exec" ]]; then
   fi
   if [[ "$container" == "shared-data-infra-namenode-1" ]]; then
     if [[ "$*" == *" -ls -R "* ]]; then
-      if [[ "$*" == *" /warehouse/iceberg/fdb/cell_kpi"* ]]; then
+      if [[ "$*" == *" /warehouse/iceberg/iceberg_db/cell_kpi"* ]]; then
         cat <<'OUT'
--rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/iceberg/fdb/cell_kpi/.metadata.inprogress.token
+-rw-r--r--   3 flink supergroup       1000 2026-07-10 00:00 /warehouse/iceberg/iceberg_db/cell_kpi/.metadata.inprogress.token
 OUT
       else
         cat <<'OUT'

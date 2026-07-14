@@ -15,8 +15,9 @@ RETENTION_BYTES=${FDB_RETENTION_BYTES:-10737418240}
 HDFS_URI=${FDB_HDFS_URI:-hdfs://namenode:8020}
 KAFKA_BOOTSTRAP=${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}
 ICEBERG_WAREHOUSE=${FDB_ICEBERG_WAREHOUSE:-${HDFS_URI}/warehouse/iceberg}
-ICEBERG_DATABASE=${FDB_ICEBERG_DATABASE:-fdb}
+ICEBERG_DATABASE=${FDB_ICEBERG_DATABASE:-iceberg_db}
 ICEBERG_TABLE=${FDB_ICEBERG_TABLE:-cell_kpi}
+ICEBERG_METASTORE_URI=${FDB_ICEBERG_METASTORE_URI:-${FDB_HIVE_METASTORE_URI:-thrift://hive-metastore:9083}}
 STARROCKS_DATABASE=${FDB_STARROCKS_DATABASE:-fdb}
 OBSERVABILITY_RUNS_DIR=${FDB_E2E_RUNS_DIR:-docker/data/observability-runs}
 SAFE_OBSERVABILITY_RUNS_DIR=""
@@ -189,6 +190,7 @@ run_iceberg_retention() {
     -cp '/opt/fdb/flink-job-0.1.0-SNAPSHOT.jar:/opt/flink/lib/*' \
     com.fdb.job.maintenance.IcebergRetentionTool \
     --warehouse "$ICEBERG_WAREHOUSE" \
+    --metastore-uri "$ICEBERG_METASTORE_URI" \
     --database "$ICEBERG_DATABASE" \
     --table "$ICEBERG_TABLE" \
     --older-than-ms "$RETENTION_MS" \

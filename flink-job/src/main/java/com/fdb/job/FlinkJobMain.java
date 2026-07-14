@@ -18,9 +18,11 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.fdb.common.geo.Geohash;
@@ -201,16 +203,28 @@ public class FlinkJobMain {
             .name("pm-1m-fact");
 
         DataStream<MinuteFactEnvelope> chrFactEnv = chrMinuteFacts
-            .map(MinuteFactEnvelope::chr)
-            .returns(new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .process(new ProcessFunction<ChrMinuteFact, MinuteFactEnvelope>() {
+                @Override
+                public void processElement(ChrMinuteFact value, Context ctx, Collector<MinuteFactEnvelope> out) {
+                    out.collect(MinuteFactEnvelope.chr(value));
+                }
+            }, new GenericTypeInfo<>(MinuteFactEnvelope.class))
             .name("to-chr-minute-fact-env");
         DataStream<MinuteFactEnvelope> pmFactEnv = pmMinuteFacts
-            .map(MinuteFactEnvelope::pm)
-            .returns(new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .process(new ProcessFunction<PmMinuteFact, MinuteFactEnvelope>() {
+                @Override
+                public void processElement(PmMinuteFact value, Context ctx, Collector<MinuteFactEnvelope> out) {
+                    out.collect(MinuteFactEnvelope.pm(value));
+                }
+            }, new GenericTypeInfo<>(MinuteFactEnvelope.class))
             .name("to-pm-minute-fact-env");
         DataStream<MinuteFactEnvelope> cfgMinuteEnv = cfgStream
-            .map(MinuteFactEnvelope::cfg)
-            .returns(new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .process(new ProcessFunction<CfgConfig, MinuteFactEnvelope>() {
+                @Override
+                public void processElement(CfgConfig value, Context ctx, Collector<MinuteFactEnvelope> out) {
+                    out.collect(MinuteFactEnvelope.cfg(value));
+                }
+            }, new GenericTypeInfo<>(MinuteFactEnvelope.class))
             .name("to-cfg-minute-fact-env");
 
         DataStream<CellKpi> cellKpi1m = chrFactEnv.union(pmFactEnv, cfgMinuteEnv)

@@ -452,7 +452,7 @@ KPI window 与重 sink 拆链。观测阶段使用 SinkLatencyProbe stage ID，�
 FDB_ICEBERG_ENABLED=true
 FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
 FDB_ICEBERG_CATALOG=fdb_iceberg
-FDB_ICEBERG_DATABASE=fdb
+FDB_ICEBERG_DATABASE=iceberg_db
 FDB_ICEBERG_TABLE=cell_kpi
 ```
 
@@ -748,7 +748,7 @@ StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external netw
 | `FDB_ICEBERG_ENABLED` | `true` |
 | `FDB_ICEBERG_WAREHOUSE` | `hdfs://namenode:8020/warehouse/iceberg` |
 | `FDB_ICEBERG_CATALOG` | `fdb_iceberg` |
-| `FDB_ICEBERG_DATABASE` | `fdb` |
+| `FDB_ICEBERG_DATABASE` | `iceberg_db` |
 | `FDB_ICEBERG_TABLE` | `cell_kpi` |
 
 ### 9.5 部署目标

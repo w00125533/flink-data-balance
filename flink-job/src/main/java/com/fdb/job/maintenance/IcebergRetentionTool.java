@@ -13,7 +13,7 @@ import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.TableIdentifier;
-import org.apache.iceberg.hadoop.HadoopCatalog;
+import org.apache.iceberg.hive.HiveCatalog;
 import org.apache.iceberg.io.CloseableIterable;
 
 import java.io.IOException;
@@ -40,9 +40,11 @@ public final class IcebergRetentionTool {
         TableIdentifier identifier = TableIdentifier.of(options.database(), options.table());
 
         Configuration hadoopConf = new Configuration();
-        HadoopCatalog catalog = new HadoopCatalog();
+        HiveCatalog catalog = new HiveCatalog();
         catalog.setConf(hadoopConf);
-        catalog.initialize("fdb_retention", Map.of("warehouse", options.warehouse()));
+        catalog.initialize("fdb_retention", Map.of(
+            "warehouse", options.warehouse(),
+            "uri", options.metastoreUri()));
         try {
             Table table = catalog.loadTable(identifier);
             System.out.printf("[retention] Iceberg table | %s | location=%s%n", identifier, table.location());
@@ -311,6 +313,7 @@ public final class IcebergRetentionTool {
 
     public record Options(
             String warehouse,
+            String metastoreUri,
             String database,
             String table,
             long olderThanMs,
@@ -321,6 +324,7 @@ public final class IcebergRetentionTool {
         public static Options parse(String... args) {
             Map<String, String> values = parseArgs(args);
             String warehouse = required(values, "--warehouse");
+            String metastoreUri = required(values, "--metastore-uri");
             String database = required(values, "--database");
             String table = required(values, "--table");
             long olderThanMs = positiveLong(required(values, "--older-than-ms"), "--older-than-ms");
@@ -330,7 +334,7 @@ public final class IcebergRetentionTool {
             boolean allowManualOrphanDelete = booleanOption(
                 values.getOrDefault("--allow-manual-orphan-delete", "false"),
                 "--allow-manual-orphan-delete");
-            return new Options(warehouse, database, table, olderThanMs, maxBytes,
+            return new Options(warehouse, metastoreUri, database, table, olderThanMs, maxBytes,
                 orphanDeleteMode, allowManualOrphanDelete);
         }
 
@@ -353,6 +357,7 @@ public final class IcebergRetentionTool {
 
         private static boolean isSupportedOption(String name) {
             return "--warehouse".equals(name)
+                || "--metastore-uri".equals(name)
                 || "--database".equals(name)
                 || "--table".equals(name)
                 || "--older-than-ms".equals(name)

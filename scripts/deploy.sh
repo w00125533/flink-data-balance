@@ -280,7 +280,7 @@ SQL
 run_hdfs_prune_with() {
   local runner=$1
   local hive_path=${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}
-  local iceberg_path=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi
+  local iceberg_path=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}
   local parquet_retention_ms=${FDB_HDFS_KPI_RETENTION_MS:-86400000}
   local iceberg_retention_ms=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}
   local inprogress_retention_ms=${FDB_HDFS_INPROGRESS_RETENTION_MS:-$parquet_retention_ms}
@@ -492,7 +492,7 @@ local_smoke() {
   }
 
   KPI_5M_WAIT_ATTEMPTS=${FDB_E2E_5M_WAIT_ATTEMPTS:-240}
-  ICEBERG_KPI_ROOT=${FDB_E2E_ICEBERG_KPI_ROOT:-/warehouse/iceberg/${FDB_ICEBERG_DATABASE:-fdb}/${FDB_ICEBERG_TABLE:-cell_kpi}}
+  ICEBERG_KPI_ROOT=${FDB_E2E_ICEBERG_KPI_ROOT:-/warehouse/iceberg/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}}
 
   echo "[e2e] Building jars..."
   maven_cmd package ${FDB_E2E_MAVEN_ARGS:--DskipTests}
@@ -620,7 +620,7 @@ local_prune() {
     log "prune dry run"
     prune_starrocks_sql
     echo "HDFS prune: ${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi} retention=${FDB_HDFS_KPI_RETENTION_MS:-86400000}ms"
-    echo "Iceberg prune: ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi retention=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}ms"
+    echo "Iceberg prune: ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi} retention=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}ms"
     return 0
   fi
 
@@ -651,7 +651,7 @@ local_status() {
 
   echo "[status] hdfs"
   shared_hdfs_exec -count -h "${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}" || true
-  shared_hdfs_exec -count -h "${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/fdb/cell_kpi" || true
+  shared_hdfs_exec -count -h "${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}" || true
 }
 
 external_require_env() {
@@ -797,6 +797,9 @@ external_apply_runtime_defaults() {
   if [[ -z "${FDB_ICEBERG_WAREHOUSE:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
     export FDB_ICEBERG_WAREHOUSE="${FDB_HDFS_URI%/}$(external_iceberg_warehouse_path)"
   fi
+  if [[ -z "${FDB_ICEBERG_METASTORE_URI:-}" && -n "${FDB_HIVE_METASTORE_URI:-}" ]]; then
+    export FDB_ICEBERG_METASTORE_URI="$FDB_HIVE_METASTORE_URI"
+  fi
   if [[ -z "${FDB_FLINK_CHECKPOINT_DIR:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
     export FDB_FLINK_CHECKPOINT_DIR="${FDB_HDFS_URI%/}$(external_flink_checkpoint_path)"
   fi
@@ -910,6 +913,7 @@ build_external_flink_env_args() {
     FDB_ICEBERG_CATALOG
     FDB_ICEBERG_DATABASE
     FDB_ICEBERG_TABLE
+    FDB_ICEBERG_METASTORE_URI
     FDB_FLINK_CHECKPOINT_DIR
     FDB_FLINK_CHECKPOINT_INTERVAL_MS
     FDB_FLINK_PARALLELISM
@@ -1264,7 +1268,7 @@ external_prune() {
     log "prune dry run"
     prune_starrocks_sql
     echo "HDFS prune: ${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi} retention=${FDB_HDFS_KPI_RETENTION_MS:-86400000}ms"
-    echo "Iceberg prune: $(external_iceberg_warehouse_path)/fdb/cell_kpi retention=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}ms"
+    echo "Iceberg prune: $(external_iceberg_warehouse_path)/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi} retention=${FDB_ICEBERG_FILE_RETENTION_MS:-86400000}ms"
     return 0
   fi
 
@@ -1299,7 +1303,7 @@ SELECT 'grid_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM grid_a
 SQL
   echo "[status] hdfs"
   external_hdfs_exec -count -h "${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}" || true
-  external_hdfs_exec -count -h "$(external_iceberg_warehouse_path)/fdb/cell_kpi" || true
+  external_hdfs_exec -count -h "$(external_iceberg_warehouse_path)/${FDB_ICEBERG_DATABASE:-iceberg_db}/${FDB_ICEBERG_TABLE:-cell_kpi}" || true
 }
 
 dispatch_local() {

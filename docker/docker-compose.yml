@@ -11,6 +11,12 @@ services:
       FDB_KAFKA_BOOTSTRAP: ${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
       FDB_METRICS_TOPIC: fdb-stage-metrics
       FDB_RUN_HISTORY_DIR: /observability-runs
+      FDB_STARROCKS_JDBC_URL: ${FDB_STARROCKS_JDBC_URL:-jdbc:mysql://starrocks-fe:9030/fdb?rewriteBatchedStatements=true&useServerPrepStmts=false}
+      FDB_STARROCKS_USER: ${FDB_STARROCKS_USER:-root}
+      FDB_STARROCKS_PASSWORD: ${FDB_STARROCKS_PASSWORD:-}
+      FDB_STARROCKS_DATABASE: ${FDB_STARROCKS_DATABASE:-fdb}
+      FDB_DYNAMIC_BALANCING_ENABLED: ${FDB_DYNAMIC_BALANCING_ENABLED:-false}
+      FDB_FLINK_PARALLELISM: ${FDB_FLINK_PARALLELISM:-4}
     ports:
       - "18080:18080"
     volumes:
@@ -57,8 +63,9 @@ services:
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
       - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
       - FDB_ICEBERG_CATALOG=fdb_iceberg
-      - FDB_ICEBERG_DATABASE=fdb
+      - FDB_ICEBERG_DATABASE=${FDB_ICEBERG_DATABASE:-iceberg_db}
       - FDB_ICEBERG_TABLE=cell_kpi
+      - FDB_ICEBERG_METASTORE_URI=${FDB_ICEBERG_METASTORE_URI:-thrift://hive-metastore:9083}
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
       - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-60000}
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
@@ -92,8 +99,9 @@ services:
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
       - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
       - FDB_ICEBERG_CATALOG=fdb_iceberg
-      - FDB_ICEBERG_DATABASE=fdb
+      - FDB_ICEBERG_DATABASE=${FDB_ICEBERG_DATABASE:-iceberg_db}
       - FDB_ICEBERG_TABLE=cell_kpi
+      - FDB_ICEBERG_METASTORE_URI=${FDB_ICEBERG_METASTORE_URI:-thrift://hive-metastore:9083}
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
       - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-60000}
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
