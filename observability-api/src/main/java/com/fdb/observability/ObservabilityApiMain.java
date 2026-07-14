@@ -1,7 +1,10 @@
 package com.fdb.observability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fdb.observability.model.ReportStatus;
+import com.fdb.observability.service.BenchmarkReportService;
 import com.fdb.observability.service.ExecutionRunHistoryService;
+import com.fdb.observability.service.MetricsHistoryService;
 import com.fdb.observability.service.ObservabilitySnapshotService;
 import com.fdb.observability.service.StageMetricKafkaConsumer;
 import com.fdb.observability.service.StarRocksQueryService;
@@ -9,6 +12,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -32,18 +36,23 @@ public final class ObservabilityApiMain {
     ObservabilitySnapshotService service = new ObservabilitySnapshotService();
     String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "kafka:9092");
     String metricsTopic = System.getenv().getOrDefault("FDB_METRICS_TOPIC", "fdb-stage-metrics");
-    StageMetricKafkaConsumer metricConsumer = new StageMetricKafkaConsumer(bootstrap, metricsTopic, service);
+    Path runsRoot = Path.of(System.getenv().getOrDefault("FDB_RUN_HISTORY_DIR", "/observability-runs"));
+    boolean historyEnabled = ObservabilitySnapshotService.resolveBoolean(System.getenv(), System.getProperties(),
+        "FDB_METRICS_HISTORY_ENABLED", "fdb.metrics.history.enabled", true);
+    MetricsHistoryService historyService = new MetricsHistoryService(runsRoot, historyEnabled);
+    BenchmarkReportService reportService = new BenchmarkReportService(runsRoot);
+    StageMetricKafkaConsumer metricConsumer = new StageMetricKafkaConsumer(
+        bootstrap, metricsTopic, service, historyService);
     metricConsumer.start();
     Runtime.getRuntime().addShutdownHook(new Thread(metricConsumer::close));
-    Path runsRoot = Path.of(System.getenv().getOrDefault("FDB_RUN_HISTORY_DIR", "/observability-runs"));
     HttpServer server = createServer(port, service, new ExecutionRunHistoryService(runsRoot),
-        new StarRocksQueryService());
+        new StarRocksQueryService(), reportService);
     server.start();
   }
 
   static HttpServer createServer(int port, ObservabilitySnapshotService service) throws IOException {
     return createServer(port, service, new ExecutionRunHistoryService(Path.of("docker/data/observability-runs")),
-        new StarRocksQueryService());
+        new StarRocksQueryService(), new BenchmarkReportService(Path.of("docker/data/observability-runs")));
   }
 
   static HttpServer createServer(
@@ -51,14 +60,15 @@ public final class ObservabilityApiMain {
       ObservabilitySnapshotService service,
       StarRocksQueryService queryService) throws IOException {
     return createServer(port, service, new ExecutionRunHistoryService(Path.of("docker/data/observability-runs")),
-        queryService);
+        queryService, new BenchmarkReportService(Path.of("docker/data/observability-runs")));
   }
 
   static HttpServer createServer(
       int port,
       ObservabilitySnapshotService service,
       ExecutionRunHistoryService runHistoryService) throws IOException {
-    return createServer(port, service, runHistoryService, new StarRocksQueryService());
+    return createServer(port, service, runHistoryService, new StarRocksQueryService(),
+        new BenchmarkReportService(Path.of("docker/data/observability-runs")));
   }
 
   static HttpServer createServer(
@@ -66,11 +76,22 @@ public final class ObservabilityApiMain {
       ObservabilitySnapshotService service,
       ExecutionRunHistoryService runHistoryService,
       StarRocksQueryService queryService) throws IOException {
+    return createServer(port, service, runHistoryService, queryService,
+        new BenchmarkReportService(Path.of("docker/data/observability-runs")));
+  }
+
+  static HttpServer createServer(
+      int port,
+      ObservabilitySnapshotService service,
+      ExecutionRunHistoryService runHistoryService,
+      StarRocksQueryService queryService,
+      BenchmarkReportService reportService) throws IOException {
     HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0);
     server.createContext("/api/flow/status", exchange -> writeJson(exchange, service.stageStatuses()));
     server.createContext("/api/flow/sources", exchange -> writeJson(exchange, service.sourceSummaries()));
     server.createContext("/api/flow/migrations", exchange -> writeJson(exchange, service.migrationEvents()));
     server.createContext("/api/flow/sinks", exchange -> writeJson(exchange, service.sinkSummaries()));
+    server.createContext("/api/flow/runtime", exchange -> writeJson(exchange, service.runtimeConfig()));
     server.createContext("/api/metrics/summary", exchange -> writeJson(exchange, Map.of(
         "stages", service.stageStatuses(),
         "sources", service.sourceSummaries(),
@@ -85,12 +106,9 @@ public final class ObservabilityApiMain {
     server.createContext("/api/results/anomalies/grid",
         exchange -> writeQueryJson(exchange, () -> queryService.queryGridAnomalies(queryParameters(exchange))));
     server.createContext("/api/results/sink-latency", exchange -> writeJson(exchange, service.sinkLatencySummaries()));
-    server.createContext("/api/runtime/config", exchange -> writeJson(exchange, Map.of(
-        "dynamicBalancingEnabled", service.dynamicBalancingEnabled(),
-        "resultQueryLayer", "starrocks",
-        "kpiStorage", "starrocks",
-        "anomalyStorage", "starrocks")));
+    server.createContext("/api/runtime/config", exchange -> writeJson(exchange, runtimeConfigWithLegacyFields(service)));
     server.createContext("/api/events/stream", exchange -> writeSse(exchange, service));
+    server.createContext("/api/runs/report", exchange -> writeRunReport(exchange, service, reportService));
     server.createContext("/api/runs", exchange -> writeRuns(exchange, runHistoryService));
     server.createContext("/metrics", exchange -> writeText(exchange, toPrometheusMetrics(service)));
     server.setExecutor(Executors.newCachedThreadPool());
@@ -99,6 +117,30 @@ public final class ObservabilityApiMain {
 
   static String toJson(Object value) throws IOException {
     return JSON.writeValueAsString(value);
+  }
+
+  static <T> T fromJson(String json, Class<T> type) throws IOException {
+    return JSON.readValue(json, type);
+  }
+
+  private static Map<String, Object> runtimeConfigWithLegacyFields(ObservabilitySnapshotService service) {
+    var config = service.runtimeConfig();
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("dynamicBalancingEnabled", config.dynamicBalancingEnabled());
+    body.put("resultSink", config.resultSink());
+    body.put("dlqEnabled", config.dlqEnabled());
+    body.put("metricsEnabled", config.metricsEnabled());
+    body.put("metricsHistoryEnabled", config.metricsHistoryEnabled());
+    body.put("runId", config.runId());
+    body.put("runLabel", config.runLabel());
+    body.put("parallelism", config.parallelism());
+    body.put("checkpointIntervalMs", config.checkpointIntervalMs());
+    body.put("jobStatus", config.jobStatus());
+    body.put("reportStatus", config.reportStatus());
+    body.put("resultQueryLayer", "starrocks");
+    body.put("kpiStorage", "starrocks");
+    body.put("anomalyStorage", "starrocks");
+    return body;
   }
 
   static String toPrometheusMetrics(ObservabilitySnapshotService service) {
@@ -201,6 +243,27 @@ public final class ObservabilityApiMain {
       return;
     }
     writeNotFound(exchange);
+  }
+
+  private static void writeRunReport(
+      HttpExchange exchange,
+      ObservabilitySnapshotService service,
+      BenchmarkReportService reportService) throws IOException {
+    Map<String, String> parameters = queryParameters(exchange);
+    String runId = parameters.get("runId");
+    if (runId == null || runId.isBlank()) {
+      runId = service.runtimeConfig().runId();
+    }
+    try {
+      Path reportPath = reportService.generate(runId);
+      writeJson(exchange, new ReportStatus(runId, "ready", reportPath.toString()));
+    } catch (IllegalArgumentException e) {
+      log.warn("Rejected benchmark report request: {}", e.getMessage());
+      writeError(exchange, 400, "bad request");
+    } catch (UncheckedIOException e) {
+      log.error("Benchmark report generation failed", e);
+      writeError(exchange, 500, "report generation failed");
+    }
   }
 
   private static void writeSse(HttpExchange exchange, ObservabilitySnapshotService service) throws IOException {

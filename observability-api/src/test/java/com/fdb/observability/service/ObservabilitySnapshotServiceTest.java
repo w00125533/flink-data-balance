@@ -127,4 +127,64 @@ class ObservabilitySnapshotServiceTest {
     assertThat(ObservabilitySnapshotService.resolveDynamicBalancingEnabled(Map.<String, String>of(), new Properties()))
         .isFalse();
   }
+
+  @Test
+  void runtimeConfigUsesExpectedDefaults() {
+    var config = service.runtimeConfig();
+
+    assertThat(config.dynamicBalancingEnabled()).isFalse();
+    assertThat(config.resultSink()).isEqualTo("starrocks");
+    assertThat(config.dlqEnabled()).isTrue();
+    assertThat(config.metricsEnabled()).isTrue();
+    assertThat(config.metricsHistoryEnabled()).isTrue();
+    assertThat(config.runId()).isEqualTo("unknown-run");
+    assertThat(config.runLabel()).isEmpty();
+    assertThat(config.parallelism()).isEqualTo(4);
+    assertThat(config.checkpointIntervalMs()).isEqualTo(30_000L);
+    assertThat(config.jobStatus()).isEqualTo("unknown");
+    assertThat(config.reportStatus()).isEqualTo("collecting");
+  }
+
+  @Test
+  void runtimeConfigUsesFlinkPropertyNamesForParallelismAndCheckpoint() {
+    Properties properties = new Properties();
+    properties.setProperty("fdb.flink.parallelism", "8");
+    properties.setProperty("fdb.flink.checkpoint.interval.ms", "45000");
+
+    var config = service.runtimeConfig(Map.of(), properties);
+
+    assertThat(config.parallelism()).isEqualTo(8);
+    assertThat(config.checkpointIntervalMs()).isEqualTo(45_000L);
+  }
+
+  @Test
+  void runtimeConfigEnvOverridesFlinkProperties() {
+    Properties properties = new Properties();
+    properties.setProperty("fdb.flink.parallelism", "8");
+    properties.setProperty("fdb.flink.checkpoint.interval.ms", "45000");
+
+    var config = service.runtimeConfig(Map.of(
+        "FDB_FLINK_PARALLELISM", "12",
+        "FDB_FLINK_CHECKPOINT_INTERVAL_MS", "60000"), properties);
+
+    assertThat(config.parallelism()).isEqualTo(12);
+    assertThat(config.checkpointIntervalMs()).isEqualTo(60_000L);
+  }
+
+  @Test
+  void runtimeConfigCapsHiveAndIcebergCheckpointInterval() {
+    Properties hiveProperties = new Properties();
+    hiveProperties.setProperty("fdb.result.sink", "hive");
+    hiveProperties.setProperty("fdb.flink.checkpoint.interval.ms", "300000");
+    Properties icebergProperties = new Properties();
+    icebergProperties.setProperty("fdb.result.sink", "iceberg");
+    icebergProperties.setProperty("fdb.flink.checkpoint.interval.ms", "240000");
+    Properties starrocksProperties = new Properties();
+    starrocksProperties.setProperty("fdb.result.sink", "starrocks");
+    starrocksProperties.setProperty("fdb.flink.checkpoint.interval.ms", "300000");
+
+    assertThat(service.runtimeConfig(Map.of(), hiveProperties).checkpointIntervalMs()).isEqualTo(180_000L);
+    assertThat(service.runtimeConfig(Map.of(), icebergProperties).checkpointIntervalMs()).isEqualTo(180_000L);
+    assertThat(service.runtimeConfig(Map.of(), starrocksProperties).checkpointIntervalMs()).isEqualTo(300_000L);
+  }
 }

@@ -7,6 +7,7 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
@@ -16,11 +17,21 @@ public final class StageMetricKafkaConsumer implements AutoCloseable {
 
   private final KafkaConsumer<String, String> consumer;
   private final ObservabilitySnapshotService service;
+  private final MetricHistoryAppender historyService;
   private final Thread thread;
   private volatile boolean running = true;
 
   public StageMetricKafkaConsumer(String bootstrap, String topic, ObservabilitySnapshotService service) {
+    this(bootstrap, topic, service, new MetricsHistoryService(Path.of("docker/data/observability-runs"), false));
+  }
+
+  public StageMetricKafkaConsumer(
+      String bootstrap,
+      String topic,
+      ObservabilitySnapshotService service,
+      MetricHistoryAppender historyService) {
     this.service = service;
+    this.historyService = historyService;
     Properties properties = new Properties();
     properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
     properties.put(ConsumerConfig.GROUP_ID_CONFIG, "fdb-observability-api");
@@ -42,8 +53,8 @@ public final class StageMetricKafkaConsumer implements AutoCloseable {
     try {
       while (running) {
         try {
-          consumer.poll(Duration.ofSeconds(1)).forEach(record ->
-              service.applyMetricSample(StageMetricSample.fromJson(record.value())));
+          consumer.poll(Duration.ofSeconds(1))
+              .forEach(record -> handleRecordValue(record.value(), service, historyService));
         } catch (Exception e) {
           if (running) {
             log.warn("Failed to consume stage metric sample", e);
@@ -52,6 +63,19 @@ public final class StageMetricKafkaConsumer implements AutoCloseable {
       }
     } finally {
       consumer.close();
+    }
+  }
+
+  static void handleRecordValue(
+      String value,
+      ObservabilitySnapshotService service,
+      MetricHistoryAppender historyService) {
+    StageMetricSample sample = StageMetricSample.fromJson(value);
+    service.applyMetricSample(sample);
+    try {
+      historyService.append(sample);
+    } catch (RuntimeException e) {
+      log.warn("Failed to persist stage metric sample history", e);
     }
   }
 

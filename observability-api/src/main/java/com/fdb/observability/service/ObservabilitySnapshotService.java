@@ -2,6 +2,7 @@ package com.fdb.observability.service;
 
 import com.fdb.common.metrics.StageMetricSample;
 import com.fdb.observability.model.MigrationEvent;
+import com.fdb.observability.model.RuntimeConfig;
 import com.fdb.observability.model.SinkLatencySummary;
 import com.fdb.observability.model.SinkSummary;
 import com.fdb.observability.model.SourceSummary;
@@ -126,6 +127,30 @@ public final class ObservabilitySnapshotService {
     return dynamicBalancingEnabled;
   }
 
+  public RuntimeConfig runtimeConfig() {
+    return runtimeConfig(System.getenv(), System.getProperties());
+  }
+
+  RuntimeConfig runtimeConfig(Map<String, String> env, Properties properties) {
+    String resultSink = resolveText(env, properties, "FDB_RESULT_SINK", "fdb.result.sink", "starrocks");
+    long checkpointIntervalMs = effectiveCheckpointIntervalMs(
+        resultSink,
+        resolveLong(env, properties, "FDB_FLINK_CHECKPOINT_INTERVAL_MS",
+            "fdb.flink.checkpoint.interval.ms", 30_000L));
+    return new RuntimeConfig(
+        dynamicBalancingEnabled,
+        resultSink,
+        resolveBoolean(env, properties, "FDB_DLQ_ENABLED", "fdb.dlq.enabled", true),
+        resolveBoolean(env, properties, "FDB_METRICS_ENABLED", "fdb.metrics.enabled", true),
+        resolveBoolean(env, properties, "FDB_METRICS_HISTORY_ENABLED", "fdb.metrics.history.enabled", true),
+        resolveText(env, properties, "FDB_RUN_ID", "fdb.run.id", "unknown-run"),
+        resolveText(env, properties, "FDB_RUN_LABEL", "fdb.run.label", ""),
+        resolveInt(env, properties, "FDB_FLINK_PARALLELISM", "fdb.flink.parallelism", 4),
+        checkpointIntervalMs,
+        resolveText(env, properties, "FDB_JOB_STATUS", "fdb.job.status", "unknown"),
+        resolveText(env, properties, "FDB_REPORT_STATUS", "fdb.report.status", "collecting"));
+  }
+
   private void seedKnownStages() {
     long now = System.currentTimeMillis();
     List<StageMetricSample> defaults = new ArrayList<>();
@@ -191,11 +216,88 @@ public final class ObservabilitySnapshotService {
   }
 
   static boolean resolveDynamicBalancingEnabled(Map<String, String> env, Properties properties) {
-    String configured = env.get("FDB_DYNAMIC_BALANCING_ENABLED");
-    if (configured == null || configured.isBlank()) {
-      configured = properties.getProperty("fdb.dynamic.balancing.enabled");
+    return resolveBoolean(env, properties, "FDB_DYNAMIC_BALANCING_ENABLED", "fdb.dynamic.balancing.enabled", false);
+  }
+
+  public static boolean resolveBoolean(
+      Map<String, String> env,
+      Properties properties,
+      String envName,
+      String propertyName,
+      boolean defaultValue) {
+    String configured = configuredValue(env, properties, envName, propertyName);
+    if (configured == null) {
+      return defaultValue;
     }
-    return configured != null && "true".equalsIgnoreCase(configured.trim());
+    return switch (configured.trim().toLowerCase()) {
+      case "true", "1", "yes", "on" -> true;
+      case "false", "0", "no", "off" -> false;
+      default -> defaultValue;
+    };
+  }
+
+  private static String resolveText(
+      Map<String, String> env,
+      Properties properties,
+      String envName,
+      String propertyName,
+      String defaultValue) {
+    String configured = configuredValue(env, properties, envName, propertyName);
+    return configured == null ? defaultValue : configured.trim();
+  }
+
+  private static int resolveInt(
+      Map<String, String> env,
+      Properties properties,
+      String envName,
+      String propertyName,
+      int defaultValue) {
+    String configured = configuredValue(env, properties, envName, propertyName);
+    if (configured == null) {
+      return defaultValue;
+    }
+    try {
+      return Integer.parseInt(configured.trim());
+    } catch (NumberFormatException ignored) {
+      return defaultValue;
+    }
+  }
+
+  private static long resolveLong(
+      Map<String, String> env,
+      Properties properties,
+      String envName,
+      String propertyName,
+      long defaultValue) {
+    String configured = configuredValue(env, properties, envName, propertyName);
+    if (configured == null) {
+      return defaultValue;
+    }
+    try {
+      return Long.parseLong(configured.trim());
+    } catch (NumberFormatException ignored) {
+      return defaultValue;
+    }
+  }
+
+  private static String configuredValue(
+      Map<String, String> env,
+      Properties properties,
+      String envName,
+      String propertyName) {
+    String configured = env.get(envName);
+    if (configured == null || configured.isBlank()) {
+      configured = properties.getProperty(propertyName);
+    }
+    return configured == null || configured.isBlank() ? null : configured;
+  }
+
+  private static long effectiveCheckpointIntervalMs(String resultSink, long configuredCheckpointIntervalMs) {
+    if (("hive".equalsIgnoreCase(resultSink) || "iceberg".equalsIgnoreCase(resultSink))
+        && configuredCheckpointIntervalMs > 180_000L) {
+      return 180_000L;
+    }
+    return configuredCheckpointIntervalMs;
   }
 
   private static String summary(StageMetricSample sample) {

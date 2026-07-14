@@ -17,11 +17,19 @@ services:
       FDB_STARROCKS_DATABASE: ${FDB_STARROCKS_DATABASE:-fdb}
       FDB_DYNAMIC_BALANCING_ENABLED: ${FDB_DYNAMIC_BALANCING_ENABLED:-false}
       FDB_FLINK_PARALLELISM: ${FDB_FLINK_PARALLELISM:-4}
+      FDB_RESULT_SINK: ${FDB_RESULT_SINK:-starrocks}
+      FDB_DLQ_ENABLED: ${FDB_DLQ_ENABLED:-true}
+      FDB_METRICS_ENABLED: ${FDB_METRICS_ENABLED:-true}
+      FDB_METRICS_HISTORY_ENABLED: ${FDB_METRICS_HISTORY_ENABLED:-true}
+      FDB_METRICS_EMIT_INTERVAL_MS: ${FDB_METRICS_EMIT_INTERVAL_MS:-5000}
+      FDB_RUN_ID: "${FDB_RUN_ID:-}"
+      FDB_RUN_LABEL: "${FDB_RUN_LABEL:-}"
+      FDB_FLINK_CHECKPOINT_INTERVAL_MS: ${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-30000}
     ports:
       - "18080:18080"
     volumes:
       - ../observability-api/target/observability-api-0.1.0-SNAPSHOT.jar:/app/observability-api.jar:ro
-      - ./data/observability-runs:/observability-runs:ro
+      - ./data/observability-runs:/observability-runs
     networks:
       - default
       - shared-data-infra
@@ -67,7 +75,15 @@ services:
       - FDB_ICEBERG_TABLE=cell_kpi
       - FDB_ICEBERG_METASTORE_URI=${FDB_ICEBERG_METASTORE_URI:-thrift://hive-metastore:9083}
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
-      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-60000}
+      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-30000}
+      - FDB_FLINK_PARALLELISM=${FDB_FLINK_PARALLELISM:-4}
+      - FDB_RESULT_SINK=${FDB_RESULT_SINK:-starrocks}
+      - FDB_DLQ_ENABLED=${FDB_DLQ_ENABLED:-true}
+      - FDB_METRICS_ENABLED=${FDB_METRICS_ENABLED:-true}
+      - FDB_METRICS_HISTORY_ENABLED=${FDB_METRICS_HISTORY_ENABLED:-true}
+      - FDB_METRICS_EMIT_INTERVAL_MS=${FDB_METRICS_EMIT_INTERVAL_MS:-5000}
+      - FDB_RUN_ID=${FDB_RUN_ID:-}
+      - FDB_RUN_LABEL=${FDB_RUN_LABEL:-}
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
     volumes:
       - ../flink-job/target:/opt/fdb
@@ -103,7 +119,15 @@ services:
       - FDB_ICEBERG_TABLE=cell_kpi
       - FDB_ICEBERG_METASTORE_URI=${FDB_ICEBERG_METASTORE_URI:-thrift://hive-metastore:9083}
       - FDB_FLINK_CHECKPOINT_DIR=file:///tmp/fdb-checkpoints
-      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-60000}
+      - FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS:-30000}
+      - FDB_FLINK_PARALLELISM=${FDB_FLINK_PARALLELISM:-4}
+      - FDB_RESULT_SINK=${FDB_RESULT_SINK:-starrocks}
+      - FDB_DLQ_ENABLED=${FDB_DLQ_ENABLED:-true}
+      - FDB_METRICS_ENABLED=${FDB_METRICS_ENABLED:-true}
+      - FDB_METRICS_HISTORY_ENABLED=${FDB_METRICS_HISTORY_ENABLED:-true}
+      - FDB_METRICS_EMIT_INTERVAL_MS=${FDB_METRICS_EMIT_INTERVAL_MS:-5000}
+      - FDB_RUN_ID=${FDB_RUN_ID:-}
+      - FDB_RUN_LABEL=${FDB_RUN_LABEL:-}
       - FDB_E2E_SUMMARY=${FDB_E2E_SUMMARY:-0}
     volumes:
       - ./lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:ro
