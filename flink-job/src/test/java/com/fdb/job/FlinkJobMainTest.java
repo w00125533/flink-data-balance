@@ -1,11 +1,13 @@
 package com.fdb.job;
 
+import com.fdb.common.avro.PmStat;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FlinkJobMainTest {
 
@@ -135,5 +137,58 @@ class FlinkJobMainTest {
         assertThat(routed.envelope()).isSameAs(envelope);
         assertThat(routed.stateKey()).isEqualTo("cell-a");
         assertThat(routed.vbucketId()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    void pm_event_timestamp_rejects_zero_window_end() {
+        assertThatThrownBy(() -> FlinkJobMain.pmEventTimestamp(pm(0L, 0L)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("windowEndTs");
+    }
+
+    @Test
+    void pm_event_timestamp_rejects_min_value_window_end() {
+        assertThatThrownBy(() -> FlinkJobMain.pmEventTimestamp(pm(Long.MIN_VALUE - 1L, Long.MIN_VALUE)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("windowEndTs");
+    }
+
+    @Test
+    void pm_event_timestamp_rejects_non_positive_window_duration() {
+        assertThatThrownBy(() -> FlinkJobMain.pmEventTimestamp(pm(60_000L, 60_000L)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("windowStartTs");
+        assertThatThrownBy(() -> FlinkJobMain.pmEventTimestamp(pm(60_000L, 59_999L)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("windowStartTs");
+    }
+
+    private static PmStat pm(long start, long end) {
+        return PmStat.newBuilder()
+            .setSiteId("site-a")
+            .setCellId("cell-a")
+            .setWindowStartTs(start)
+            .setWindowEndTs(end)
+            .setPrbUsageDl(0.6f)
+            .setPrbUsageUl(0.25f)
+            .setActiveUsers(42)
+            .setAvgRsrp(-92.0f)
+            .setAvgRsrq(-8.0f)
+            .setAvgSinr(12.0f)
+            .setAvgCqi(10.0f)
+            .setAvgMcs(18.0f)
+            .setAvgBler(0.02f)
+            .setThroughputDlMbps(110.0f)
+            .setThroughputUlMbps(30.0f)
+            .setDroppedConnections(0)
+            .setHandoverSuccess(4)
+            .setHandoverFailure(1)
+            .setPrachAttempt(9)
+            .setPrachFailure(1)
+            .setRrcEstabAttempt(20)
+            .setRrcEstabSuccess(19)
+            .setAvgLatencyMs(18.0f)
+            .setPacketLossRate(0.001f)
+            .build();
     }
 }

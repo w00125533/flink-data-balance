@@ -18,6 +18,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.table.data.RowData;
@@ -81,8 +82,9 @@ public class FlinkJobMain {
             .name("chr-source-metrics");
 
         DataStream<PmStat> pmStream = env.fromSource(pmSource,
-            WatermarkStrategy.<PmStat>forMonotonousTimestamps()
-                .withIdleness(Duration.ofMinutes(1)),
+            WatermarkStrategy.<PmStat>forBoundedOutOfOrderness(Duration.ofMinutes(2))
+                .withIdleness(Duration.ofMinutes(1))
+                .withTimestampAssigner((pm, ts) -> pmEventTimestamp(pm)),
             "pm-source")
             .process(new StageMetricsProbe<>("pm-source", "PM Source", "healthy", 5_000L))
             .name("pm-source-metrics");
@@ -174,14 +176,38 @@ public class FlinkJobMain {
             .sinkTo(JdbcSinks.anomalySink())
             .name("anomaly-jdbc-sink");
 
-        // KPI aggregation (1-minute window)
+        // KPI aggregation (1-minute CHR/PM event-time full join)
 
-        DataStream<CellKpi> cellKpi1m = enriched
-            .keyBy(ec -> ec.chrEvent().getCellId().toString())
-            .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
-            .process(new CellKpiWindowFunction(WindowKind.MIN_1), new GenericTypeInfo<>(CellKpi.class))
-            .name("kpi-1m")
-            .uid("kpi-1m");
+        DataStream<ChrMinuteFact> chrMinuteFacts = chrStream
+            .keyBy(chr -> chr.getCellId().toString())
+            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .process(new ChrMinuteFactWindowFunction(), new GenericTypeInfo<>(ChrMinuteFact.class))
+            .name("chr-1m-fact");
+
+        DataStream<PmMinuteFact> pmMinuteFacts = pmStream
+            .keyBy(pm -> pm.getCellId().toString())
+            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .process(new PmMinuteFactWindowFunction(), new GenericTypeInfo<>(PmMinuteFact.class))
+            .name("pm-1m-fact");
+
+        DataStream<MinuteFactEnvelope> chrFactEnv = chrMinuteFacts
+            .map(MinuteFactEnvelope::chr)
+            .returns(new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .name("to-chr-minute-fact-env");
+        DataStream<MinuteFactEnvelope> pmFactEnv = pmMinuteFacts
+            .map(MinuteFactEnvelope::pm)
+            .returns(new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .name("to-pm-minute-fact-env");
+        DataStream<MinuteFactEnvelope> cfgMinuteEnv = cfgStream
+            .map(MinuteFactEnvelope::cfg)
+            .returns(new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .name("to-cfg-minute-fact-env");
+
+        DataStream<CellKpi> cellKpi1m = chrFactEnv.union(pmFactEnv, cfgMinuteEnv)
+            .keyBy(MinuteFactEnvelope::cellId)
+            .process(new MinuteKpiJoinFunction(Duration.ofMinutes(2)), new GenericTypeInfo<>(CellKpi.class))
+            .name("kpi-1m-full-join")
+            .uid("kpi-1m-full-join");
 
         KafkaSink<CellKpi> cellKpiSink = KafkaSink.<CellKpi>builder()
             .setBootstrapServers(bootstrap)
@@ -373,5 +399,18 @@ public class FlinkJobMain {
 
     static IcebergConfig resolveIcebergConfig(Map<String, String> env, Properties properties) {
         return IcebergConfig.resolve(env, properties);
+    }
+
+    static long pmEventTimestamp(PmStat pm) {
+        long windowStartTs = pm.getWindowStartTs();
+        long windowEndTs = pm.getWindowEndTs();
+        if (windowEndTs == Long.MIN_VALUE || windowEndTs <= 0L) {
+            throw new IllegalArgumentException("Invalid PM windowEndTs: " + windowEndTs);
+        }
+        if (windowEndTs <= windowStartTs) {
+            throw new IllegalArgumentException(
+                "Invalid PM windowStartTs/windowEndTs: " + windowStartTs + ".." + windowEndTs);
+        }
+        return Math.subtractExact(windowEndTs, 1L);
     }
 }
