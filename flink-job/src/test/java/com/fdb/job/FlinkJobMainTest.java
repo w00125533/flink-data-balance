@@ -2,6 +2,7 @@ package com.fdb.job;
 
 import com.fdb.job.model.InputEnvelope;
 import com.fdb.job.model.RoutedEnvelope;
+import com.fdb.job.config.ResultSinkType;
 import com.fdb.job.sink.IcebergConfig;
 import com.fdb.common.avro.PmStat;
 import org.junit.jupiter.api.Test;
@@ -51,9 +52,9 @@ class FlinkJobMainTest {
     }
 
     @Test
-    void resolve_checkpoint_interval_defaults_to_one_minute() {
+    void resolve_checkpoint_interval_defaults_to_thirty_seconds() {
         assertThat(FlinkJobMain.resolveCheckpointIntervalMs(Map.of(), new Properties()))
-            .isEqualTo(60_000L);
+            .isEqualTo(30_000L);
     }
 
     @Test
@@ -70,10 +71,24 @@ class FlinkJobMainTest {
     void resolve_checkpoint_interval_falls_back_for_invalid_values() {
         assertThat(FlinkJobMain.resolveCheckpointIntervalMs(
             Map.of("FDB_FLINK_CHECKPOINT_INTERVAL_MS", "nope"), new Properties()))
-            .isEqualTo(60_000L);
+            .isEqualTo(30_000L);
         assertThat(FlinkJobMain.resolveCheckpointIntervalMs(
             Map.of("FDB_FLINK_CHECKPOINT_INTERVAL_MS", "0"), new Properties()))
-            .isEqualTo(60_000L);
+            .isEqualTo(30_000L);
+    }
+
+    @Test
+    void effective_checkpoint_interval_caps_starrocks_when_legacy_file_sink_is_active() {
+        assertThat(FlinkJobMain.effectiveCheckpointIntervalMs(
+            ResultSinkType.STARROCKS, true, false, 240_000L))
+            .isEqualTo(180_000L);
+    }
+
+    @Test
+    void effective_checkpoint_interval_keeps_starrocks_interval_when_no_file_sinks_are_active() {
+        assertThat(FlinkJobMain.effectiveCheckpointIntervalMs(
+            ResultSinkType.STARROCKS, false, false, 240_000L))
+            .isEqualTo(240_000L);
     }
 
     @Test

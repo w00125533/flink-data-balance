@@ -5,6 +5,8 @@ import com.fdb.job.anomaly.CoverageHoleDetector;
 import com.fdb.job.balance.RoutingAssigner;
 import com.fdb.job.balance.VBucketLoadMeter;
 import com.fdb.job.config.JobConfig;
+import com.fdb.job.config.ResultSinkConfig;
+import com.fdb.job.config.ResultSinkType;
 import com.fdb.job.config.RuleConfig;
 import com.fdb.job.enrich.EnrichmentProcessFunction;
 import com.fdb.job.kpi.CellKpiRollupAggregator;
@@ -65,15 +67,22 @@ public class FlinkJobMain {
     private static final int DEFAULT_PARALLELISM = 4;
 
     public static void main(String[] args) throws Exception {
-        String bootstrap = System.getenv().getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
+        Map<String, String> envVars = System.getenv();
+        Properties systemProperties = System.getProperties();
+        ResultSinkConfig resultSinkConfig = ResultSinkConfig.resolve(envVars, systemProperties);
+        String bootstrap = envVars.getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
         String groupId = "fdb-flink-job";
+        IcebergConfig icebergConfig = resolveIcebergConfig(envVars, systemProperties);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.enableCheckpointing(resolveCheckpointIntervalMs(System.getenv(), System.getProperties()));
-        env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(System.getenv(), System.getProperties()));
-        env.setParallelism(resolveParallelism(System.getenv(), System.getProperties()));
-        IcebergConfig icebergConfig = resolveIcebergConfig(System.getenv(), System.getProperties());
-        boolean dynamicBalancingEnabled = resolveDynamicBalancingEnabled(System.getenv(), System.getProperties());
+        env.enableCheckpointing(effectiveCheckpointIntervalMs(
+            resultSinkConfig.resultSink(),
+            true,
+            icebergConfig.enabled(),
+            resolveCheckpointIntervalMs(envVars, systemProperties)));
+        env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(envVars, systemProperties));
+        env.setParallelism(resolveParallelism(envVars, systemProperties));
+        boolean dynamicBalancingEnabled = resolveDynamicBalancingEnabled(envVars, systemProperties);
 
         // Main pipeline: CHR + PM + CFG
 
@@ -470,15 +479,24 @@ public class FlinkJobMain {
             configured = properties.getProperty("fdb.flink.checkpoint.interval.ms");
         }
         if (configured == null || configured.isBlank()) {
-            return 60_000L;
+            return 30_000L;
         }
         try {
             long intervalMs = Long.parseLong(configured.trim());
-            return intervalMs > 0 ? intervalMs : 60_000L;
+            return intervalMs > 0 ? intervalMs : 30_000L;
         } catch (NumberFormatException e) {
-            log.warn("Invalid Flink checkpoint interval '{}', falling back to 60000 ms", configured);
-            return 60_000L;
+            log.warn("Invalid Flink checkpoint interval '{}', falling back to 30000 ms", configured);
+            return 30_000L;
         }
+    }
+
+    static long effectiveCheckpointIntervalMs(ResultSinkType resultSink, boolean legacyHiveSinkActive,
+                                              boolean icebergSinkActive, long configuredIntervalMs) {
+        // Until Task 3/4 single-sink routing lands, the legacy topology may still create file sinks
+        // even when FDB_RESULT_SINK selects a non-file sink. Cap checkpoints whenever that is true.
+        boolean fileSinkActive = resultSink.fileBased() || legacyHiveSinkActive || icebergSinkActive;
+        ResultSinkType checkpointPolicySink = fileSinkActive ? ResultSinkType.HIVE : resultSink;
+        return ResultSinkConfig.effectiveCheckpointIntervalMs(checkpointPolicySink, configuredIntervalMs);
     }
 
     static String resolveCheckpointStorage(Map<String, String> env, Properties properties) {
