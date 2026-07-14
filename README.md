@@ -92,6 +92,11 @@ one business result sink for a run. Only one result sink is active at a time for
 benchmark comparability; DLQ output is controlled independently by
 `FDB_DLQ_ENABLED=true|false`.
 
+The selected result sink applies to KPI 1m, KPI 5m, cell anomalies and grid
+anomalies as one unit. Metrics and DLQ are separate observability/safety paths,
+so `FDB_RESULT_SINK=none` disables only business result output while keeping the
+calculation pipeline and optional metrics path available.
+
 Local submit/report:
 
 ```bash
@@ -117,6 +122,11 @@ known benchmark label.
 current run id and prints the JSON response. The API writes the Markdown report
 to `FDB_RUN_HISTORY_DIR/<runId>/report.md`; in the local Docker profile this is
 mapped to `docker/data/observability-runs/<runId>/report.md`.
+
+When `FDB_METRICS_HISTORY_ENABLED=true`, observability-api appends sampled
+runtime metrics to `metrics.jsonl` under the same run directory. The report is
+derived from that local history file, not from the selected business result
+sink, so report generation does not add write load to the sink being measured.
 
 The default checkpoint interval is `FDB_FLINK_CHECKPOINT_INTERVAL_MS=30000`.
 Hive and Iceberg writers have an effective cap of 180s. For sink benchmarking,
@@ -152,12 +162,19 @@ The Flink job emits samples for `chr-source`, `pm-source`, `cfg-source`, `kafka`
 `enrichment` and the sink probe stages `kafka-kpi-1m`, `starrocks-kpi-1m`,
 `hive-kpi-1m`, `iceberg-kpi-1m`, `kafka-kpi-5m`, `starrocks-kpi-5m`,
 `hive-kpi-5m`, `iceberg-kpi-5m`, `kafka-cell-anomaly`,
-`kafka-grid-anomaly`, `starrocks-cell-anomaly` and `starrocks-grid-anomaly`.
+`kafka-grid-anomaly`, `starrocks-cell-anomaly`, `starrocks-grid-anomaly`,
+`hive-cell-anomaly`, `hive-grid-anomaly`, `iceberg-cell-anomaly` and
+`iceberg-grid-anomaly`.
 When `FDB_DYNAMIC_BALANCING_ENABLED=true`, it also emits `assigner` and
 `load-coordinator` samples. The observability API keeps the latest sample per
 stage and renders the `fdb_*` Prometheus series. The Flink containers also
 enable the Flink Prometheus reporter on port `9249` for native
 JobManager/TaskManager metrics.
+
+The flow overview page reads `/api/flow/runtime` and filters the graph, stage
+panel and sink panel to the active known result sink. If the runtime endpoint is
+temporarily unavailable, the page keeps source/stage/sink summaries visible and
+falls back to an unfiltered topology instead of hiding data.
 
 ## End-to-End Smoke Test
 

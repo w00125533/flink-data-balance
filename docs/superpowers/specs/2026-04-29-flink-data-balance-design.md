@@ -1024,6 +1024,24 @@ DLQ：
 
 ---
 
+### 12.1 2026-07-14 Sink Benchmarking Implementation Status
+
+本轮实现已经落地以下范围：
+
+- Flink job 包结构拆分为 `config/source/model/enrich/kpi/anomaly/balance/sink/metrics` 等子包，`FlinkJobMain` 保持为拓扑入口。
+- `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 控制 KPI 1m、KPI 5m、小区异常和栅格异常四类业务结果，每次运行只构建一种业务 sink 分支。
+- `FDB_DLQ_ENABLED`、`FDB_METRICS_ENABLED`、`FDB_METRICS_HISTORY_ENABLED`、`FDB_RUN_ID`、`FDB_RUN_LABEL`、`FDB_REPORT_ON_STOP` 等运行时开关已贯通 Flink、observability-api、compose 和 deploy 脚本。
+- metrics 仍走 `fdb-stage-metrics` Kafka topic；observability-api 保留内存最新值，并按 run 写入本地 `metrics.jsonl` 与 `report.md`。
+- 前端流处理总览页读取 `/api/flow/runtime`，展示当前 run/result sink/metrics/DLQ/parallelism/checkpoint/job/report，并按已知 active result sink 过滤流程图、阶段面板和 sink 面板。
+- 本地验证在 shared-data-infra 运行时完成了 `starrocks` run：Flink job RUNNING 时 60/60 tasks running，plan 只包含 StarRocks business sink，不包含 Hive/Iceberg/Kafka business sink；`deploy.sh local report` 返回 `status=ready` 并生成 `report.md`。
+
+仍作为后续增强的项：
+
+- Hive/Iceberg 文件数、平均文件大小、小文件数量和 snapshot/checkpoint commit 明细在报告中的深度统计。
+- 前端 `Report` ready 后直接打开 `report.md` 或渲染报告正文。
+
+---
+
 ## 13. 验收标准
 
 - [ ] 全文和代码命名使用 PM，不出现旧话统缩写。
@@ -1034,22 +1052,22 @@ DLQ：
 - [ ] CHR 与 PM 先生成 1 分钟事实，再按 `cellId + minuteTs` Full JOIN。
 - [ ] PM 或 CHR 单侧缺失时仍输出 `CHR_ONLY` 或 `PM_ONLY`。
 - [ ] 5 分钟 KPI 从 1 分钟 KPI rollup。
-- [ ] `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 时，业务结果 sink 每次只创建一种分支。
-- [ ] KPI 1m、KPI 5m、小区异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
-- [ ] `FDB_RESULT_SINK=none` 时不创建业务结果 sink，但计算链路可运行。
-- [ ] `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink；开启时 DLQ 仅作为 Kafka 兜底链路。
-- [ ] 控制台提供 KPI 1m、KPI 5m、小区异常、栅格异常、Sink 耗时页面。
-- [ ] 流处理总览页展示当前 run、result sink、metrics、DLQ、parallelism、checkpoint、job status 和 report 状态。
-- [ ] 流处理总览页只显示当前真实启用的 sink 节点，并展示瓶颈候选摘要。
+- [x] `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 时，业务结果 sink 每次只创建一种分支。
+- [x] KPI 1m、KPI 5m、小区异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
+- [x] `FDB_RESULT_SINK=none` 时不创建业务结果 sink，但计算链路可运行。
+- [x] `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink；开启时 DLQ 仅作为 Kafka 兜底链路。
+- [x] 控制台提供 KPI 1m、KPI 5m、小区异常、栅格异常、Sink 耗时页面。
+- [x] 流处理总览页展示当前 run、result sink、metrics、DLQ、parallelism、checkpoint、job status 和 report 状态。
+- [x] 流处理总览页只显示当前真实启用的 sink 节点，并展示瓶颈候选摘要。
 - [ ] 栅格异常至少有表格展示；GIS 展示可用时显示地图或栅格。
-- [ ] 每个 sink 分支记录最近一次耗时、p50/p95/p99、记录数、字节数、失败数。
+- [x] 每个 sink 分支记录最近一次耗时、p50/p95/p99、记录数、字节数、失败数。
 - [ ] Hive/Iceberg 展示 checkpoint/snapshot commit 耗时、文件数、平均文件大小和小文件数量。
-- [ ] Hive/Iceberg result sink 默认 checkpoint interval 为 30s，配置值不超过 180s。
-- [ ] Observability API 将 metrics 写入本地 JSONL 历史，并能按 run 生成压测报告。
+- [x] Hive/Iceberg result sink 默认 checkpoint interval 为 30s，配置值不超过 180s。
+- [x] Observability API 将 metrics 写入本地 JSONL 历史，并能按 run 生成压测报告。
 - [ ] Kafka、StarRocks、Hive、Iceberg 数据按 1 小时和 10GB 上限治理。
-- [ ] Flink 默认并发与 TaskManager slots 为 4。
-- [ ] KPI window 与重 sink 在 Flink UI 中拆成可辨识 vertex。
-- [ ] `../shared-data-infra` 能提供 Kafka/ZooKeeper/Hive/HDFS/StarRocks，本工程不重复定义这些基础设施。
+- [x] Flink 默认并发与 TaskManager slots 为 4。
+- [x] KPI window 与重 sink 在 Flink UI 中拆成可辨识 vertex。
+- [x] `../shared-data-infra` 能提供 Kafka/ZooKeeper/Hive/HDFS/StarRocks，本工程不重复定义这些基础设施。
 - [x] 本地入口统一为 `scripts/deploy.sh local <command>`，覆盖 `check/up/init/submit/stop/smoke/down`。
 - [x] 外部入口统一为 `scripts/deploy.sh external-yarn <command>`，覆盖 `check/init/submit/stop/smoke`。
 - [x] 旧的 `dev-up.sh`、`dev-down.sh`、`e2e-smoke-test.sh` 入口不再作为目标态入口；README 示例统一迁移到 `deploy.sh`。

@@ -2151,7 +2151,18 @@ git commit -m "feat(frontend): show active benchmark topology"
 - Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-04-29-flink-data-balance-design.md` only if implementation changed a decision.
 
-- [ ] **Step 1: Run Maven tests**
+**Verification results from 2026-07-14 local run:**
+
+- `mvn test`: PASS, reactor `BUILD SUCCESS`, 204 Java tests run with 0 failures/errors.
+- `npm --prefix frontend test`: PASS, 3 files / 11 tests.
+- `bash -n scripts/deploy.sh`, `scripts/test-deploy-dispatch.sh`, `scripts/test-e2e-summary-lib.sh`, `scripts/test-init-kafka-topics.sh`, `scripts/test-retention-maintenance.sh`: PASS.
+- `docker compose -f docker/docker-compose.yml --profile e2e config`: PASS.
+- `mvn -pl flink-job -am clean package -DskipTests`: PASS, produced `flink-job/target/flink-job-0.1.0-SNAPSHOT.jar`.
+- Local StarRocks benchmark verification with shared infra running: `deploy.sh local submit` created run `run-20260714-194605-24404-31462`, Flink job `b01acd359f8ef69286f30de6a41e4a30` reached RUNNING with 60/60 tasks running; Flink plan contained StarRocks business sink nodes and no Hive/Iceberg/Kafka business sink nodes.
+- `deploy.sh local report`: PASS, API returned `status=ready` and wrote `report.md`; validation job was then stopped and reached CANCELED.
+- `npx gitnexus detect_changes --repo flink-data-balance --scope unstaged`: PASS, `No changes detected.`
+
+- [x] **Step 1: Run Maven tests**
 
 Run:
 
@@ -2161,7 +2172,7 @@ mvn test
 
 Expected: PASS.
 
-- [ ] **Step 2: Run frontend tests**
+- [x] **Step 2: Run frontend tests**
 
 Run:
 
@@ -2171,7 +2182,7 @@ npm --prefix frontend test
 
 Expected: PASS.
 
-- [ ] **Step 3: Run deploy script syntax check**
+- [x] **Step 3: Run deploy script syntax check**
 
 Run:
 
@@ -2181,7 +2192,7 @@ bash -n scripts/deploy.sh
 
 Expected: no output, exit code 0.
 
-- [ ] **Step 4: Run docker compose config if compose changed**
+- [x] **Step 4: Run docker compose config if compose changed**
 
 Run only if `docker/docker-compose.yml` changed:
 
@@ -2191,7 +2202,7 @@ docker compose -f docker/docker-compose.yml --profile e2e config
 
 Expected: compose renders successfully.
 
-- [ ] **Step 5: Build latest Flink jar**
+- [x] **Step 5: Build latest Flink jar**
 
 Run:
 
@@ -2201,7 +2212,7 @@ mvn -pl flink-job -am clean package -DskipTests
 
 Expected: `flink-job/target/flink-job-0.1.0-SNAPSHOT.jar` is produced.
 
-- [ ] **Step 6: Local smoke for one sink when shared infra is running**
+- [x] **Step 6: Local smoke for one sink when shared infra is running**
 
 When shared infra containers are running, run:
 
@@ -2217,7 +2228,7 @@ Expected: job is RUNNING and only selected business sink nodes appear in Flink U
 bash scripts/deploy.sh local stop
 ```
 
-- [ ] **Step 7: Generate report**
+- [x] **Step 7: Generate report**
 
 Run:
 
@@ -2227,7 +2238,7 @@ bash scripts/deploy.sh local report
 
 Expected: API returns JSON with `status=ready` and a `report.md` path, or returns a clear error if observability-api is not running.
 
-- [ ] **Step 8: Final GitNexus detect_changes**
+- [x] **Step 8: Final GitNexus detect_changes**
 
 Run:
 
@@ -2237,7 +2248,7 @@ npx gitnexus detect_changes --repo flink-data-balance --scope unstaged
 
 Expected: risk matches touched areas. Review any HIGH or CRITICAL result before committing.
 
-- [ ] **Step 9: Commit final docs or verification fixes**
+- [x] **Step 9: Commit final docs or verification fixes**
 
 Run if there are final docs or small verification fixes:
 
