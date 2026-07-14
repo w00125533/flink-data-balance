@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **flink-data-balance** (2014 symbols, 4491 relationships, 169 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **flink-data-balance** (2946 symbols, 7208 relationships, 251 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -39,19 +39,5 @@ This project is indexed by GitNexus as **flink-data-balance** (2014 symbols, 449
 | Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-| Work in the Job area (152 symbols) | `.claude/skills/generated/job/SKILL.md` |
-| Work in the Topology area (45 symbols) | `.claude/skills/generated/topology/SKILL.md` |
-| Work in the Simulator area (35 symbols) | `.claude/skills/generated/simulator/SKILL.md` |
-| Work in the Service area (27 symbols) | `.claude/skills/generated/service/SKILL.md` |
-| Work in the Config area (25 symbols) | `.claude/skills/generated/config/SKILL.md` |
-| Work in the Coordinator area (23 symbols) | `.claude/skills/generated/coordinator/SKILL.md` |
-| Work in the Observability area (22 symbols) | `.claude/skills/generated/observability/SKILL.md` |
-| Work in the Api area (14 symbols) | `.claude/skills/generated/api/SKILL.md` |
-| Work in the Components area (11 symbols) | `.claude/skills/generated/components/SKILL.md` |
-| Work in the Hash area (10 symbols) | `.claude/skills/generated/hash/SKILL.md` |
-| Work in the Geo area (9 symbols) | `.claude/skills/generated/geo/SKILL.md` |
-| Work in the Kafka area (8 symbols) | `.claude/skills/generated/kafka/SKILL.md` |
-| Work in the Summary area (6 symbols) | `.claude/skills/generated/summary/SKILL.md` |
-| Work in the Metrics area (5 symbols) | `.claude/skills/generated/metrics/SKILL.md` |
 
 <!-- gitnexus:end -->
