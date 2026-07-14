@@ -1,27 +1,27 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.ChrEvent;
-import com.fdb.common.avro.CmConfig;
-import com.fdb.common.avro.MrStat;
+import com.fdb.common.avro.CfgConfig;
+import com.fdb.common.avro.PmStat;
 
 public class EnrichedChr {
     private ChrEvent chrEvent;
-    private CmConfig cmConfig;
-    private MrStat latestMr;
+    private CfgConfig cfgConfig;
+    private PmStat latestPm;
 
     public EnrichedChr() {}
 
-    public EnrichedChr(ChrEvent chrEvent, CmConfig cmConfig, MrStat latestMr) {
+    public EnrichedChr(ChrEvent chrEvent, CfgConfig cfgConfig, PmStat latestPm) {
         this.chrEvent = chrEvent;
-        this.cmConfig = cmConfig;
-        this.latestMr = latestMr;
+        this.cfgConfig = cfgConfig;
+        this.latestPm = latestPm;
     }
 
     public ChrEvent chrEvent() { return chrEvent; }
-    public CmConfig cmConfig() { return cmConfig; }
-    public MrStat latestMr() { return latestMr; }
+    public CfgConfig cfgConfig() { return cfgConfig; }
+    public PmStat latestPm() { return latestPm; }
 
     public void setChrEvent(ChrEvent chrEvent) { this.chrEvent = chrEvent; }
-    public void setCmConfig(CmConfig cmConfig) { this.cmConfig = cmConfig; }
-    public void setLatestMr(MrStat latestMr) { this.latestMr = latestMr; }
+    public void setCfgConfig(CfgConfig cfgConfig) { this.cfgConfig = cfgConfig; }
+    public void setLatestPm(PmStat latestPm) { this.latestPm = latestPm; }
 }

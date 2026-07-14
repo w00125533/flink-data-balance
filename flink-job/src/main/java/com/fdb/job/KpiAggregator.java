@@ -33,18 +33,18 @@ public class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumula
             if (chr.getResultCode() == 0) acc.attachSuccess++;
         }
 
-        if (enriched.latestMr() != null && acc.mrWindows.add(enriched.latestMr().getWindowEndTs())) {
-            var mr = enriched.latestMr();
-            acc.prbUsageDlSum += mr.getPrbUsageDl();
-            acc.throughputDlSum += mr.getThroughputDlMbps();
-            acc.droppedConnections += mr.getDroppedConnections();
-            acc.handoverSuccess += mr.getHandoverSuccess();
-            acc.handoverFailure += mr.getHandoverFailure();
-            acc.mrCount++;
+        if (enriched.latestPm() != null && acc.pmWindows.add(enriched.latestPm().getWindowEndTs())) {
+            var pm = enriched.latestPm();
+            acc.prbUsageDlSum += pm.getPrbUsageDl();
+            acc.throughputDlSum += pm.getThroughputDlMbps();
+            acc.droppedConnections += pm.getDroppedConnections();
+            acc.handoverSuccess += pm.getHandoverSuccess();
+            acc.handoverFailure += pm.getHandoverFailure();
+            acc.pmCount++;
         }
-        if (enriched.cmConfig() != null && acc.gridId == null) {
-            acc.gridId = Geohash.encode(enriched.cmConfig().getCenterLat(),
-                enriched.cmConfig().getCenterLon(), 6);
+        if (enriched.cfgConfig() != null && acc.gridId == null) {
+            acc.gridId = Geohash.encode(enriched.cfgConfig().getCenterLat(),
+                enriched.cfgConfig().getCenterLon(), 6);
         }
         return acc;
     }
@@ -58,9 +58,9 @@ public class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumula
             .setCellId(valueOrEmpty(acc.cellId)).setGridId(valueOrEmpty(acc.gridId))
             .setNumChrEvents(acc.count).setNumUsers((long) acc.users.size())
             .setAvgRsrp(avg(acc.rsrpSum, acc.rsrpCount)).setAvgSinr(avg(acc.sinrSum, acc.sinrCount))
-            .setAvgPrbUsageDl(avg(acc.prbUsageDlSum, acc.mrCount))
-            .setThroughputDlMbpsAvg(avg(acc.throughputDlSum, acc.mrCount))
-            .setDropRate(avg(acc.droppedConnections, acc.mrCount))
+            .setAvgPrbUsageDl(avg(acc.prbUsageDlSum, acc.pmCount))
+            .setThroughputDlMbpsAvg(avg(acc.throughputDlSum, acc.pmCount))
+            .setDropRate(avg(acc.droppedConnections, acc.pmCount))
             .setHoSuccessRate(avg(acc.handoverSuccess, hoAttempts))
             .setAttachSuccessRate(avg(acc.attachSuccess, acc.attachAttempts))
             .build();
@@ -73,8 +73,8 @@ public class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumula
         a.attachAttempts += b.attachAttempts; a.attachSuccess += b.attachSuccess;
         a.prbUsageDlSum += b.prbUsageDlSum; a.throughputDlSum += b.throughputDlSum;
         a.droppedConnections += b.droppedConnections; a.handoverSuccess += b.handoverSuccess;
-        a.handoverFailure += b.handoverFailure; a.mrCount += b.mrCount;
-        a.users.addAll(b.users); a.mrWindows.addAll(b.mrWindows);
+        a.handoverFailure += b.handoverFailure; a.pmCount += b.pmCount;
+        a.users.addAll(b.users); a.pmWindows.addAll(b.pmWindows);
         if (a.siteId == null) a.siteId = b.siteId;
         if (a.cellId == null) a.cellId = b.cellId;
         if (a.gridId == null) a.gridId = b.gridId;
@@ -100,9 +100,9 @@ class KpiAccumulator {
     int droppedConnections;
     int handoverSuccess;
     int handoverFailure;
-    int mrCount;
+    int pmCount;
     Set<String> users = new HashSet<>();
-    Set<Long> mrWindows = new HashSet<>();
+    Set<Long> pmWindows = new HashSet<>();
     String siteId;
     String cellId;
     String gridId;

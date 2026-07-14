@@ -1,8 +1,8 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.ChrEvent;
-import com.fdb.common.avro.CmConfig;
-import com.fdb.common.avro.MrStat;
+import com.fdb.common.avro.CfgConfig;
+import com.fdb.common.avro.PmStat;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -23,8 +23,8 @@ public class EnrichmentProcessFunction
 
     private static final Logger log = LoggerFactory.getLogger(EnrichmentProcessFunction.class);
 
-    private transient ValueState<CmConfig> cmState;
-    private transient ListState<MrStat> mrRing;
+    private transient ValueState<CfgConfig> cfgState;
+    private transient ListState<PmStat> pmRing;
     private transient ListState<ChrEvent> bufferState;
     private transient ValueState<Long> bufferTimerState;
     public static final OutputTag<ChrEvent> CHR_DLQ =
@@ -32,10 +32,10 @@ public class EnrichmentProcessFunction
 
     @Override
     public void open(Configuration parameters) {
-        cmState = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("cm-config", new GenericTypeInfo<>(CmConfig.class)));
-        mrRing = getRuntimeContext().getListState(
-            new ListStateDescriptor<>("mr-ring", new GenericTypeInfo<>(MrStat.class)));
+        cfgState = getRuntimeContext().getState(
+            new ValueStateDescriptor<>("cfg-config", new GenericTypeInfo<>(CfgConfig.class)));
+        pmRing = getRuntimeContext().getListState(
+            new ListStateDescriptor<>("pm-ring", new GenericTypeInfo<>(PmStat.class)));
         bufferState = getRuntimeContext().getListState(
             new ListStateDescriptor<>("chr-buffer", new GenericTypeInfo<>(ChrEvent.class)));
         bufferTimerState = getRuntimeContext().getState(
@@ -47,16 +47,16 @@ public class EnrichmentProcessFunction
         InputEnvelope envelope = routed.envelope();
         if (envelope instanceof InputEnvelope.ChrEnv chrEnv) {
             processChr(chrEnv.chrEvent(), ctx, out);
-        } else if (envelope instanceof InputEnvelope.MrEnv mrEnv) {
-            processMr(mrEnv.mrStat());
-        } else if (envelope instanceof InputEnvelope.CmEnv cmEnv) {
-            processCm(cmEnv.cmConfig(), ctx, out);
+        } else if (envelope instanceof InputEnvelope.PmEnv pmEnv) {
+            processPm(pmEnv.pmStat());
+        } else if (envelope instanceof InputEnvelope.CfgEnv cfgEnv) {
+            processCfg(cfgEnv.cfgConfig(), ctx, out);
         }
     }
 
     private void processChr(ChrEvent chr, Context ctx, Collector<EnrichedChr> out) throws Exception {
-        CmConfig cm = cmState.value();
-        if (cm == null) {
+        CfgConfig cfg = cfgState.value();
+        if (cfg == null) {
             bufferState.add(chr);
             if (bufferTimerState.value() == null) {
                 long timer = ctx.timerService().currentProcessingTime() + 30_000;
@@ -66,41 +66,41 @@ public class EnrichmentProcessFunction
             return;
         }
 
-        MrStat latestMr = null;
-        for (MrStat mr : mrRing.get()) {
-            latestMr = mr;
+        PmStat latestPm = null;
+        for (PmStat pm : pmRing.get()) {
+            latestPm = pm;
         }
 
-        out.collect(new EnrichedChr(chr, cm, latestMr));
+        out.collect(new EnrichedChr(chr, cfg, latestPm));
     }
 
-    private void processMr(MrStat mr) throws Exception {
-        mrRing.add(mr);
-        List<MrStat> all = new ArrayList<>();
-        mrRing.get().forEach(all::add);
+    private void processPm(PmStat pm) throws Exception {
+        pmRing.add(pm);
+        List<PmStat> all = new ArrayList<>();
+        pmRing.get().forEach(all::add);
         if (all.size() > 6) {
-            mrRing.update(all.subList(all.size() - 6, all.size()));
+            pmRing.update(all.subList(all.size() - 6, all.size()));
         }
     }
 
-    private void processCm(CmConfig cm, Context ctx, Collector<EnrichedChr> out) throws Exception {
-        CmConfig existing = cmState.value();
-        if (cm.getTombstone()) {
-            cmState.clear();
-        } else if (existing == null || cm.getVersion() > existing.getVersion()) {
-            cmState.update(cm);
+    private void processCfg(CfgConfig cfg, Context ctx, Collector<EnrichedChr> out) throws Exception {
+        CfgConfig existing = cfgState.value();
+        if (cfg.getTombstone()) {
+            cfgState.clear();
+        } else if (existing == null || cfg.getVersion() > existing.getVersion()) {
+            cfgState.update(cfg);
             flushBuffer(ctx, out);
         }
     }
 
     private void flushBuffer(Context ctx, Collector<EnrichedChr> out) throws Exception {
-        CmConfig cm = cmState.value();
-        if (cm == null) return;
-        MrStat latestMr = null;
-        for (MrStat mr : mrRing.get()) latestMr = mr;
+        CfgConfig cfg = cfgState.value();
+        if (cfg == null) return;
+        PmStat latestPm = null;
+        for (PmStat pm : pmRing.get()) latestPm = pm;
 
         for (ChrEvent chr : bufferState.get()) {
-            out.collect(new EnrichedChr(chr, cm, latestMr));
+            out.collect(new EnrichedChr(chr, cfg, latestPm));
         }
         bufferState.clear();
         bufferTimerState.clear();
@@ -112,6 +112,6 @@ public class EnrichmentProcessFunction
         for (ChrEvent chr : bufferState.get()) ctx.output(CHR_DLQ, chr);
         bufferState.clear();
         bufferTimerState.clear();
-        log.warn("Sent buffered CHR events to DLQ after CM timeout for cell={}", ctx.getCurrentKey());
+        log.warn("Sent buffered CHR events to DLQ after CFG timeout for cell={}", ctx.getCurrentKey());
     }
 }

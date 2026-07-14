@@ -1,4 +1,4 @@
 kafka:
   bootstrap: localhost:9092
-  topic: mr-stats
+  topic: pm-stats
   topologyTopic: topology

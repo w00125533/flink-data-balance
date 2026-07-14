@@ -29,15 +29,15 @@ class FlinkJobE2ETest {
         env.setParallelism(1);
 
         List<ChrEvent> chrEvents = buildChrEvents();
-        List<CmConfig> cmConfigs = buildCmConfigs();
-        List<MrStat> mrStats = buildMrStats();
+        List<CfgConfig> cfgConfigs = buildCfgConfigs();
+        List<PmStat> pmStats = buildPmStats();
 
         List<EnrichedChr> enrichedList = new ArrayList<>();
-        CmConfig cm = cmConfigs.get(0);
-        MrStat mr = mrStats.isEmpty() ? null : mrStats.get(0);
+        CfgConfig cfg = cfgConfigs.get(0);
+        PmStat pm = pmStats.isEmpty() ? null : pmStats.get(0);
 
         for (ChrEvent chr : chrEvents) {
-            enrichedList.add(new EnrichedChr(chr, cm, mr));
+            enrichedList.add(new EnrichedChr(chr, cfg, pm));
         }
 
         TypeInformation<EnrichedChr> typeInfo = new GenericTypeInfo<>(EnrichedChr.class);
@@ -53,7 +53,7 @@ class FlinkJobE2ETest {
             }
         }
 
-        // ── Verify ──
+        // Verify
         assertThat(anomalies).isNotEmpty();
 
         long lowSignal = anomalies.stream()
@@ -83,7 +83,7 @@ class FlinkJobE2ETest {
         KpiAggregator agg = new KpiAggregator(WindowKind.MIN_1);
         KpiAccumulator acc = agg.createAccumulator();
 
-        EnrichedChr enriched = enrichedChrWith(-100f, 5f, 0, mrStat(0.6f));
+        EnrichedChr enriched = enrichedChrWith(-100f, 5f, 0, pmStat(0.6f));
         acc = agg.add(enriched, acc);
 
         EnrichedChr enriched2 = enrichedChrWith(-80f, 15f, 1, null);
@@ -136,7 +136,7 @@ class FlinkJobE2ETest {
     private static List<ChrEvent> buildChrEvents() {
         List<ChrEvent> events = new ArrayList<>();
 
-        // 53 low-signal events → COVERAGE_HOLE
+        // 53 low-signal events -> COVERAGE_HOLE
         for (int i = 0; i < 53; i++) {
             events.add(chrBase()
                 .setEventType(ChrEventType.DATA_SESSION)
@@ -145,7 +145,7 @@ class FlinkJobE2ETest {
                 .build());
         }
 
-        // 10 attach failures → ATTACH_FAILURE_BURST
+        // 10 attach failures -> ATTACH_FAILURE_BURST
         for (int i = 0; i < 10; i++) {
             events.add(chrBase()
                 .setEventType(ChrEventType.ATTACH).setResultCode(1)
@@ -153,7 +153,7 @@ class FlinkJobE2ETest {
                 .build());
         }
 
-        // 21 handovers (14 success + 7 failure) → HANDOVER_FAIL_PATTERN
+        // 21 handovers (14 success + 7 failure) -> HANDOVER_FAIL_PATTERN
         for (int i = 0; i < 14; i++) {
             events.add(chrBase()
                 .setEventType(ChrEventType.HANDOVER).setResultCode(0)
@@ -174,7 +174,7 @@ class FlinkJobE2ETest {
             .setChrId("chr-explicit-low")
             .build());
 
-        // Config mismatch event (TAC/PCI/ECI different from CM)
+        // Config mismatch event (TAC/PCI/ECI different from CFG)
         events.add(chrBase()
             .setEventType(ChrEventType.DATA_SESSION)
             .setTac(40999).setPci(200).setEci(9999L).setArfcn(1500)
@@ -193,15 +193,15 @@ class FlinkJobE2ETest {
         return events;
     }
 
-    private static List<CmConfig> buildCmConfigs() {
-        List<CmConfig> configs = new ArrayList<>();
-        configs.add(cmConfig(40001, 100, 1000L, 1300));
+    private static List<CfgConfig> buildCfgConfigs() {
+        List<CfgConfig> configs = new ArrayList<>();
+        configs.add(cfgConfig(40001, 100, 1000L, 1300));
         return configs;
     }
 
-    private static List<MrStat> buildMrStats() {
-        List<MrStat> stats = new ArrayList<>();
-        stats.add(mrStat(0.5f));
+    private static List<PmStat> buildPmStats() {
+        List<PmStat> stats = new ArrayList<>();
+        stats.add(pmStat(0.5f));
         return stats;
     }
 
@@ -223,8 +223,8 @@ class FlinkJobE2ETest {
             .setLongitude(116.4);
     }
 
-    private static CmConfig cmConfig(int tac, int pci, long eci, int arfcn) {
-        return CmConfig.newBuilder()
+    private static CfgConfig cfgConfig(int tac, int pci, long eci, int arfcn) {
+        return CfgConfig.newBuilder()
             .setSiteId(SITE_ID).setCellId(CELL_ID).setEffectiveTs(BASE_TS).setVersion(1)
             .setCellType(CellType.LTE).setBandwidthMhz(20).setFrequencyBand("BAND_3")
             .setArfcn(arfcn).setMaxPowerDbm(43f).setAzimuth(0).setCenterLat(39.9)
@@ -234,8 +234,8 @@ class FlinkJobE2ETest {
             .build();
     }
 
-    private static MrStat mrStat(float prbUsageDl) {
-        return MrStat.newBuilder()
+    private static PmStat pmStat(float prbUsageDl) {
+        return PmStat.newBuilder()
             .setSiteId(SITE_ID).setCellId(CELL_ID)
             .setWindowStartTs(BASE_TS).setWindowEndTs(BASE_TS + 10_000)
             .setPrbUsageDl(prbUsageDl).setPrbUsageUl(0.3f).setActiveUsers(5)
@@ -249,13 +249,13 @@ class FlinkJobE2ETest {
             .build();
     }
 
-    private static EnrichedChr enrichedChrWith(Float rsrp, Float sinr, int resultCode, MrStat mr) {
+    private static EnrichedChr enrichedChrWith(Float rsrp, Float sinr, int resultCode, PmStat pm) {
         ChrEvent.Builder b = chrBase()
             .setEventType(ChrEventType.DATA_SESSION)
             .setResultCode(resultCode);
         if (rsrp != null) b.setRsrp(rsrp);
         if (sinr != null) b.setSinr(sinr);
-        CmConfig cm = cmConfig(40001, 100, 1000L, 1300);
-        return new EnrichedChr(b.build(), cm, mr);
+        CfgConfig cfg = cfgConfig(40001, 100, 1000L, 1300);
+        return new EnrichedChr(b.build(), cfg, pm);
     }
 }

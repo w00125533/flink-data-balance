@@ -50,8 +50,8 @@ create_topic() {
 
 # Business topics
 create_topic chr-events       64 delete  "${FDB_CHR_RETENTION_MS:-604800000}"      # default 7d
-create_topic mr-stats         16 delete  "${FDB_MR_RETENTION_MS:-259200000}"       # default 3d
-create_topic cm-config         8 compact
+create_topic pm-stats         16 delete  "${FDB_PM_RETENTION_MS:-259200000}"       # default 3d
+create_topic cfg-config        8 compact
 create_topic topology          4 compact
 
 # Load balancing control flow

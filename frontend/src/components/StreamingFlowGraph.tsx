@@ -18,8 +18,8 @@ const statusStyle: Record<StageStatusValue, { stroke: string; fill: string; text
 
 const nodePositions: Record<string, { x: number; y: number; group: string }> = {
   'chr-source': { x: 32, y: 36, group: 'Source' },
-  'mr-source': { x: 32, y: 300, group: 'Source' },
-  'cm-source': { x: 32, y: 564, group: 'Source' },
+  'pm-source': { x: 32, y: 300, group: 'Source' },
+  'cfg-source': { x: 32, y: 564, group: 'Source' },
   kafka: { x: 410, y: 300, group: 'Messaging' },
   assigner: { x: 788, y: 300, group: 'Balance' },
   enrichment: { x: 1166, y: 128, group: 'Process' },
@@ -31,8 +31,8 @@ const nodePositions: Record<string, { x: number; y: number; group: string }> = {
 
 const flowEdges = [
   ['chr-source', 'kafka'],
-  ['mr-source', 'kafka'],
-  ['cm-source', 'kafka'],
+  ['pm-source', 'kafka'],
+  ['cfg-source', 'kafka'],
   ['kafka', 'assigner'],
   ['assigner', 'enrichment'],
   ['assigner', 'load-coordinator'],

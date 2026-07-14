@@ -13,14 +13,14 @@ class ObservabilitySnapshotServiceTest {
   void returnsCoreStages() {
     assertThat(service.stageStatuses())
         .extracting("stageId")
-        .contains("chr-source", "mr-source", "cm-source", "enrichment", "load-coordinator", "iceberg-sink");
+        .contains("chr-source", "pm-source", "cfg-source", "enrichment", "load-coordinator", "iceberg-sink");
   }
 
   @Test
   void returnsThreeSourceSummaries() {
     assertThat(service.sourceSummaries())
         .extracting("source")
-        .containsExactlyInAnyOrder("chr", "mr", "cm");
+        .containsExactlyInAnyOrder("chr", "pm", "cfg");
   }
 
   @Test

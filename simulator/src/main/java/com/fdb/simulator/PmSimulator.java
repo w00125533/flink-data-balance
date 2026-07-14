@@ -1,6 +1,6 @@
 package com.fdb.simulator;
 
-import com.fdb.common.avro.MrStat;
+import com.fdb.common.avro.PmStat;
 import com.fdb.common.avro.TopologyRecord;
 import com.fdb.common.summary.SummarySwitch;
 import org.slf4j.Logger;
@@ -10,36 +10,36 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Random;
 
-public class MrSimulator {
+public class PmSimulator {
 
-    private static final Logger log = LoggerFactory.getLogger(MrSimulator.class);
+    private static final Logger log = LoggerFactory.getLogger(PmSimulator.class);
 
     private final String configPath;
     private final Random rng = new Random(43);
 
-    public MrSimulator(String configPath) {
+    public PmSimulator(String configPath) {
         this.configPath = configPath;
     }
 
     public void run() throws Exception {
-        SimulatorConfig config = SimulatorConfig.load("sim-mr.yaml", configPath);
+        SimulatorConfig config = SimulatorConfig.load("sim-pm.yaml", configPath);
         String bootstrap = config.bootstrap();
-        String topic = config.topic("mr-stats");
+        String topic = config.topic("pm-stats");
 
-        TopologyClient topology = new TopologyClient(bootstrap, "sim-mr");
+        TopologyClient topology = new TopologyClient(bootstrap, "sim-pm");
         topology.start(config.topologyTopic());
         topology.awaitReady(Duration.ofSeconds(30));
 
         List<TopologyRecord> cells = topology.getAllCells();
-        log.info("Loaded {} cells from topology for MR simulator", cells.size());
+        log.info("Loaded {} cells from topology for PM simulator", cells.size());
         boolean summaryEnabled = SummarySwitch.enabled();
         if (summaryEnabled) {
             long sites = cells.stream().map(c -> c.getSiteId().toString()).distinct().count();
-            log.info(SummarySwitch.format("sim-mr", "loaded_sites", sites));
-            log.info(SummarySwitch.format("sim-mr", "loaded_cells", cells.size()));
+            log.info(SummarySwitch.format("sim-pm", "loaded_sites", sites));
+            log.info(SummarySwitch.format("sim-pm", "loaded_cells", cells.size()));
         }
 
-        try (KafkaPublisher<MrStat> publisher = new KafkaPublisher<>(bootstrap, topic, MrStat.class)) {
+        try (KafkaPublisher<PmStat> publisher = new KafkaPublisher<>(bootstrap, topic, PmStat.class)) {
             while (!Thread.currentThread().isInterrupted()) {
                 long wallNow = System.currentTimeMillis();
                 long windowEnd = alignTo10s(wallNow);
@@ -49,7 +49,7 @@ public class MrSimulator {
                 double prbUsageDl = 0.0;
 
                 for (TopologyRecord cell : cells) {
-                    MrStat stat = generateMrStat(cell, windowStart, windowEnd);
+                    PmStat stat = generatePmStat(cell, windowStart, windowEnd);
                     publisher.publish(cell.getSiteId().toString(), stat);
                     if (summaryEnabled) {
                         published++;
@@ -60,11 +60,11 @@ public class MrSimulator {
 
                 publisher.flush();
                 if (summaryEnabled && published > 0) {
-                    log.info(SummarySwitch.format("sim-mr", "records_published_last_window", published));
-                    log.info(SummarySwitch.format("sim-mr", "avg_active_users_last_window", activeUsers / published));
-                    log.info(SummarySwitch.format("sim-mr", "avg_prb_usage_dl_last_window",
+                    log.info(SummarySwitch.format("sim-pm", "records_published_last_window", published));
+                    log.info(SummarySwitch.format("sim-pm", "avg_active_users_last_window", activeUsers / published));
+                    log.info(SummarySwitch.format("sim-pm", "avg_prb_usage_dl_last_window",
                         String.format("%.3f", prbUsageDl / published)));
-                    log.info(SummarySwitch.format("sim-mr", "window_ts", windowStart + ".." + windowEnd));
+                    log.info(SummarySwitch.format("sim-pm", "window_ts", windowStart + ".." + windowEnd));
                 }
 
                 long nextBoundary = windowEnd + 10_000;
@@ -74,7 +74,7 @@ public class MrSimulator {
         }
     }
 
-    private MrStat generateMrStat(TopologyRecord cell, long windowStart, long windowEnd) {
+    private PmStat generatePmStat(TopologyRecord cell, long windowStart, long windowEnd) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
             cell.getSiteLat() + rng.nextGaussian() * 0.001,
             cell.getSiteLon() + rng.nextGaussian() * 0.001);
@@ -92,7 +92,7 @@ public class MrSimulator {
         int rrcSuccess = rrcAttempt - rng.nextInt(Math.max(1, rrcAttempt / 10 + 1));
         float latency = (float) (5 + load * 40 + rng.nextFloat() * 10);
 
-        return MrStat.newBuilder()
+        return PmStat.newBuilder()
             .setSiteId(cell.getSiteId().toString())
             .setCellId(cell.getCellId().toString())
             .setWindowStartTs(windowStart)

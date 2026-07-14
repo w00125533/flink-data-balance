@@ -71,8 +71,8 @@ public record StageMetricSample(
     private static String sourceName(String stageId) {
         return switch (stageId) {
             case "chr-source" -> "chr";
-            case "mr-source" -> "mr";
-            case "cm-source" -> "cm";
+            case "pm-source" -> "pm";
+            case "cfg-source" -> "cfg";
             default -> "";
         };
     }

@@ -9,48 +9,48 @@ import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class CmSimulator {
+public class CfgSimulator {
 
-    private static final Logger log = LoggerFactory.getLogger(CmSimulator.class);
+    private static final Logger log = LoggerFactory.getLogger(CfgSimulator.class);
 
     private final String configPath;
     private final Random rng = new Random(44);
 
-    public CmSimulator(String configPath) {
+    public CfgSimulator(String configPath) {
         this.configPath = configPath;
     }
 
     public void run() throws Exception {
-        SimulatorConfig simConfig = SimulatorConfig.load("sim-cm.yaml", configPath);
+        SimulatorConfig simConfig = SimulatorConfig.load("sim-cfg.yaml", configPath);
         String bootstrap = simConfig.bootstrap();
-        String topic = simConfig.topic("cm-config");
+        String topic = simConfig.topic("cfg-config");
 
-        TopologyClient topology = new TopologyClient(bootstrap, "sim-cm");
+        TopologyClient topology = new TopologyClient(bootstrap, "sim-cfg");
         topology.start(simConfig.topologyTopic());
         topology.awaitReady(Duration.ofSeconds(30));
 
         List<TopologyRecord> cells = new ArrayList<>(topology.getAllCells());
-        log.info("Loaded {} cells from topology for CM simulator", cells.size());
+        log.info("Loaded {} cells from topology for CFG simulator", cells.size());
         boolean summaryEnabled = SummarySwitch.enabled();
         if (summaryEnabled) {
             long sites = cells.stream().map(c -> c.getSiteId().toString()).distinct().count();
-            log.info(SummarySwitch.format("sim-cm", "loaded_sites", sites));
-            log.info(SummarySwitch.format("sim-cm", "loaded_cells", cells.size()));
+            log.info(SummarySwitch.format("sim-cfg", "loaded_sites", sites));
+            log.info(SummarySwitch.format("sim-cfg", "loaded_cells", cells.size()));
         }
 
-        try (KafkaPublisher<CmConfig> publisher = new KafkaPublisher<>(bootstrap, topic, CmConfig.class)) {
+        try (KafkaPublisher<CfgConfig> publisher = new KafkaPublisher<>(bootstrap, topic, CfgConfig.class)) {
             long version = 1;
 
-            log.info("Publishing baseline CM config for {} cells", cells.size());
+            log.info("Publishing baseline CFG config for {} cells", cells.size());
             for (TopologyRecord cell : cells) {
-                CmConfig config = baselineConfig(cell, version);
+                CfgConfig config = baselineConfig(cell, version);
                 publisher.publish(cell.getCellId().toString(), config);
             }
             publisher.flush();
-            log.info("Baseline CM config published");
+            log.info("Baseline CFG config published");
             if (summaryEnabled) {
-                log.info(SummarySwitch.format("sim-cm", "baseline_records_published", cells.size()));
-                log.info(SummarySwitch.format("sim-cm", "baseline_version", version));
+                log.info(SummarySwitch.format("sim-cfg", "baseline_records_published", cells.size()));
+                log.info(SummarySwitch.format("sim-cfg", "baseline_version", version));
             }
 
             version++;
@@ -65,7 +65,7 @@ public class CmSimulator {
                 int changed = 0;
                 for (int i = 0; i < numChanges && i < cells.size(); i++) {
                     TopologyRecord cell = cells.get(i);
-                    CmConfig config = updatedConfig(cell, version);
+                    CfgConfig config = updatedConfig(cell, version);
                     publisher.publish(cell.getCellId().toString(), config);
                     changed++;
                 }
@@ -74,7 +74,7 @@ public class CmSimulator {
 
                 if (rng.nextDouble() < simConfig.getDouble("updates.tombstoneProb", 0.05) && changed > 0) {
                     TopologyRecord cell = cells.get(rng.nextInt(cells.size()));
-                    CmConfig tombstone = CmConfig.newBuilder()
+                    CfgConfig tombstone = CfgConfig.newBuilder()
                         .setSiteId(cell.getSiteId().toString())
                         .setCellId(cell.getCellId().toString())
                         .setEffectiveTs(System.currentTimeMillis())
@@ -101,21 +101,21 @@ public class CmSimulator {
                     publisher.publish(cell.getCellId().toString(), tombstone);
                     log.info("Published tombstone for {}", cell.getCellId());
                     if (summaryEnabled) {
-                        log.info(SummarySwitch.format("sim-cm", "tombstone_published", cell.getCellId()));
+                        log.info(SummarySwitch.format("sim-cfg", "tombstone_published", cell.getCellId()));
                     }
                 }
 
-                log.info("Published {} CM config updates (version {})", changed, version - 1);
+                log.info("Published {} CFG config updates (version {})", changed, version - 1);
                 if (summaryEnabled) {
-                    log.info(SummarySwitch.format("sim-cm", "updates_published_last_batch", changed));
-                    log.info(SummarySwitch.format("sim-cm", "latest_version", version - 1));
+                    log.info(SummarySwitch.format("sim-cfg", "updates_published_last_batch", changed));
+                    log.info(SummarySwitch.format("sim-cfg", "latest_version", version - 1));
                 }
             }
         }
     }
 
-    private CmConfig baselineConfig(TopologyRecord cell, long version) {
-        return CmConfig.newBuilder()
+    private CfgConfig baselineConfig(TopologyRecord cell, long version) {
+        return CfgConfig.newBuilder()
             .setSiteId(cell.getSiteId().toString())
             .setCellId(cell.getCellId().toString())
             .setEffectiveTs(System.currentTimeMillis())
@@ -141,10 +141,10 @@ public class CmSimulator {
             .build();
     }
 
-    private CmConfig updatedConfig(TopologyRecord cell, long version) {
-        CmConfig base = baselineConfig(cell, version);
+    private CfgConfig updatedConfig(TopologyRecord cell, long version) {
+        CfgConfig base = baselineConfig(cell, version);
         if (rng.nextBoolean()) {
-            return CmConfig.newBuilder(base)
+            return CfgConfig.newBuilder(base)
                 .setMaxPowerDbm(base.getMaxPowerDbm() + rng.nextFloat() * 3 - 1.5f)
                 .setVersion(version)
                 .build();

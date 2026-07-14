@@ -93,8 +93,8 @@ public final class ObservabilitySnapshotService {
     long now = System.currentTimeMillis();
     List<StageMetricSample> defaults = new ArrayList<>();
     defaults.add(StageMetricSample.stage("chr-source", "CHR Source", "unknown", 0, 0, 0, 0, 0, now));
-    defaults.add(StageMetricSample.stage("mr-source", "MR Source", "unknown", 0, 0, 0, 0, 0, now));
-    defaults.add(StageMetricSample.stage("cm-source", "CM Source", "unknown", 0, 0, 0, 0, 0, now));
+    defaults.add(StageMetricSample.stage("pm-source", "PM Source", "unknown", 0, 0, 0, 0, 0, now));
+    defaults.add(StageMetricSample.stage("cfg-source", "CFG Source", "unknown", 0, 0, 0, 0, 0, now));
     defaults.add(StageMetricSample.stage("kafka", "Kafka Topics", "unknown", 0, 0, 0, 0, 0, now));
     defaults.add(StageMetricSample.stage("assigner", "VBucket Assigner", "unknown", 0, 0, 0, 0, 0, now));
     defaults.add(StageMetricSample.stage("enrichment", "Enrichment Process", "unknown", 0, 0, 0, 0, 0, now));
@@ -110,8 +110,8 @@ public final class ObservabilitySnapshotService {
   private static Map<String, Integer> stageOrder() {
     Map<String, Integer> order = new LinkedHashMap<>();
     order.put("chr-source", 0);
-    order.put("mr-source", 1);
-    order.put("cm-source", 2);
+    order.put("pm-source", 1);
+    order.put("cfg-source", 2);
     order.put("kafka", 3);
     order.put("assigner", 4);
     order.put("enrichment", 5);

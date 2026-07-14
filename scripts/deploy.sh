@@ -516,13 +516,13 @@ local_smoke() {
   echo "[e2e] Publishing topology and starting simulators..."
   local host_kafka_bootstrap="${FDB_KAFKA_HOST_BOOTSTRAP:-localhost:9092}"
   FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar topology-service/target/topology-service-0.1.0-SNAPSHOT.jar > logs-topology.log 2>&1
-  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar cm > logs-cm.log 2>&1 & PIDS+=("$!")
-  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar mr > logs-mr.log 2>&1 & PIDS+=("$!")
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar cfg > logs-cfg.log 2>&1 & PIDS+=("$!")
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar pm > logs-pm.log 2>&1 & PIDS+=("$!")
   FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar chr > logs-chr.log 2>&1 & PIDS+=("$!")
   summary_section "Data Generation"
   summary_command "Data Generation" "topology log lines" "wc -l < logs-topology.log | tr -d ' '"
   summary_line "Data Generation" "simulator processes" "${#PIDS[@]}"
-  summary_code_logs "Data Generation" cat logs-topology.log logs-cm.log logs-mr.log logs-chr.log
+  summary_code_logs "Data Generation" cat logs-topology.log logs-cfg.log logs-pm.log logs-chr.log
 
   echo "[e2e] Submitting Flink job..."
   local_submit
@@ -531,8 +531,8 @@ local_smoke() {
 
   local_smoke_wait_for "CHR messages" "shared_kafka_exec kafka-run-class kafka.tools.GetOffsetShell --broker-list ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} --topic chr-events | grep -Eq ':[1-9][0-9]*$'"
   summary_section "Kafka Input"
-  summary_kafka_topic "cm-config"
-  summary_kafka_topic "mr-stats"
+  summary_kafka_topic "cfg-config"
+  summary_kafka_topic "pm-stats"
   summary_kafka_topic "chr-events"
   local_smoke_wait_for "1m KPI rows in StarRocks" "shared_starrocks_mysql -N -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'\" | grep -Eq '^[1-9][0-9]*$'" 90
   summary_section "StarRocks KPI"
@@ -1026,8 +1026,8 @@ external_init() {
 
   log "creating external Kafka topics"
   create_external_topic "${FDB_CHR_TOPIC:-chr-events}" 64 delete "${FDB_CHR_RETENTION_MS:-604800000}"
-  create_external_topic "${FDB_PM_TOPIC:-mr-stats}" 16 delete "${FDB_MR_RETENTION_MS:-259200000}"
-  create_external_topic "${FDB_CFG_TOPIC:-cm-config}" 8 compact
+  create_external_topic "${FDB_PM_TOPIC:-pm-stats}" 16 delete "${FDB_PM_RETENTION_MS:-259200000}"
+  create_external_topic "${FDB_CFG_TOPIC:-cfg-config}" 8 compact
   create_external_topic "${FDB_TOPOLOGY_TOPIC:-topology}" 4 compact
   create_external_topic "${FDB_LB_HEARTBEAT_TOPIC:-lb-heartbeat}" 1 delete 3600000
   create_external_topic "${FDB_LB_ROUTING_TOPIC:-lb-routing}" 1 compact
@@ -1036,8 +1036,8 @@ external_init() {
   create_external_topic "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}" 8 delete "${FDB_KPI_1M_RETENTION_MS:-259200000}"
   create_external_topic "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}" 8 delete "${FDB_KPI_5M_RETENTION_MS:-604800000}"
   create_external_topic "${FDB_CHR_DLQ_TOPIC:-chr-dlq}" 4 delete 604800000
-  create_external_topic "${FDB_PM_DLQ_TOPIC:-mr-dlq}" 4 delete 604800000
-  create_external_topic "${FDB_CFG_DLQ_TOPIC:-cm-dlq}" 4 delete 604800000
+  create_external_topic "${FDB_PM_DLQ_TOPIC:-pm-dlq}" 4 delete 604800000
+  create_external_topic "${FDB_CFG_DLQ_TOPIC:-cfg-dlq}" 4 delete 604800000
   create_external_topic "${FDB_ENRICHMENT_LATE_TOPIC:-enrichment-late}" 4 delete 604800000
 
   log "creating external HDFS directories"

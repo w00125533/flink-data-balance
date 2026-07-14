@@ -1,6 +1,6 @@
 kafka:
   bootstrap: localhost:9092
-  topic: cm-config
+  topic: cfg-config
   topologyTopic: topology
 
 updates:

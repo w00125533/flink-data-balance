@@ -15,7 +15,7 @@ export interface StageStatus {
 }
 
 export interface SourceSummary {
-  source: 'chr' | 'mr' | 'cm';
+  source: 'chr' | 'pm' | 'cfg';
   status: StageStatusValue;
   eps: number;
   kafkaLag: number;

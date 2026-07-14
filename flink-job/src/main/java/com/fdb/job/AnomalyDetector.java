@@ -2,7 +2,7 @@ package com.fdb.job;
 
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.AnomalyType;
-import com.fdb.common.avro.CmConfig;
+import com.fdb.common.avro.CfgConfig;
 import com.fdb.common.avro.Severity;
 import com.fdb.common.geo.Geohash;
 import org.apache.flink.api.common.state.MapState;
@@ -30,16 +30,16 @@ public class AnomalyDetector
     private static final int HO_MIN_ATTEMPTS = 20;
     private static final int HO_SLIDING_WINDOW_BUCKETS = 5;
 
-    // ── Rule 2: Attach failure burst ──
+    // Rule 2: Attach failure burst
     private transient MapState<Long, Integer> attachFailWindow;
 
-    // ── Rule 3: Handover failure pattern ──
+    // Rule 3: Handover failure pattern
     private transient MapState<Long, int[]> hoBucketState;
 
-    // ── Rule 4: Config mismatch ──
+    // Rule 4: Config mismatch
     private transient ValueState<Boolean> configMismatchFlagged;
 
-    // ── Rule 5: Coverage hole ──
+    // Rule 5: Coverage hole
 
     public AnomalyDetector() { this(RuleConfig.defaults()); }
 
@@ -66,13 +66,13 @@ public class AnomalyDetector
         // Rule 1: LOW_SIGNAL
         detectLowSignal(enriched, gridId, out);
 
-        // Rule 2: ATTACH_FAILURE_BURST
+    // Rule 2: Attach failure burst
         detectAttachFailureBurst(enriched, gridId, out);
 
-        // Rule 3: HANDOVER_FAIL_PATTERN
+    // Rule 3: Handover failure pattern
         detectHandoverFailPattern(enriched, gridId, out);
 
-        // Rule 4: CONFIG_MISMATCH
+    // Rule 4: Config mismatch
         detectConfigMismatch(enriched, gridId, out);
 
     }
@@ -92,7 +92,7 @@ public class AnomalyDetector
     }
 
     // ──────────────────────────────────────────────
-    // Rule 2: ATTACH_FAILURE_BURST
+    // Rule 2: Attach failure burst
     // ──────────────────────────────────────────────
 
     private void detectAttachFailureBurst(EnrichedChr enriched, String gridId, Collector<AnomalyEvent> out) throws Exception {
@@ -115,7 +115,7 @@ public class AnomalyDetector
     }
 
     // ──────────────────────────────────────────────
-    // Rule 3: HANDOVER_FAIL_PATTERN
+    // Rule 3: Handover failure pattern
     // ──────────────────────────────────────────────
 
     private void detectHandoverFailPattern(EnrichedChr enriched, String gridId, Collector<AnomalyEvent> out) throws Exception {
@@ -159,22 +159,22 @@ public class AnomalyDetector
     }
 
     // ──────────────────────────────────────────────
-    // Rule 4: CONFIG_MISMATCH
+    // Rule 4: Config mismatch
     // ──────────────────────────────────────────────
 
     private void detectConfigMismatch(EnrichedChr enriched, String gridId, Collector<AnomalyEvent> out) throws Exception {
         var chr = enriched.chrEvent();
-        CmConfig cm = enriched.cmConfig();
-        if (cm == null) return;
+        CfgConfig cfg = enriched.cfgConfig();
+        if (cfg == null) return;
 
         Boolean alreadyFlagged = configMismatchFlagged.value();
         if (Boolean.TRUE.equals(alreadyFlagged)) return;
 
         List<String> mismatches = new ArrayList<>();
-        if (chr.getTac() != cm.getTac()) mismatches.add("tac");
-        if (chr.getPci() != cm.getPci()) mismatches.add("pci");
-        if (chr.getEci() != cm.getEci()) mismatches.add("eci");
-        if (chr.getArfcn() != null && (int) chr.getArfcn() != cm.getArfcn()) mismatches.add("arfcn");
+        if (chr.getTac() != cfg.getTac()) mismatches.add("tac");
+        if (chr.getPci() != cfg.getPci()) mismatches.add("pci");
+        if (chr.getEci() != cfg.getEci()) mismatches.add("eci");
+        if (chr.getArfcn() != null && (int) chr.getArfcn() != cfg.getArfcn()) mismatches.add("arfcn");
 
         if (!mismatches.isEmpty()) {
             configMismatchFlagged.update(true);

@@ -42,7 +42,7 @@ public class FlinkJobMain {
         env.setParallelism(resolveParallelism(System.getenv(), System.getProperties()));
         IcebergConfig icebergConfig = resolveIcebergConfig(System.getenv(), System.getProperties());
 
-        // ── Main pipeline: CHR + MR + CM ──
+        // Main pipeline: CHR + PM + CFG
 
         KafkaSource<ChrEvent> chrSource = KafkaSource.<ChrEvent>builder()
             .setBootstrapServers(bootstrap)
@@ -52,20 +52,20 @@ public class FlinkJobMain {
             .setDeserializer(new FlinkAvroDeserializer<>(ChrEvent.class))
             .build();
 
-        KafkaSource<MrStat> mrSource = KafkaSource.<MrStat>builder()
+        KafkaSource<PmStat> pmSource = KafkaSource.<PmStat>builder()
             .setBootstrapServers(bootstrap)
-            .setTopics("mr-stats")
-            .setGroupId(groupId + "-mr")
+            .setTopics("pm-stats")
+            .setGroupId(groupId + "-pm")
             .setStartingOffsets(OffsetsInitializer.latest())
-            .setDeserializer(new FlinkAvroDeserializer<>(MrStat.class))
+            .setDeserializer(new FlinkAvroDeserializer<>(PmStat.class))
             .build();
 
-        KafkaSource<CmConfig> cmSource = KafkaSource.<CmConfig>builder()
+        KafkaSource<CfgConfig> cfgSource = KafkaSource.<CfgConfig>builder()
             .setBootstrapServers(bootstrap)
-            .setTopics("cm-config")
-            .setGroupId(groupId + "-cm")
+            .setTopics("cfg-config")
+            .setGroupId(groupId + "-cfg")
             .setStartingOffsets(OffsetsInitializer.earliest())
-            .setDeserializer(new FlinkAvroDeserializer<>(CmConfig.class))
+            .setDeserializer(new FlinkAvroDeserializer<>(CfgConfig.class))
             .build();
 
         DataStream<ChrEvent> chrStream = env.fromSource(chrSource,
@@ -76,36 +76,36 @@ public class FlinkJobMain {
             .process(new StageMetricsProbe<>("chr-source", "CHR Source", "healthy", 5_000L))
             .name("chr-source-metrics");
 
-        DataStream<MrStat> mrStream = env.fromSource(mrSource,
-            WatermarkStrategy.<MrStat>forMonotonousTimestamps()
+        DataStream<PmStat> pmStream = env.fromSource(pmSource,
+            WatermarkStrategy.<PmStat>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
-            "mr-source")
-            .process(new StageMetricsProbe<>("mr-source", "MR Source", "healthy", 5_000L))
-            .name("mr-source-metrics");
+            "pm-source")
+            .process(new StageMetricsProbe<>("pm-source", "PM Source", "healthy", 5_000L))
+            .name("pm-source-metrics");
 
-        DataStream<CmConfig> cmStream = env.fromSource(cmSource,
-            WatermarkStrategy.<CmConfig>forMonotonousTimestamps()
+        DataStream<CfgConfig> cfgStream = env.fromSource(cfgSource,
+            WatermarkStrategy.<CfgConfig>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
-            "cm-source")
-            .process(new StageMetricsProbe<>("cm-source", "CM Source", "healthy", 5_000L))
-            .name("cm-source-metrics");
+            "cfg-source")
+            .process(new StageMetricsProbe<>("cfg-source", "CFG Source", "healthy", 5_000L))
+            .name("cfg-source-metrics");
 
-        // ── Enrichment pipeline: unify CHR + MR + CM → enrich → detect anomalies + KPI ──
+        // Enrichment pipeline: unify CHR + PM + CFG, enrich, detect anomalies and KPI
 
         DataStream<InputEnvelope> chrEnv = chrStream
             .map(chr -> (InputEnvelope) new InputEnvelope.ChrEnv(chr))
             .returns(new GenericTypeInfo<>(InputEnvelope.class))
             .name("to-chr-env");
-        DataStream<InputEnvelope> mrEnv = mrStream
-            .map(mr -> (InputEnvelope) new InputEnvelope.MrEnv(mr))
+        DataStream<InputEnvelope> pmEnv = pmStream
+            .map(pm -> (InputEnvelope) new InputEnvelope.PmEnv(pm))
             .returns(new GenericTypeInfo<>(InputEnvelope.class))
-            .name("to-mr-env");
-        DataStream<InputEnvelope> cmEnv = cmStream
-            .map(cm -> (InputEnvelope) new InputEnvelope.CmEnv(cm))
+            .name("to-pm-env");
+        DataStream<InputEnvelope> cfgEnv = cfgStream
+            .map(cfg -> (InputEnvelope) new InputEnvelope.CfgEnv(cfg))
             .returns(new GenericTypeInfo<>(InputEnvelope.class))
-            .name("to-cm-env");
+            .name("to-cfg-env");
 
-        DataStream<InputEnvelope> mergedInput = chrEnv.union(mrEnv, cmEnv)
+        DataStream<InputEnvelope> mergedInput = chrEnv.union(pmEnv, cfgEnv)
             .process(new StageMetricsProbe<>("kafka", "Kafka Topics", "healthy", 5_000L))
             .name("kafka-topics-metrics");
 
@@ -152,7 +152,7 @@ public class FlinkJobMain {
         enrichedRaw.getSideOutput(EnrichmentProcessFunction.CHR_DLQ)
             .sinkTo(chrDlqSink).name("chr-dlq-sink");
 
-        // ── Anomaly detection ──
+        // Anomaly detection
 
         RuleConfig rules = JobConfig.load().rules();
         DataStream<AnomalyEvent> cellAnomalies = enriched
@@ -184,7 +184,7 @@ public class FlinkJobMain {
             .sinkTo(JdbcSinks.anomalySink())
             .name("anomaly-jdbc-sink");
 
-        // ── KPI aggregation (1-minute window) ──
+        // KPI aggregation (1-minute window)
 
         DataStream<CellKpi> cellKpi1m = enriched
             .keyBy(ec -> ec.chrEvent().getCellId().toString())
@@ -253,7 +253,7 @@ public class FlinkJobMain {
                 .name("cell-kpi-iceberg-sink");
         }
 
-        // ── Coordinator pipeline: lb-heartbeat → LoadCoordinator → lb-routing ──
+        // Coordinator pipeline: lb-heartbeat to LoadCoordinator to lb-routing
 
         KafkaSource<String> heartbeatSource = KafkaSource.<String>builder()
             .setBootstrapServers(bootstrap)

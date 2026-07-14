@@ -1,8 +1,8 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.ChrEvent;
-import com.fdb.common.avro.CmConfig;
-import com.fdb.common.avro.MrStat;
+import com.fdb.common.avro.CfgConfig;
+import com.fdb.common.avro.PmStat;
 
 import java.io.Serializable;
 
@@ -53,41 +53,41 @@ public abstract class InputEnvelope implements Serializable {
         }
     }
 
-    public static class MrEnv extends InputEnvelope {
-        private MrStat mrStat;
+    public static class PmEnv extends InputEnvelope {
+        private PmStat pmStat;
 
-        public MrEnv() {}
+        public PmEnv() {}
 
-        public MrEnv(MrStat mr) {
-            super(mr.getWindowEndTs(), mr.getCellId().toString());
-            this.mrStat = mr;
+        public PmEnv(PmStat pm) {
+            super(pm.getWindowEndTs(), pm.getCellId().toString());
+            this.pmStat = pm;
         }
 
-        public MrStat mrStat() {
-            return mrStat;
+        public PmStat pmStat() {
+            return pmStat;
         }
 
-        public void setMrStat(MrStat mrStat) {
-            this.mrStat = mrStat;
+        public void setPmStat(PmStat pmStat) {
+            this.pmStat = pmStat;
         }
     }
 
-    public static class CmEnv extends InputEnvelope {
-        private CmConfig cmConfig;
+    public static class CfgEnv extends InputEnvelope {
+        private CfgConfig cfgConfig;
 
-        public CmEnv() {}
+        public CfgEnv() {}
 
-        public CmEnv(CmConfig cm) {
-            super(cm.getEffectiveTs(), cm.getCellId().toString());
-            this.cmConfig = cm;
+        public CfgEnv(CfgConfig cfg) {
+            super(cfg.getEffectiveTs(), cfg.getCellId().toString());
+            this.cfgConfig = cfg;
         }
 
-        public CmConfig cmConfig() {
-            return cmConfig;
+        public CfgConfig cfgConfig() {
+            return cfgConfig;
         }
 
-        public void setCmConfig(CmConfig cmConfig) {
-            this.cmConfig = cmConfig;
+        public void setCfgConfig(CfgConfig cfgConfig) {
+            this.cfgConfig = cfgConfig;
         }
     }
 }

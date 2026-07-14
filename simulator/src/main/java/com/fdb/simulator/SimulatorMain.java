@@ -9,7 +9,7 @@ public class SimulatorMain {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("Usage: simulator <chr|mr|cm> [--config <path>]");
+            System.err.println("Usage: simulator <chr|pm|cfg> [--config <path>]");
             System.exit(1);
         }
 
@@ -30,10 +30,10 @@ public class SimulatorMain {
 
         switch (mode) {
             case "chr" -> new ChrSimulator(configPath).run();
-            case "mr" -> new MrSimulator(configPath).run();
-            case "cm" -> new CmSimulator(configPath).run();
+            case "pm" -> new PmSimulator(configPath).run();
+            case "cfg" -> new CfgSimulator(configPath).run();
             default -> {
-                System.err.println("Unknown mode: " + mode + ". Expected: chr, mr, cm");
+                System.err.println("Unknown mode: " + mode + ". Expected: chr, pm, cfg");
                 System.exit(1);
             }
         }

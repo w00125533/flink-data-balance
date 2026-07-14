@@ -1,6 +1,6 @@
 # Flink Data Balance
 
-Local Flink demo for telecom CHR, MR and CM streams. It publishes deterministic
+Local Flink demo for telecom CHR, PM and CFG streams. It publishes deterministic
 cell topology, simulates Kafka traffic, enriches events in Flink, detects
 anomalies, writes 1-minute and 5-minute KPIs, and demonstrates VBucket routing
 decisions.
@@ -101,7 +101,7 @@ mvn -pl observability-api package
 FDB_ENV_FILE=.env.local bash scripts/deploy.sh local up
 ```
 
-The console shows CHR/MR/CM source delay, streaming stage status, VBucket
+The console shows CHR/PM/CFG source delay, streaming stage status, VBucket
 rebalance events, and StarRocks/Hive/Iceberg sink write performance summaries.
 
 Runtime metrics flow through Kafka before Prometheus scrapes them:
@@ -110,7 +110,7 @@ Runtime metrics flow through Kafka before Prometheus scrapes them:
 Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> Prometheus/frontend
 ```
 
-The Flink job emits samples for `chr-source`, `mr-source`, `cm-source`, `kafka`,
+The Flink job emits samples for `chr-source`, `pm-source`, `cfg-source`, `kafka`,
 `assigner`, `enrichment`, `load-coordinator`, `starrocks-sink`, `hive-sink` and
 `iceberg-sink`. The observability API keeps the latest sample per stage and
 renders the `fdb_*` Prometheus series. The Flink containers also enable the
@@ -217,7 +217,7 @@ main stages:
 | Infrastructure | Running container count and Kafka topic count |
 | Data Generation | Topology log line count and simulator process count |
 | Flink Submit | Submitted Flink JobID |
-| Kafka Input | Partition count and current records for `cm-config`, `mr-stats`, `chr-events` |
+| Kafka Input | Partition count and current records for `cfg-config`, `pm-stats`, `chr-events` |
 | StarRocks KPI | KPI rows by `window_kind`, KPI window timestamp range, distinct `site_id/cell_id/grid_id` counts |
 | Load Balancing | `lb-heartbeat` and `lb-routing` records, running Flink jobs, latest completed checkpoints |
 | Parquet KPI | `.parquet` file count, total bytes, partition count, sample partition paths |
@@ -230,8 +230,8 @@ summary:
 | Component | Code-level summary examples |
 | --- | --- |
 | `topology-service` | generated site/cell counts, configured cells-per-site range, frequency-band count, latitude/longitude ranges |
-| `simulator cm` | loaded site/cell counts, baseline CM records, update batches and tombstones |
-| `simulator mr` | MR records per 10-second window, average active users, average DL PRB usage, window timestamp range |
+| `simulator cfg` | loaded site/cell counts, baseline CFG records, update batches and tombstones |
+| `simulator pm` | PM records per 10-second window, average active users, average DL PRB usage, window timestamp range |
 | `simulator chr` | loaded site/cell counts, assigned user count, configured EPS, observed published CHR events and EPS |
 | `flink-job` | KPI window output counts and window timestamps, heartbeat VBucket/event/EPS summaries |
 
@@ -251,12 +251,12 @@ distinct_grid_id`. The Parquet partition sample follows the
 ```mermaid
 flowchart LR
     TG["Topology Service"] --> KTopology["Kafka: topology"]
-    CM["CM Simulator"] --> KCM["Kafka: cm-config"]
-    MR["MR Simulator"] --> KMR["Kafka: mr-stats"]
+    Cfg["CFG Simulator"] --> KCfg["Kafka: cfg-config"]
+    Pm["PM Simulator"] --> KPm["Kafka: pm-stats"]
     CHR["CHR Simulator"] --> KCHR["Kafka: chr-events"]
 
-    KCM --> Flink["Flink Job: enrichment, KPI, anomaly, load metering"]
-    KMR --> Flink
+    KCfg --> Flink["Flink Job: enrichment, KPI, anomaly, load metering"]
+    KPm --> Flink
     KCHR --> Flink
     KRouting["Kafka: lb-routing"] --> Flink
 
@@ -297,4 +297,4 @@ The load balancing path is intentionally demo-grade: workers publish VBucket
 heartbeats, the coordinator publishes versioned site routing entries at a
 5-minute boundary, and workers apply broadcast route updates before load
 metering. Business enrichment remains keyed by `cellId` so route changes do not
-discard CM state. General keyed-state migration is outside this version.
+discard CFG state. General keyed-state migration is outside this version.

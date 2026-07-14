@@ -1,8 +1,8 @@
 {
   "namespace": "com.fdb.common.avro",
   "type": "record",
-  "name": "MrStat",
-  "doc": "话统记录, 每小区每 10 秒一条",
+  "name": "PmStat",
+  "doc": "Performance metric record, one per cell every 10 seconds",
   "fields": [
     { "name": "siteId",              "type": "string" },
     { "name": "cellId",              "type": "string" },
