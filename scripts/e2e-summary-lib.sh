@@ -99,6 +99,10 @@ shared_starrocks_mysql() {
   fi
 }
 
+project_flink_exec() {
+  docker exec -T fdb-flink-jobmanager "$@"
+}
+
 summary_file() {
   printf '%s\n' "${FDB_E2E_SUMMARY_FILE:-$(e2e_run_summary_file)}"
 }
