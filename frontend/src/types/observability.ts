@@ -44,7 +44,7 @@ export interface MigrationEvent {
 }
 
 export interface SinkSummary {
-  sink: 'starrocks' | 'hive' | 'iceberg';
+  sink: string;
   window: string;
   status: StageStatusValue;
   rowsWritten: number;

@@ -3,6 +3,7 @@ import { Alert, Card, Empty } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { StageStatus, StageStatusValue } from '../types/observability';
+import { resolveFlowEdges } from './flowEdges';
 
 const NODE_WIDTH = 300;
 const NODE_HEIGHT = 190;
@@ -24,23 +25,19 @@ const nodePositions: Record<string, { x: number; y: number; group: string }> = {
   assigner: { x: 788, y: 300, group: 'Balance' },
   enrichment: { x: 1166, y: 128, group: 'Process' },
   'load-coordinator': { x: 1166, y: 472, group: 'Balance' },
-  'starrocks-sink': { x: 1544, y: 36, group: 'Sink' },
-  'hive-sink': { x: 1544, y: 300, group: 'Sink' },
-  'iceberg-sink': { x: 1544, y: 564, group: 'Sink' }
+  'kafka-kpi-1m': { x: 1544, y: 36, group: 'Sink' },
+  'starrocks-kpi-1m': { x: 1544, y: 220, group: 'Sink' },
+  'hive-kpi-1m': { x: 1544, y: 404, group: 'Sink' },
+  'iceberg-kpi-1m': { x: 1544, y: 588, group: 'Sink' },
+  'kafka-kpi-5m': { x: 1544, y: 772, group: 'Sink' },
+  'starrocks-kpi-5m': { x: 1544, y: 956, group: 'Sink' },
+  'hive-kpi-5m': { x: 1544, y: 1140, group: 'Sink' },
+  'iceberg-kpi-5m': { x: 1544, y: 1324, group: 'Sink' },
+  'kafka-cell-anomaly': { x: 1922, y: 128, group: 'Sink' },
+  'kafka-grid-anomaly': { x: 1922, y: 342, group: 'Sink' },
+  'starrocks-cell-anomaly': { x: 1922, y: 556, group: 'Sink' },
+  'starrocks-grid-anomaly': { x: 1922, y: 770, group: 'Sink' }
 };
-
-const flowEdges = [
-  ['chr-source', 'kafka'],
-  ['pm-source', 'kafka'],
-  ['cfg-source', 'kafka'],
-  ['kafka', 'assigner'],
-  ['assigner', 'enrichment'],
-  ['assigner', 'load-coordinator'],
-  ['load-coordinator', 'assigner'],
-  ['enrichment', 'starrocks-sink'],
-  ['enrichment', 'hive-sink'],
-  ['enrichment', 'iceberg-sink']
-];
 
 Shape.HTML.register({
   shape: 'stage-card',
@@ -155,7 +152,7 @@ function renderGraph(graph: Graph, stages: StageStatus[]) {
     });
   });
 
-  flowEdges
+  resolveFlowEdges(stageById.keys())
     .filter(([source, target]) => stageById.has(source) && stageById.has(target))
     .forEach(([source, target]) => {
       graph.addEdge({

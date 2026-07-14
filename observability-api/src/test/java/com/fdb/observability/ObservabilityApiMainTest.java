@@ -11,6 +11,6 @@ class ObservabilityApiMainTest {
   void serializesStageStatusJson() throws Exception {
     String json = ObservabilityApiMain.toJson(new ObservabilitySnapshotService().stageStatuses());
     assertThat(json).contains("\"stageId\":\"chr-source\"");
-    assertThat(json).contains("\"stageId\":\"iceberg-sink\"");
+    assertThat(json).contains("\"stageId\":\"iceberg-kpi-1m\"");
   }
 }

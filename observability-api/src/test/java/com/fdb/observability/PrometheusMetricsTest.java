@@ -11,7 +11,7 @@ class PrometheusMetricsTest {
   void rendersSourceAndSinkMetrics() {
     String metrics = ObservabilityApiMain.toPrometheusMetrics(new ObservabilitySnapshotService());
     assertThat(metrics).contains("fdb_source_eps{source=\"chr\"}");
-    assertThat(metrics).contains("fdb_sink_write_latency_ms{sink=\"iceberg\",window=\"1m\"}");
+    assertThat(metrics).contains("fdb_sink_write_latency_ms{sink=\"iceberg-kpi-1m\",window=\"1m\"}");
     assertThat(metrics).contains("fdb_rebalance_total");
   }
 }
