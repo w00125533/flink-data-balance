@@ -1,6 +1,7 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.CellKpi;
+import com.fdb.common.avro.JoinQuality;
 import com.fdb.common.avro.WindowKind;
 import com.fdb.common.geo.Geohash;
 import org.apache.flink.api.common.functions.AggregateFunction;
@@ -54,7 +55,7 @@ public class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumula
         int hoAttempts = acc.handoverSuccess + acc.handoverFailure;
         return CellKpi.newBuilder()
             .setWindowStartTs(acc.windowStartTs).setWindowEndTs(acc.windowEndTs)
-            .setWindowKind(windowKind).setSiteId(valueOrEmpty(acc.siteId))
+            .setWindowKind(windowKind).setJoinQuality(JoinQuality.JOINED).setSiteId(valueOrEmpty(acc.siteId))
             .setCellId(valueOrEmpty(acc.cellId)).setGridId(valueOrEmpty(acc.gridId))
             .setNumChrEvents(acc.count).setNumUsers((long) acc.users.size())
             .setAvgRsrp(avg(acc.rsrpSum, acc.rsrpCount)).setAvgSinr(avg(acc.sinrSum, acc.sinrCount))

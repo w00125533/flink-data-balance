@@ -1,6 +1,8 @@
 package com.fdb.common.metrics;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -19,6 +21,17 @@ public record StageMetricSample(
     String source,
     String sink,
     String window,
+    String sinkType,
+    String dataset,
+    String windowKind,
+    long records,
+    long bytes,
+    long durationMs,
+    long latencyP50Ms,
+    long latencyP99Ms,
+    long failureCount,
+    String errorMessage,
+    long checkpointId,
     long updatedAtEpochMs
 ) {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -30,6 +43,13 @@ public record StageMetricSample(
         source = blankToDefault(source, "");
         sink = blankToDefault(sink, "");
         window = blankToDefault(window, "");
+        sinkType = blankToDefault(sinkType, "");
+        dataset = blankToDefault(dataset, "");
+        windowKind = blankToDefault(windowKind, "");
+        if (records == 0L && rowsWritten > 0L) {
+            records = rowsWritten;
+        }
+        errorMessage = blankToDefault(errorMessage, "");
     }
 
     public static StageMetricSample stage(String stageId, String displayName, String status,
@@ -37,19 +57,35 @@ public record StageMetricSample(
                                           long watermarkLagMs, long errorCount,
                                           long updatedAtEpochMs) {
         return new StageMetricSample(stageId, displayName, status, inEps, outEps, latencyP95Ms,
-            watermarkLagMs, errorCount, 0L, 0L, sourceName(stageId), "", "", updatedAtEpochMs);
+            watermarkLagMs, errorCount, 0L, 0L, sourceName(stageId), "", "", "", "", "", 0L, 0L, 0L,
+            0L, 0L, 0L, "", -1L, updatedAtEpochMs);
     }
 
     public static StageMetricSample sink(String stageId, String displayName, String status,
                                          String sink, String window, long rowsWritten,
                                          long latencyP95Ms, long updatedAtEpochMs) {
-        return new StageMetricSample(stageId, displayName, status, rowsWritten, rowsWritten,
-            latencyP95Ms, 0L, 0L, rowsWritten, 0L, "", sink, window, updatedAtEpochMs);
+        return sinkLatency(stageId, displayName, status, sink, "", window, rowsWritten, 0L, 0L,
+            0L, latencyP95Ms, 0L, 0L, "", -1L, updatedAtEpochMs);
+    }
+
+    public static StageMetricSample sinkLatency(String stageId, String displayName, String status,
+                                                String sinkType, String dataset, String windowKind,
+                                                long records, long bytes, long durationMs,
+                                                long latencyP50Ms, long latencyP95Ms,
+                                                long latencyP99Ms, long failureCount,
+                                                String errorMessage, long checkpointId,
+                                                long updatedAtEpochMs) {
+        return new StageMetricSample(stageId, displayName, status, records, records, latencyP95Ms,
+            0L, failureCount, records, 0L, "", sinkType, windowLabel(windowKind), sinkType, dataset,
+            windowKind, records, bytes, durationMs, latencyP50Ms, latencyP99Ms, failureCount,
+            errorMessage, checkpointId, updatedAtEpochMs);
     }
 
     public StageMetricSample withRebalanceTotal(long rebalanceTotal) {
         return new StageMetricSample(stageId, displayName, status, inEps, outEps, latencyP95Ms,
-            watermarkLagMs, errorCount, rowsWritten, rebalanceTotal, source, sink, window, updatedAtEpochMs);
+            watermarkLagMs, errorCount, rowsWritten, rebalanceTotal, source, sink, window, sinkType,
+            dataset, windowKind, records, bytes, durationMs, latencyP50Ms, latencyP99Ms,
+            failureCount, errorMessage, checkpointId, updatedAtEpochMs);
     }
 
     public String toJson() {
@@ -62,7 +98,11 @@ public record StageMetricSample(
 
     public static StageMetricSample fromJson(String json) {
         try {
-            return JSON.readValue(json, StageMetricSample.class);
+            JsonNode node = JSON.readTree(json);
+            if (node instanceof ObjectNode object && !object.hasNonNull("checkpointId")) {
+                object.put("checkpointId", -1L);
+            }
+            return JSON.treeToValue(node, StageMetricSample.class);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -74,6 +114,16 @@ public record StageMetricSample(
             case "pm-source" -> "pm";
             case "cfg-source" -> "cfg";
             default -> "";
+        };
+    }
+
+    private static String windowLabel(String windowKind) {
+        return switch (blankToDefault(windowKind, "")) {
+            case "MIN_1" -> "1m";
+            case "MIN_5" -> "5m";
+            case "MIN_15" -> "15m";
+            case "HOUR_1" -> "1h";
+            default -> blankToDefault(windowKind, "");
         };
     }
 

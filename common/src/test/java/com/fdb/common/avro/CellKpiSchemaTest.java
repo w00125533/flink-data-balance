@@ -19,6 +19,7 @@ class CellKpiSchemaTest {
             .setWindowStartTs(1714387200000L)
             .setWindowEndTs(1714387260000L)
             .setWindowKind(WindowKind.MIN_1)
+            .setJoinQuality(JoinQuality.JOINED)
             .setSiteId("SITE-001")
             .setCellId("CELL-001-1")
             .setGridId("wx4g0ec")
@@ -43,6 +44,7 @@ class CellKpiSchemaTest {
 
         assertThat(decoded).isEqualTo(original);
         assertThat(decoded.getWindowKind()).isEqualTo(WindowKind.MIN_1);
+        assertThat(decoded.getJoinQuality()).isEqualTo(JoinQuality.JOINED);
         assertThat(decoded.getNumChrEvents()).isEqualTo(1234L);
     }
 }

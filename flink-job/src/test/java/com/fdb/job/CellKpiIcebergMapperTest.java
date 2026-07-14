@@ -1,6 +1,7 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.CellKpi;
+import com.fdb.common.avro.JoinQuality;
 import com.fdb.common.avro.WindowKind;
 import org.apache.flink.table.data.RowData;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ class CellKpiIcebergMapperTest {
             1780383600000L,
             1780383660000L,
             WindowKind.MIN_1,
+            JoinQuality.JOINED,
             "site-a",
             "cell-a",
             "grid-a",
@@ -44,8 +46,9 @@ class CellKpiIcebergMapperTest {
         assertThat(row.getFloat(11)).isEqualTo(0.5f);
         assertThat(row.getFloat(12)).isEqualTo(99.25f);
         assertThat(row.getFloat(13)).isEqualTo(98.5f);
-        assertThat(row.getString(14).toString()).isEqualTo("MIN_1");
-        assertThat(row.getString(15).toString()).isEqualTo("2026-06-02");
-        assertThat(row.getString(16).toString()).isEqualTo("07");
+        assertThat(row.getString(14).toString()).isEqualTo("JOINED");
+        assertThat(row.getString(15).toString()).isEqualTo("MIN_1");
+        assertThat(row.getString(16).toString()).isEqualTo("2026-06-02");
+        assertThat(row.getString(17).toString()).isEqualTo("07");
     }
 }

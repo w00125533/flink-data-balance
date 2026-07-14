@@ -14,7 +14,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS fdb.cell_kpi (
     throughput_dl_mbps_avg FLOAT,
     drop_rate FLOAT,
     ho_success_rate FLOAT,
-    attach_success_rate FLOAT
+    attach_success_rate FLOAT,
+    join_quality STRING
 )
 PARTITIONED BY (window_kind STRING, dt STRING, hour STRING)
 STORED AS PARQUET

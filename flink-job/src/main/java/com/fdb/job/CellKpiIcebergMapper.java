@@ -22,7 +22,7 @@ public final class CellKpiIcebergMapper implements MapFunction<CellKpi, RowData>
     @Override
     public RowData map(CellKpi kpi) {
         Instant windowStart = Instant.ofEpochMilli(kpi.getWindowStartTs());
-        GenericRowData row = new GenericRowData(17);
+        GenericRowData row = new GenericRowData(18);
         row.setField(0, kpi.getWindowStartTs());
         row.setField(1, kpi.getWindowEndTs());
         row.setField(2, string(kpi.getSiteId()));
@@ -37,9 +37,10 @@ public final class CellKpiIcebergMapper implements MapFunction<CellKpi, RowData>
         row.setField(11, kpi.getDropRate());
         row.setField(12, kpi.getHoSuccessRate());
         row.setField(13, kpi.getAttachSuccessRate());
-        row.setField(14, string(kpi.getWindowKind().toString()));
-        row.setField(15, string(DATE_FORMATTER.format(windowStart)));
-        row.setField(16, string(HOUR_FORMATTER.format(windowStart)));
+        row.setField(14, string(kpi.getJoinQuality().name()));
+        row.setField(15, string(kpi.getWindowKind().toString()));
+        row.setField(16, string(DATE_FORMATTER.format(windowStart)));
+        row.setField(17, string(HOUR_FORMATTER.format(windowStart)));
         return row;
     }
 

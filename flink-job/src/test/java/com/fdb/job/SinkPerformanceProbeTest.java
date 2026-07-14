@@ -1,6 +1,7 @@
 package com.fdb.job;
 
 import com.fdb.common.avro.CellKpi;
+import com.fdb.common.avro.JoinQuality;
 import com.fdb.common.avro.WindowKind;
 import org.junit.jupiter.api.Test;
 
@@ -37,6 +38,7 @@ class SinkPerformanceProbeTest {
             windowStartTs,
             windowStartTs + 60000L,
             WindowKind.MIN_1,
+            JoinQuality.JOINED,
             "site-" + suffix,
             "cell-" + suffix,
             "grid-" + suffix,

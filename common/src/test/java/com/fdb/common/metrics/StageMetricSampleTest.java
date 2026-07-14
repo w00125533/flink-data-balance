@@ -36,4 +36,64 @@ class StageMetricSampleTest {
         assertThat(sample.outEps()).isEqualTo(340.0);
         assertThat(sample.latencyP95Ms()).isEqualTo(420);
     }
+
+    @Test
+    void round_trips_sink_latency_metric_sample_as_json() {
+        StageMetricSample sample = StageMetricSample.sinkLatency(
+            "iceberg-cell-kpi-1m", "Iceberg KPI 1m Sink", "healthy", "iceberg", "kpi_1m", "MIN_1",
+            120L, 12000L, 45L, 30L, 45L, 80L, 0L, "", 42L, 1717400000000L);
+
+        StageMetricSample parsed = StageMetricSample.fromJson(sample.toJson());
+
+        assertThat(parsed.stageId()).isEqualTo("iceberg-cell-kpi-1m");
+        assertThat(parsed.displayName()).isEqualTo("Iceberg KPI 1m Sink");
+        assertThat(parsed.status()).isEqualTo("healthy");
+        assertThat(parsed.sinkType()).isEqualTo("iceberg");
+        assertThat(parsed.dataset()).isEqualTo("kpi_1m");
+        assertThat(parsed.windowKind()).isEqualTo("MIN_1");
+        assertThat(parsed.records()).isEqualTo(120L);
+        assertThat(parsed.bytes()).isEqualTo(12000L);
+        assertThat(parsed.durationMs()).isEqualTo(45L);
+        assertThat(parsed.latencyP50Ms()).isEqualTo(30L);
+        assertThat(parsed.latencyP95Ms()).isEqualTo(45L);
+        assertThat(parsed.latencyP99Ms()).isEqualTo(80L);
+        assertThat(parsed.failureCount()).isEqualTo(0L);
+        assertThat(parsed.errorMessage()).isEqualTo("");
+        assertThat(parsed.checkpointId()).isEqualTo(42L);
+        assertThat(parsed.updatedAtEpochMs()).isEqualTo(1717400000000L);
+    }
+
+    @Test
+    void deserializes_legacy_sink_json_with_absent_sink_latency_fields() {
+        String legacyJson = """
+            {
+              "stageId": "iceberg-sink",
+              "displayName": "Iceberg Sink",
+              "status": "warning",
+              "inEps": 340.0,
+              "outEps": 340.0,
+              "latencyP95Ms": 420,
+              "watermarkLagMs": 0,
+              "errorCount": 0,
+              "rowsWritten": 340,
+              "rebalanceTotal": 0,
+              "source": "",
+              "sink": "iceberg",
+              "window": "1m",
+              "updatedAtEpochMs": 1717400000000
+            }
+            """;
+
+        StageMetricSample parsed = StageMetricSample.fromJson(legacyJson);
+
+        assertThat(parsed.checkpointId()).isEqualTo(-1L);
+        assertThat(parsed.sinkType()).isEqualTo("");
+        assertThat(parsed.dataset()).isEqualTo("");
+        assertThat(parsed.windowKind()).isEqualTo("");
+        assertThat(parsed.errorMessage()).isEqualTo("");
+        assertThat(parsed.records()).isEqualTo(340L);
+        assertThat(parsed.rowsWritten()).isEqualTo(340L);
+        assertThat(parsed.sink()).isEqualTo("iceberg");
+        assertThat(parsed.window()).isEqualTo("1m");
+    }
 }

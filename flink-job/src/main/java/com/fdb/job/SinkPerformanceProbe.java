@@ -80,8 +80,10 @@ public final class SinkPerformanceProbe extends ProcessFunction<CellKpi, CellKpi
             return;
         }
         if (records == 1L || records % emitEveryRecords == 0L) {
-            metricPublisher.publish(StageMetricSample.sink(stageId(), displayName(), "healthy",
-                sinkKind(), windowLabel(), records, approximateLatencyP95Ms(), nowMs));
+            long latencyP95Ms = approximateLatencyP95Ms();
+            metricPublisher.publish(StageMetricSample.sinkLatency(stageId(), displayName(), "healthy",
+                sinkKind(), dataset(), windowKind(), records, approxBytes, durationMs(), latencyP95Ms / 2L,
+                latencyP95Ms, latencyP95Ms, 0L, "", -1L, nowMs));
         }
     }
 
@@ -119,6 +121,31 @@ public final class SinkPerformanceProbe extends ProcessFunction<CellKpi, CellKpi
             return "1m";
         }
         return "anomaly";
+    }
+
+    private String windowKind() {
+        if (sinkName.endsWith("-5m")) {
+            return "MIN_5";
+        }
+        if (sinkName.endsWith("-1m")) {
+            return "MIN_1";
+        }
+        return windowLabel();
+    }
+
+    private String dataset() {
+        return switch (windowKind()) {
+            case "MIN_1" -> "kpi_1m";
+            case "MIN_5" -> "kpi_5m";
+            default -> "anomaly";
+        };
+    }
+
+    private long durationMs() {
+        if (startedAtNanos < 0L) {
+            return 0L;
+        }
+        return Math.max(0L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
     }
 
     private long approximateLatencyP95Ms() {

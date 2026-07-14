@@ -8,6 +8,8 @@
     { "name": "windowEndTs",            "type": "long" },
     { "name": "windowKind",             "type": { "type": "enum", "name": "WindowKind",
        "symbols": ["MIN_1","MIN_5","MIN_15","HOUR_1"] } },
+    { "name": "joinQuality",            "type": { "type": "enum", "name": "JoinQuality",
+       "symbols": ["JOINED","CHR_ONLY","PM_ONLY"] } },
     { "name": "siteId",                 "type": "string" },
     { "name": "cellId",                 "type": "string" },
     { "name": "gridId",                 "type": "string" },

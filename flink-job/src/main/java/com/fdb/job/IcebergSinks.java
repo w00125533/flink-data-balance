@@ -42,9 +42,10 @@ public final class IcebergSinks {
             Types.NestedField.required(12, "drop_rate", Types.FloatType.get()),
             Types.NestedField.required(13, "ho_success_rate", Types.FloatType.get()),
             Types.NestedField.required(14, "attach_success_rate", Types.FloatType.get()),
-            Types.NestedField.required(15, "window_kind", Types.StringType.get()),
-            Types.NestedField.required(16, "dt", Types.StringType.get()),
-            Types.NestedField.required(17, "hour", Types.StringType.get()));
+            Types.NestedField.required(15, "join_quality", Types.StringType.get()),
+            Types.NestedField.required(16, "window_kind", Types.StringType.get()),
+            Types.NestedField.required(17, "dt", Types.StringType.get()),
+            Types.NestedField.required(18, "hour", Types.StringType.get()));
     }
 
     static PartitionSpec cellKpiPartitionSpec(Schema schema) {
