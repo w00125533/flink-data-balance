@@ -9,12 +9,14 @@ import KpiResults from './pages/KpiResults';
 import MetricsDashboard from './pages/MetricsDashboard';
 import MigrationTimeline from './pages/MigrationTimeline';
 import SinkLatency from './pages/SinkLatency';
+import UserAnomalies from './pages/UserAnomalies';
 
 type PageKey =
   | 'flow'
   | 'kpi1m'
   | 'kpi5m'
   | 'cellAnomalies'
+  | 'userAnomalies'
   | 'gridAnomalies'
   | 'sinkLatency'
   | 'runs'
@@ -54,6 +56,7 @@ export default function App() {
       { key: 'flow', label: '流处理总览' },
       { key: 'kpi1m', label: 'KPI 1m' },
       { key: 'kpi5m', label: 'KPI 5m' },
+      { key: 'userAnomalies', label: '用户异常' },
       { key: 'cellAnomalies', label: '小区异常' },
       { key: 'gridAnomalies', label: '栅格异常' },
       { key: 'sinkLatency', label: 'Sink 耗时' },
@@ -82,6 +85,7 @@ export default function App() {
         {page === 'kpi1m' ? <KpiResults windowKind="1m" /> : null}
         {page === 'kpi5m' ? <KpiResults windowKind="5m" /> : null}
         {page === 'cellAnomalies' ? <CellAnomalies /> : null}
+        {page === 'userAnomalies' ? <UserAnomalies /> : null}
         {page === 'gridAnomalies' ? <GridAnomalies /> : null}
         {page === 'sinkLatency' ? <SinkLatency /> : null}
         {page === 'runs' ? <ExecutionHistory /> : null}

@@ -27,12 +27,16 @@ const possibleSinkEdges: FlowEdge[] = [
   ['enrichment', 'iceberg-kpi-1m'],
   ['enrichment', 'iceberg-kpi-5m'],
   ['enrichment', 'kafka-cell-anomaly'],
+  ['enrichment', 'kafka-user-anomaly'],
   ['enrichment', 'kafka-grid-anomaly'],
   ['enrichment', 'starrocks-cell-anomaly'],
+  ['enrichment', 'starrocks-user-anomaly'],
   ['enrichment', 'starrocks-grid-anomaly'],
   ['enrichment', 'hive-cell-anomaly'],
+  ['enrichment', 'hive-user-anomaly'],
   ['enrichment', 'hive-grid-anomaly'],
   ['enrichment', 'iceberg-cell-anomaly'],
+  ['enrichment', 'iceberg-user-anomaly'],
   ['enrichment', 'iceberg-grid-anomaly']
 ];
 

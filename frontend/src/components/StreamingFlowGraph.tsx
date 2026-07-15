@@ -33,14 +33,18 @@ const nodePositions: Record<string, { x: number; y: number; group: string }> = {
   'starrocks-kpi-5m': { x: 1544, y: 956, group: 'Sink' },
   'hive-kpi-5m': { x: 1544, y: 1140, group: 'Sink' },
   'iceberg-kpi-5m': { x: 1544, y: 1324, group: 'Sink' },
-  'kafka-cell-anomaly': { x: 1922, y: 128, group: 'Sink' },
-  'kafka-grid-anomaly': { x: 1922, y: 342, group: 'Sink' },
-  'starrocks-cell-anomaly': { x: 1922, y: 556, group: 'Sink' },
-  'starrocks-grid-anomaly': { x: 1922, y: 770, group: 'Sink' },
-  'hive-cell-anomaly': { x: 1922, y: 984, group: 'Sink' },
-  'hive-grid-anomaly': { x: 1922, y: 1198, group: 'Sink' },
-  'iceberg-cell-anomaly': { x: 1922, y: 1412, group: 'Sink' },
-  'iceberg-grid-anomaly': { x: 1922, y: 1626, group: 'Sink' }
+  'kafka-cell-anomaly': { x: 1922, y: 36, group: 'Sink' },
+  'kafka-user-anomaly': { x: 1922, y: 220, group: 'Sink' },
+  'kafka-grid-anomaly': { x: 1922, y: 404, group: 'Sink' },
+  'starrocks-cell-anomaly': { x: 1922, y: 588, group: 'Sink' },
+  'starrocks-user-anomaly': { x: 1922, y: 772, group: 'Sink' },
+  'starrocks-grid-anomaly': { x: 1922, y: 956, group: 'Sink' },
+  'hive-cell-anomaly': { x: 1922, y: 1140, group: 'Sink' },
+  'hive-user-anomaly': { x: 1922, y: 1324, group: 'Sink' },
+  'hive-grid-anomaly': { x: 1922, y: 1508, group: 'Sink' },
+  'iceberg-cell-anomaly': { x: 1922, y: 1692, group: 'Sink' },
+  'iceberg-user-anomaly': { x: 1922, y: 1876, group: 'Sink' },
+  'iceberg-grid-anomaly': { x: 1922, y: 2060, group: 'Sink' }
 };
 
 Shape.HTML.register({

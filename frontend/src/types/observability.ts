@@ -90,6 +90,9 @@ export interface ResultQueryParams {
 export interface AnomalyQueryParams {
   startTs?: number | string;
   endTs?: number | string;
+  entityType?: string;
+  entityId?: string;
+  imsi?: string;
   siteId?: string;
   cellId?: string;
   gridId?: string;
@@ -120,6 +123,11 @@ export interface KpiResultRow {
 export interface AnomalyResultRow {
   detectionTs: number | null;
   eventTs: number | null;
+  entityType: string | null;
+  entityId: string | null;
+  windowStartTs: number | null;
+  windowEndTs: number | null;
+  imsi: string | null;
   siteId: string | null;
   cellId: string | null;
   gridId: string | null;

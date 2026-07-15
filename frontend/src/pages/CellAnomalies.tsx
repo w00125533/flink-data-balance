@@ -9,6 +9,10 @@ const NULL_KEY_PART = '<null>';
 const columns: ColumnsType<AnomalyResultRow> = [
   { title: 'detectionTs', dataIndex: 'detectionTs', width: 150 },
   { title: 'eventTs', dataIndex: 'eventTs', width: 150 },
+  { title: 'entityType', dataIndex: 'entityType', width: 120 },
+  { title: 'entityId', dataIndex: 'entityId', width: 180 },
+  { title: 'windowStartTs', dataIndex: 'windowStartTs', width: 150 },
+  { title: 'windowEndTs', dataIndex: 'windowEndTs', width: 150 },
   { title: 'siteId', dataIndex: 'siteId', width: 130 },
   { title: 'cellId', dataIndex: 'cellId', width: 140 },
   { title: 'gridId', dataIndex: 'gridId', width: 130 },
@@ -77,6 +81,9 @@ export default function CellAnomalies() {
           <Form.Item label="cellId" name="cellId">
             <Input placeholder="CELL-001" allowClear style={{ width: 140 }} />
           </Form.Item>
+          <Form.Item label="entityId" name="entityId">
+            <Input placeholder="entity id" allowClear style={{ width: 180 }} />
+          </Form.Item>
           <Form.Item label="severity" name="severity">
             <Select
               allowClear
@@ -90,7 +97,7 @@ export default function CellAnomalies() {
             />
           </Form.Item>
           <Form.Item label="anomalyType" name="anomalyType">
-            <Input placeholder="LOW_SIGNAL" allowClear style={{ width: 150 }} />
+            <Input placeholder="CELL_RADIO_BAD" allowClear style={{ width: 170 }} />
           </Form.Item>
           <Form.Item label="limit" name="limit">
             <InputNumber min={1} max={1000} placeholder="100" style={{ width: 100 }} />
@@ -128,12 +135,26 @@ export default function CellAnomalies() {
 export function anomalyRowKey(
   record: Pick<
     AnomalyResultRow,
-    'detectionTs' | 'eventTs' | 'siteId' | 'cellId' | 'gridId' | 'anomalyType' | 'severity'
+    | 'detectionTs'
+    | 'eventTs'
+    | 'entityType'
+    | 'entityId'
+    | 'windowStartTs'
+    | 'windowEndTs'
+    | 'siteId'
+    | 'cellId'
+    | 'gridId'
+    | 'anomalyType'
+    | 'severity'
   >
 ): string {
   return [
     record.detectionTs,
     record.eventTs,
+    record.entityType,
+    record.entityId,
+    record.windowStartTs,
+    record.windowEndTs,
     record.siteId,
     record.cellId,
     record.gridId,

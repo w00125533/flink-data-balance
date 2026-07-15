@@ -12,12 +12,16 @@ describe('resolveFlowEdges', () => {
     'iceberg-kpi-1m',
     'iceberg-kpi-5m',
     'kafka-cell-anomaly',
+    'kafka-user-anomaly',
     'kafka-grid-anomaly',
     'starrocks-cell-anomaly',
+    'starrocks-user-anomaly',
     'starrocks-grid-anomaly',
     'hive-cell-anomaly',
+    'hive-user-anomaly',
     'hive-grid-anomaly',
     'iceberg-cell-anomaly',
+    'iceberg-user-anomaly',
     'iceberg-grid-anomaly'
   ];
 
@@ -59,24 +63,29 @@ describe('resolveFlowEdges', () => {
       'starrocks-kpi-1m',
       'starrocks-kpi-5m',
       'starrocks-cell-anomaly',
+      'starrocks-user-anomaly',
       'starrocks-grid-anomaly'
     ]);
 
     expect(edges).toContainEqual(['enrichment', 'starrocks-kpi-1m']);
     expect(edges).toContainEqual(['enrichment', 'starrocks-kpi-5m']);
     expect(edges).toContainEqual(['enrichment', 'starrocks-cell-anomaly']);
+    expect(edges).toContainEqual(['enrichment', 'starrocks-user-anomaly']);
     expect(edges).toContainEqual(['enrichment', 'starrocks-grid-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-kpi-1m']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-kpi-5m']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-cell-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'kafka-user-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-grid-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-kpi-1m']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-kpi-5m']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-cell-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'hive-user-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-grid-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-kpi-1m']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-kpi-5m']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-cell-anomaly']);
+    expect(edges).not.toContainEqual(['enrichment', 'iceberg-user-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-grid-anomaly']);
   });
 

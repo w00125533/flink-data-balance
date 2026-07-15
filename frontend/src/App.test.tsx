@@ -11,6 +11,7 @@ const client = vi.hoisted(() => ({
   fetchRuntimeConfig: vi.fn(),
   fetchKpiResults: vi.fn(),
   fetchCellAnomalies: vi.fn(),
+  fetchUserAnomalies: vi.fn(),
   fetchGridAnomalies: vi.fn(),
   fetchSinkLatency: vi.fn()
 }));
@@ -22,6 +23,7 @@ vi.mock('./api/client', async () => {
     fetchRuntimeConfig: client.fetchRuntimeConfig,
     fetchKpiResults: client.fetchKpiResults,
     fetchCellAnomalies: client.fetchCellAnomalies,
+    fetchUserAnomalies: client.fetchUserAnomalies,
     fetchGridAnomalies: client.fetchGridAnomalies,
     fetchSinkLatency: client.fetchSinkLatency
   };
@@ -159,6 +161,7 @@ beforeEach(() => {
   });
   client.fetchKpiResults.mockResolvedValue([]);
   client.fetchCellAnomalies.mockResolvedValue([]);
+  client.fetchUserAnomalies.mockResolvedValue([]);
   client.fetchGridAnomalies.mockResolvedValue([]);
   client.fetchSinkLatency.mockResolvedValue([]);
 });
@@ -169,6 +172,7 @@ test('renders result navigation entries and hides migrations when dynamic balanc
   expect(await screen.findByRole('heading', { name: 'Flow Overview' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'KPI 1m' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'KPI 5m' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '用户异常' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '小区异常' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '栅格异常' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Sink 耗时' })).toBeInTheDocument();
@@ -208,6 +212,36 @@ test('loads mocked KPI rows from the KPI 1m page', async () => {
   expect(client.fetchKpiResults).toHaveBeenCalledWith('1m', {});
 });
 
+test('loads mocked user anomaly rows from the user anomaly page', async () => {
+  client.fetchUserAnomalies.mockResolvedValue([
+    {
+      detectionTs: 1717400000000,
+      eventTs: 1717399999000,
+      entityType: 'USER',
+      entityId: '460001234567890',
+      windowStartTs: 1717399400000,
+      windowEndTs: 1717399999000,
+      imsi: '460001234567890',
+      siteId: 'SITE-001',
+      cellId: 'CELL-001',
+      gridId: 'wx4g0e',
+      anomalyType: 'USER_QOE_BAD',
+      severity: 'HIGH',
+      contextJson: '{"metric":"latencyMs"}',
+      latitude: 39.9,
+      longitude: 116.4,
+      ruleVersion: 'v1.0'
+    }
+  ]);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: '用户异常' }));
+
+  expect(await screen.findByRole('columnheader', { name: 'entityType' })).toBeInTheDocument();
+  expect(await screen.findByText('USER_QOE_BAD')).toBeInTheDocument();
+  expect(client.fetchUserAnomalies).toHaveBeenCalledWith({});
+});
+
 test('builds stable natural keys without row index input', () => {
   const kpiRow = {
     windowStartTs: 1717400000000,
@@ -221,15 +255,23 @@ test('builds stable natural keys without row index input', () => {
   const cellAnomalyRow = {
     detectionTs: 1717400000000,
     eventTs: 1717399999000,
+    entityType: 'CELL',
+    entityId: 'CELL-001',
+    windowStartTs: 1717399940000,
+    windowEndTs: 1717399999000,
     siteId: 'SITE-001',
     cellId: 'CELL-001',
     gridId: null,
-    anomalyType: 'LOW_SIGNAL',
+    anomalyType: 'CELL_RADIO_BAD',
     severity: 'HIGH'
   };
   const gridAnomalyRow = {
     detectionTs: 1717400000000,
     eventTs: 1717399999000,
+    entityType: 'GRID',
+    entityId: 'wx4g0e',
+    windowStartTs: 1717399940000,
+    windowEndTs: 1717399999000,
     gridId: 'wx4g0e',
     anomalyType: 'COVERAGE_HOLE',
     severity: 'MEDIUM',
@@ -240,9 +282,13 @@ test('builds stable natural keys without row index input', () => {
   expect(kpiRowKey(kpiRow)).toBe(kpiRowKey(kpiRow));
   expect(kpiRowKey(kpiRow)).toBe('1717400000000-1717400060000-CELL-001-MIN_1-JOINED');
   expect(anomalyRowKey(cellAnomalyRow)).toBe(anomalyRowKey(cellAnomalyRow));
-  expect(anomalyRowKey(cellAnomalyRow)).toBe('1717400000000-1717399999000-SITE-001-CELL-001-<null>-LOW_SIGNAL-HIGH');
+  expect(anomalyRowKey(cellAnomalyRow)).toBe(
+    '1717400000000-1717399999000-CELL-CELL-001-1717399940000-1717399999000-SITE-001-CELL-001-<null>-CELL_RADIO_BAD-HIGH'
+  );
   expect(gridAnomalyRowKey(gridAnomalyRow)).toBe(gridAnomalyRowKey(gridAnomalyRow));
-  expect(gridAnomalyRowKey(gridAnomalyRow)).toBe('1717400000000-1717399999000-wx4g0e-COVERAGE_HOLE-MEDIUM-39.9-116.4');
+  expect(gridAnomalyRowKey(gridAnomalyRow)).toBe(
+    '1717400000000-1717399999000-GRID-wx4g0e-1717399940000-1717399999000-wx4g0e-COVERAGE_HOLE-MEDIUM-39.9-116.4'
+  );
 });
 
 test('centers grid preview points on zero-span axes', () => {

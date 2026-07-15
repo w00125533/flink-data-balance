@@ -65,6 +65,10 @@ export function fetchCellAnomalies(params: AnomalyQueryParams): Promise<AnomalyR
   return getJson<AnomalyResultRow[]>(withQuery('/api/results/anomalies/cell', params));
 }
 
+export function fetchUserAnomalies(params: AnomalyQueryParams): Promise<AnomalyResultRow[]> {
+  return getJson<AnomalyResultRow[]>(withQuery('/api/results/anomalies/user', params));
+}
+
 export function fetchGridAnomalies(params: AnomalyQueryParams): Promise<AnomalyResultRow[]> {
   return getJson<AnomalyResultRow[]>(withQuery('/api/results/anomalies/grid', params));
 }
