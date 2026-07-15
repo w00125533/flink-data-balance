@@ -15,8 +15,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,14 +22,10 @@ import java.util.List;
 public class EnrichmentProcessFunction
     extends KeyedProcessFunction<String, RoutedEnvelope, EnrichedChr> {
 
-    private static final Logger log = LoggerFactory.getLogger(EnrichmentProcessFunction.class);
-
     private transient ValueState<CfgConfig> cfgState;
     private transient ListState<PmStat> pmRing;
-    private transient ListState<ChrEvent> bufferState;
-    private transient ValueState<Long> bufferTimerState;
-    public static final OutputTag<ChrEvent> CHR_DLQ =
-        new OutputTag<>("chr-dlq", new GenericTypeInfo<>(ChrEvent.class));
+    public static final OutputTag<ChrEvent> ENRICHMENT_LATE =
+        new OutputTag<>("enrichment-late", new GenericTypeInfo<>(ChrEvent.class));
 
     @Override
     public void open(Configuration parameters) {
@@ -39,10 +33,6 @@ public class EnrichmentProcessFunction
             new ValueStateDescriptor<>("cfg-config", new GenericTypeInfo<>(CfgConfig.class)));
         pmRing = getRuntimeContext().getListState(
             new ListStateDescriptor<>("pm-ring", new GenericTypeInfo<>(PmStat.class)));
-        bufferState = getRuntimeContext().getListState(
-            new ListStateDescriptor<>("chr-buffer", new GenericTypeInfo<>(ChrEvent.class)));
-        bufferTimerState = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("chr-buffer-timer", Long.class));
     }
 
     @Override
@@ -60,21 +50,13 @@ public class EnrichmentProcessFunction
     private void processChr(ChrEvent chr, Context ctx, Collector<EnrichedChr> out) throws Exception {
         CfgConfig cfg = cfgState.value();
         if (cfg == null) {
-            bufferState.add(chr);
-            if (bufferTimerState.value() == null) {
-                long timer = ctx.timerService().currentProcessingTime() + 30_000;
-                bufferTimerState.update(timer);
-                ctx.timerService().registerProcessingTimeTimer(timer);
-            }
+            PmStat latestPm = latestPm();
+            ctx.output(ENRICHMENT_LATE, chr);
+            out.collect(new EnrichedChr(chr, null, latestPm));
             return;
         }
 
-        PmStat latestPm = null;
-        for (PmStat pm : pmRing.get()) {
-            latestPm = pm;
-        }
-
-        out.collect(new EnrichedChr(chr, cfg, latestPm));
+        out.collect(new EnrichedChr(chr, cfg, latestPm()));
     }
 
     private void processPm(PmStat pm) throws Exception {
@@ -92,29 +74,12 @@ public class EnrichmentProcessFunction
             cfgState.clear();
         } else if (existing == null || cfg.getVersion() > existing.getVersion()) {
             cfgState.update(cfg);
-            flushBuffer(ctx, out);
         }
     }
 
-    private void flushBuffer(Context ctx, Collector<EnrichedChr> out) throws Exception {
-        CfgConfig cfg = cfgState.value();
-        if (cfg == null) return;
+    private PmStat latestPm() throws Exception {
         PmStat latestPm = null;
         for (PmStat pm : pmRing.get()) latestPm = pm;
-
-        for (ChrEvent chr : bufferState.get()) {
-            out.collect(new EnrichedChr(chr, cfg, latestPm));
-        }
-        bufferState.clear();
-        bufferTimerState.clear();
-    }
-
-    @Override
-    public void onTimer(long timestamp, OnTimerContext ctx, Collector<EnrichedChr> out) throws Exception {
-        if (bufferTimerState.value() == null || bufferTimerState.value() != timestamp) return;
-        for (ChrEvent chr : bufferState.get()) ctx.output(CHR_DLQ, chr);
-        bufferState.clear();
-        bufferTimerState.clear();
-        log.warn("Sent buffered CHR events to DLQ after CFG timeout for cell={}", ctx.getCurrentKey());
+        return latestPm;
     }
 }

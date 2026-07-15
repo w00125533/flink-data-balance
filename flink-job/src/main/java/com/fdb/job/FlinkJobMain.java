@@ -168,15 +168,15 @@ public class FlinkJobMain {
             .name("enrichment-metrics");
 
         if (resultSinkConfig.dlqEnabled()) {
-            KafkaSink<ChrEvent> chrDlqSink = KafkaSink.<ChrEvent>builder()
+            KafkaSink<ChrEvent> enrichmentLateSink = KafkaSink.<ChrEvent>builder()
                 .setBootstrapServers(bootstrap)
                 .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                    .setTopic("chr-dlq")
+                    .setTopic("enrichment-late")
                     .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(ChrEvent.class))
                     .build())
                 .build();
-            enrichedRaw.getSideOutput(EnrichmentProcessFunction.CHR_DLQ)
-                .sinkTo(chrDlqSink).name("chr-dlq-sink");
+            enrichedRaw.getSideOutput(EnrichmentProcessFunction.ENRICHMENT_LATE)
+                .sinkTo(enrichmentLateSink).name("enrichment-late-sink");
         }
 
         // Anomaly detection
