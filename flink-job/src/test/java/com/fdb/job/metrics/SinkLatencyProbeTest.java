@@ -3,6 +3,7 @@ package com.fdb.job.metrics;
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.AnomalyType;
 import com.fdb.common.avro.CellKpi;
+import com.fdb.common.avro.EntityType;
 import com.fdb.common.avro.JoinQuality;
 import com.fdb.common.avro.Severity;
 import com.fdb.common.avro.WindowKind;
@@ -139,13 +140,17 @@ class SinkLatencyProbeTest {
         return AnomalyEvent.newBuilder()
             .setDetectionTs(1_700_000_010_000L)
             .setEventTs(1_700_000_000_000L)
-            .setImsi("460001234567890")
+            .setEntityType(EntityType.CELL)
+            .setEntityId("cell-a")
+            .setWindowStartTs(1_699_999_880_000L)
+            .setWindowEndTs(1_700_000_000_000L)
+            .setImsi(null)
             .setSiteId("site-a")
             .setCellId("cell-a")
             .setGridId("grid-a")
             .setLatitude(31.2304)
             .setLongitude(121.4737)
-            .setAnomalyType(AnomalyType.LOW_SIGNAL)
+            .setAnomalyType(AnomalyType.CELL_RADIO_BAD)
             .setSeverity(Severity.HIGH)
             .setRuleVersion("rules-v1")
             .setContextJson("{\"reason\":\"rsrp\"}")
