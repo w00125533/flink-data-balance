@@ -339,6 +339,7 @@ prune_starrocks_sql() {
   cat <<SQL
 DELETE FROM cell_kpi WHERE window_end_ts < ${kpi_threshold};
 DELETE FROM cell_anomaly_events WHERE event_ts < ${anomaly_threshold};
+DELETE FROM user_anomaly_events WHERE event_ts < ${anomaly_threshold};
 DELETE FROM grid_anomaly_events WHERE event_ts < ${anomaly_threshold};
 SQL
 }
@@ -670,6 +671,7 @@ local_smoke() {
   summary_kafka_topic "cell-kpi-1m"
   summary_kafka_topic "cell-kpi-5m"
   summary_kafka_topic "cell-anomaly-events"
+  summary_kafka_topic "user-anomaly-events"
   summary_kafka_topic "grid-anomaly-events"
   local_smoke_wait_for "1m KPI rows in StarRocks" "shared_starrocks_mysql -N -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'\" | grep -Eq '^[1-9][0-9]*$'" 90
   summary_section "StarRocks KPI"
@@ -702,11 +704,13 @@ local_smoke() {
   local_smoke_wait_for "Iceberg 5m KPI data files" "shared_hdfs_exec -find \"$ICEBERG_KPI_ROOT/data\" -name '*.parquet' | grep 'window_kind=MIN_5' | grep -q ." "$KPI_5M_WAIT_ATTEMPTS"
   local_smoke_wait_for "5m KPI rows in StarRocks" "shared_starrocks_mysql -N -e \"SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_5'\" | grep -Eq '^[1-9][0-9]*$'" "$KPI_5M_WAIT_ATTEMPTS"
   local_smoke_wait_for "cell anomaly table queryable in StarRocks" "summary_starrocks_scalar \"SELECT COUNT(*) FROM cell_anomaly_events\" | grep -Eq '^[0-9]+$'" 30
+  local_smoke_wait_for "user anomaly table queryable in StarRocks" "summary_starrocks_scalar \"SELECT COUNT(*) FROM user_anomaly_events\" | grep -Eq '^[0-9]+$'" 30
   local_smoke_wait_for "grid anomaly table queryable in StarRocks" "summary_starrocks_scalar \"SELECT COUNT(*) FROM grid_anomaly_events\" | grep -Eq '^[0-9]+$'" 30
   summary_section "StarRocks"
   summary_starrocks_query "KPI 1m rows" "SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_1'"
   summary_starrocks_query "KPI 5m rows" "SELECT COUNT(*) FROM cell_kpi WHERE window_kind='MIN_5'"
   summary_starrocks_query "Cell anomaly rows" "SELECT COUNT(*) FROM cell_anomaly_events"
+  summary_starrocks_query "User anomaly rows" "SELECT COUNT(*) FROM user_anomaly_events"
   summary_starrocks_query "Grid anomaly rows" "SELECT COUNT(*) FROM grid_anomaly_events"
   summary_section "Iceberg KPI"
   summary_iceberg_kpi "$ICEBERG_KPI_ROOT"
@@ -771,6 +775,7 @@ local_status() {
   shared_starrocks_mysql -N -e "
     SELECT 'cell_kpi', COUNT(*), MIN(window_start_ts), MAX(window_start_ts) FROM cell_kpi;
     SELECT 'cell_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM cell_anomaly_events;
+    SELECT 'user_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM user_anomaly_events;
     SELECT 'grid_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM grid_anomaly_events;
   " || true
 
@@ -1215,6 +1220,7 @@ external_init() {
   create_external_topic "${FDB_LB_ROUTING_TOPIC:-lb-routing}" 1 compact
   create_external_topic "${FDB_METRICS_TOPIC:-fdb-stage-metrics}" 1 delete "${FDB_METRICS_RETENTION_MS:-3600000}"
   create_external_topic "${FDB_CELL_ANOMALY_TOPIC:-cell-anomaly-events}" 16 delete "${FDB_CELL_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-604800000}}"
+  create_external_topic "${FDB_USER_ANOMALY_TOPIC:-user-anomaly-events}" 16 delete "${FDB_USER_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-604800000}}"
   create_external_topic "${FDB_GRID_ANOMALY_TOPIC:-grid-anomaly-events}" 16 delete "${FDB_GRID_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-604800000}}"
   create_external_topic "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}" 8 delete "${FDB_KPI_1M_RETENTION_MS:-259200000}"
   create_external_topic "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}" 8 delete "${FDB_KPI_5M_RETENTION_MS:-604800000}"
@@ -1447,6 +1453,7 @@ external_status() {
     "${FDB_STARROCKS_DATABASE:-fdb}" <<'SQL' || true
 SELECT 'cell_kpi', COUNT(*), MIN(window_start_ts), MAX(window_start_ts) FROM cell_kpi;
 SELECT 'cell_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM cell_anomaly_events;
+SELECT 'user_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM user_anomaly_events;
 SELECT 'grid_anomaly_events', COUNT(*), MIN(event_ts), MAX(event_ts) FROM grid_anomaly_events;
 SQL
   echo "[status] hdfs"

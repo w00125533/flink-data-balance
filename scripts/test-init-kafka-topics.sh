@@ -43,6 +43,8 @@ grep -F -- "--config segment.ms=600000" "$FAKE_DOCKER_LOG" >/dev/null \
 
 grep -F -- "--topic cell-anomaly-events" "$FAKE_DOCKER_LOG" >/dev/null \
   || fail "init should create cell anomaly topic"
+grep -F -- "--topic user-anomaly-events" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should create user anomaly topic"
 grep -F -- "--topic grid-anomaly-events" "$FAKE_DOCKER_LOG" >/dev/null \
   || fail "init should create grid anomaly topic"
 grep -F -- "--topic pm-dlq" "$FAKE_DOCKER_LOG" >/dev/null \

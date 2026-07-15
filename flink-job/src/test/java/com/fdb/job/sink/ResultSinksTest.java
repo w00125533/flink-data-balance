@@ -34,6 +34,7 @@ class ResultSinksTest {
                 "starrocks-kpi-1m",
                 "starrocks-kpi-5m",
                 "starrocks-cell-anomaly",
+                "starrocks-user-anomaly",
                 "starrocks-grid-anomaly");
     }
 
@@ -50,7 +51,7 @@ class ResultSinksTest {
             "thrift://hive-metastore:9083");
 
         assertThatThrownBy(() -> ResultSinks.attachBusinessResultSinks(
-            null, null, null, null, config, "localhost:9092", icebergConfig,
+            null, null, null, null, null, config, "localhost:9092", icebergConfig,
             new MetricRuntimeConfig("run-a", "iceberg", 4, false)))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("FDB_RESULT_SINK=iceberg")

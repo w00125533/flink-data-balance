@@ -72,6 +72,7 @@ create_topic fdb-stage-metrics 1 delete  "${FDB_METRICS_RETENTION_MS:-$RETENTION
 
 # Flink output
 create_topic cell-anomaly-events 16 delete  "${FDB_CELL_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-$RETENTION_MS}}" "" "$RETENTION_BYTES"
+create_topic user-anomaly-events 16 delete  "${FDB_USER_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-$RETENTION_MS}}" "" "$RETENTION_BYTES"
 create_topic grid-anomaly-events 16 delete  "${FDB_GRID_ANOMALY_RETENTION_MS:-${FDB_ANOMALY_RETENTION_MS:-$RETENTION_MS}}" "" "$RETENTION_BYTES"
 create_topic cell-kpi-1m       8 delete  "${FDB_KPI_1M_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"
 create_topic cell-kpi-5m       8 delete  "${FDB_KPI_5M_RETENTION_MS:-$RETENTION_MS}" "" "$RETENTION_BYTES"

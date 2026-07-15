@@ -40,6 +40,10 @@ public final class IcebergSinks {
         return TableIdentifier.of(config.database(), config.cellAnomalyTable());
     }
 
+    static TableIdentifier userAnomalyIdentifier(IcebergConfig config) {
+        return TableIdentifier.of(config.database(), config.userAnomalyTable());
+    }
+
     static TableIdentifier gridAnomalyIdentifier(IcebergConfig config) {
         return TableIdentifier.of(config.database(), config.gridAnomalyTable());
     }
@@ -81,17 +85,22 @@ public final class IcebergSinks {
         return new Schema(
             Types.NestedField.required(1, "detection_ts", Types.LongType.get()),
             Types.NestedField.required(2, "event_ts", Types.LongType.get()),
-            Types.NestedField.required(3, "site_id", Types.StringType.get()),
-            Types.NestedField.required(4, "cell_id", Types.StringType.get()),
-            Types.NestedField.required(5, "grid_id", Types.StringType.get()),
-            Types.NestedField.required(6, "latitude", Types.DoubleType.get()),
-            Types.NestedField.required(7, "longitude", Types.DoubleType.get()),
-            Types.NestedField.required(8, "anomaly_type", Types.StringType.get()),
-            Types.NestedField.required(9, "severity", Types.StringType.get()),
-            Types.NestedField.required(10, "rule_version", Types.StringType.get()),
-            Types.NestedField.required(11, "context_json", Types.StringType.get()),
-            Types.NestedField.required(12, "dt", Types.StringType.get()),
-            Types.NestedField.required(13, "hour", Types.StringType.get()));
+            Types.NestedField.required(3, "entity_type", Types.StringType.get()),
+            Types.NestedField.required(4, "entity_id", Types.StringType.get()),
+            Types.NestedField.required(5, "window_start_ts", Types.LongType.get()),
+            Types.NestedField.required(6, "window_end_ts", Types.LongType.get()),
+            Types.NestedField.optional(7, "imsi", Types.StringType.get()),
+            Types.NestedField.optional(8, "site_id", Types.StringType.get()),
+            Types.NestedField.optional(9, "cell_id", Types.StringType.get()),
+            Types.NestedField.optional(10, "grid_id", Types.StringType.get()),
+            Types.NestedField.optional(11, "latitude", Types.DoubleType.get()),
+            Types.NestedField.optional(12, "longitude", Types.DoubleType.get()),
+            Types.NestedField.required(13, "anomaly_type", Types.StringType.get()),
+            Types.NestedField.required(14, "severity", Types.StringType.get()),
+            Types.NestedField.required(15, "rule_version", Types.StringType.get()),
+            Types.NestedField.required(16, "context_json", Types.StringType.get()),
+            Types.NestedField.required(17, "dt", Types.StringType.get()),
+            Types.NestedField.required(18, "hour", Types.StringType.get()));
     }
 
     static PartitionSpec anomalyPartitionSpec(Schema schema) {
@@ -185,6 +194,7 @@ public final class IcebergSinks {
         DataStream<CellKpi> kpi1m,
         DataStream<CellKpi> kpi5m,
         DataStream<AnomalyEvent> cellAnomalies,
+        DataStream<AnomalyEvent> userAnomalies,
         DataStream<AnomalyEvent> gridAnomalies,
         IcebergConfig config,
         MetricRuntimeConfig metricConfig) {
@@ -225,6 +235,17 @@ public final class IcebergSinks {
             .name("cell-anomaly-iceberg-map");
         appendRowDataSink(icebergCellAnomalies, config, cellAnomalyIdentifier(config), anomalySchema, anomalySpec)
             .name("cell-anomaly-iceberg-sink");
+
+        DataStream<RowData> icebergUserAnomalies = userAnomalies
+            .process(new SinkLatencyProbe<>("iceberg-user-anomaly", "User Anomaly Iceberg Sink", "iceberg",
+                "user_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
+            .startNewChain()
+            .name("iceberg-user-anomaly")
+            .map(new AnomalyEventIcebergMapper())
+            .returns(new GenericTypeInfo<>(RowData.class))
+            .name("user-anomaly-iceberg-map");
+        appendRowDataSink(icebergUserAnomalies, config, userAnomalyIdentifier(config), anomalySchema, anomalySpec)
+            .name("user-anomaly-iceberg-sink");
 
         DataStream<RowData> icebergGridAnomalies = gridAnomalies
             .process(new SinkLatencyProbe<>("iceberg-grid-anomaly", "Grid Anomaly Iceberg Sink", "iceberg",

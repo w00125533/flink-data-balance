@@ -4,38 +4,75 @@ USE fdb;
 
 CREATE TABLE IF NOT EXISTS cell_anomaly_events (
   anomaly_id VARCHAR(128) NOT NULL,
-  detection_ts  BIGINT NOT NULL,
-  cell_id       VARCHAR(64) NOT NULL,
-  anomaly_type  VARCHAR(64) NOT NULL,
-  event_ts      BIGINT NOT NULL,
-  site_id       VARCHAR(64),
-  grid_id       VARCHAR(16),
-  latitude      DOUBLE,
-  longitude     DOUBLE,
-  severity      VARCHAR(16) NOT NULL,
-  rule_version  VARCHAR(32),
-  context_json  STRING
+  detection_ts BIGINT NOT NULL,
+  event_ts BIGINT NOT NULL,
+  entity_type VARCHAR(16) NOT NULL,
+  entity_id VARCHAR(128) NOT NULL,
+  window_start_ts BIGINT NOT NULL,
+  window_end_ts BIGINT NOT NULL,
+  imsi VARCHAR(32),
+  site_id VARCHAR(64),
+  cell_id VARCHAR(64),
+  grid_id VARCHAR(32),
+  latitude DOUBLE,
+  longitude DOUBLE,
+  anomaly_type VARCHAR(64) NOT NULL,
+  severity VARCHAR(16) NOT NULL,
+  rule_version VARCHAR(32) NOT NULL,
+  context_json STRING
 )
 PRIMARY KEY(anomaly_id)
-DISTRIBUTED BY HASH(anomaly_id) BUCKETS 16
+DISTRIBUTED BY HASH(anomaly_id) BUCKETS 8
+PROPERTIES (
+  "replication_num" = "1"
+);
+
+CREATE TABLE IF NOT EXISTS user_anomaly_events (
+  anomaly_id VARCHAR(128) NOT NULL,
+  detection_ts BIGINT NOT NULL,
+  event_ts BIGINT NOT NULL,
+  entity_type VARCHAR(16) NOT NULL,
+  entity_id VARCHAR(128) NOT NULL,
+  window_start_ts BIGINT NOT NULL,
+  window_end_ts BIGINT NOT NULL,
+  imsi VARCHAR(32),
+  site_id VARCHAR(64),
+  cell_id VARCHAR(64),
+  grid_id VARCHAR(32),
+  latitude DOUBLE,
+  longitude DOUBLE,
+  anomaly_type VARCHAR(64) NOT NULL,
+  severity VARCHAR(16) NOT NULL,
+  rule_version VARCHAR(32) NOT NULL,
+  context_json STRING
+)
+PRIMARY KEY(anomaly_id)
+DISTRIBUTED BY HASH(anomaly_id) BUCKETS 8
 PROPERTIES (
   "replication_num" = "1"
 );
 
 CREATE TABLE IF NOT EXISTS grid_anomaly_events (
   anomaly_id VARCHAR(128) NOT NULL,
-  detection_ts  BIGINT NOT NULL,
-  grid_id       VARCHAR(16) NOT NULL,
-  anomaly_type  VARCHAR(64) NOT NULL,
-  event_ts      BIGINT NOT NULL,
-  latitude      DOUBLE,
-  longitude     DOUBLE,
-  severity      VARCHAR(16) NOT NULL,
-  rule_version  VARCHAR(32),
-  context_json  STRING
+  detection_ts BIGINT NOT NULL,
+  event_ts BIGINT NOT NULL,
+  entity_type VARCHAR(16) NOT NULL,
+  entity_id VARCHAR(128) NOT NULL,
+  window_start_ts BIGINT NOT NULL,
+  window_end_ts BIGINT NOT NULL,
+  imsi VARCHAR(32),
+  site_id VARCHAR(64),
+  cell_id VARCHAR(64),
+  grid_id VARCHAR(32),
+  latitude DOUBLE,
+  longitude DOUBLE,
+  anomaly_type VARCHAR(64) NOT NULL,
+  severity VARCHAR(16) NOT NULL,
+  rule_version VARCHAR(32) NOT NULL,
+  context_json STRING
 )
 PRIMARY KEY(anomaly_id)
-DISTRIBUTED BY HASH(anomaly_id) BUCKETS 16
+DISTRIBUTED BY HASH(anomaly_id) BUCKETS 8
 PROPERTIES (
   "replication_num" = "1"
 );

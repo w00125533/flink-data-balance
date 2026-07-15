@@ -14,6 +14,7 @@ public record IcebergConfig(
     String table,
     String metastoreUri,
     String cellAnomalyTable,
+    String userAnomalyTable,
     String gridAnomalyTable) {
 
     private static final Logger log = LoggerFactory.getLogger(IcebergConfig.class);
@@ -26,7 +27,7 @@ public record IcebergConfig(
         String table,
         String metastoreUri) {
         this(enabled, warehouse, catalogName, database, table, metastoreUri,
-            "cell_anomaly_events", "grid_anomaly_events");
+            "cell_anomaly_events", "user_anomaly_events", "grid_anomaly_events");
     }
 
     public static IcebergConfig resolve(Map<String, String> env, Properties properties) {
@@ -40,6 +41,8 @@ public record IcebergConfig(
                 "thrift://hive-metastore:9083"),
             resolveString(env, properties, "FDB_ICEBERG_CELL_ANOMALY_TABLE",
                 "fdb.iceberg.cell.anomaly.table", "cell_anomaly_events"),
+            resolveString(env, properties, "FDB_ICEBERG_USER_ANOMALY_TABLE",
+                "fdb.iceberg.user.anomaly.table", "user_anomaly_events"),
             resolveString(env, properties, "FDB_ICEBERG_GRID_ANOMALY_TABLE",
                 "fdb.iceberg.grid.anomaly.table", "grid_anomaly_events"));
     }

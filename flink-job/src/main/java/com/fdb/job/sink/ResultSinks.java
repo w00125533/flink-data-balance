@@ -23,6 +23,7 @@ public final class ResultSinks {
             kpiStageId(sinkType, "1m"),
             kpiStageId(sinkType, "5m"),
             anomalyStageId(sinkType, "cell"),
+            anomalyStageId(sinkType, "user"),
             anomalyStageId(sinkType, "grid"));
     }
 
@@ -38,21 +39,23 @@ public final class ResultSinks {
         DataStream<CellKpi> cellKpi1m,
         DataStream<CellKpi> cellKpi5m,
         DataStream<AnomalyEvent> cellAnomalies,
+        DataStream<AnomalyEvent> userAnomalies,
         DataStream<AnomalyEvent> gridAnomalies,
         ResultSinkConfig config,
         String bootstrap,
         IcebergConfig icebergConfig,
         MetricRuntimeConfig metricConfig) {
         switch (config.resultSink()) {
-            case STARROCKS -> attachStarRocksSinks(cellKpi1m, cellKpi5m, cellAnomalies, gridAnomalies,
+            case STARROCKS -> attachStarRocksSinks(cellKpi1m, cellKpi5m, cellAnomalies, userAnomalies, gridAnomalies,
                 metricConfig);
             case ICEBERG -> {
                 ensureIcebergEnabled(icebergConfig);
                 IcebergSinks.appendBusinessResultSinks(
-                    cellKpi1m, cellKpi5m, cellAnomalies, gridAnomalies, icebergConfig, metricConfig);
+                    cellKpi1m, cellKpi5m, cellAnomalies, userAnomalies, gridAnomalies, icebergConfig, metricConfig);
             }
-            case HIVE -> attachHiveSinks(cellKpi1m, cellKpi5m, cellAnomalies, gridAnomalies, metricConfig);
-            case KAFKA -> attachKafkaSinks(cellKpi1m, cellKpi5m, cellAnomalies, gridAnomalies, bootstrap,
+            case HIVE -> attachHiveSinks(cellKpi1m, cellKpi5m, cellAnomalies, userAnomalies, gridAnomalies,
+                metricConfig);
+            case KAFKA -> attachKafkaSinks(cellKpi1m, cellKpi5m, cellAnomalies, userAnomalies, gridAnomalies, bootstrap,
                 metricConfig);
             case NONE -> {
             }
@@ -71,6 +74,7 @@ public final class ResultSinks {
         DataStream<CellKpi> cellKpi1m,
         DataStream<CellKpi> cellKpi5m,
         DataStream<AnomalyEvent> cellAnomalies,
+        DataStream<AnomalyEvent> userAnomalies,
         DataStream<AnomalyEvent> gridAnomalies,
         MetricRuntimeConfig metricConfig) {
         cellKpi1m
@@ -94,6 +98,13 @@ public final class ResultSinks {
             .name("starrocks-cell-anomaly")
             .sinkTo(StarRocksSinks.cellAnomalySink())
             .name("cell-anomaly-starrocks-sink");
+        userAnomalies
+            .process(new SinkLatencyProbe<>("starrocks-user-anomaly", "User Anomaly StarRocks Sink", "starrocks",
+                "user_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
+            .startNewChain()
+            .name("starrocks-user-anomaly")
+            .sinkTo(StarRocksSinks.userAnomalySink())
+            .name("user-anomaly-starrocks-sink");
         gridAnomalies
             .process(new SinkLatencyProbe<>("starrocks-grid-anomaly", "Grid Anomaly StarRocks Sink", "starrocks",
                 "grid_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
@@ -107,6 +118,7 @@ public final class ResultSinks {
         DataStream<CellKpi> cellKpi1m,
         DataStream<CellKpi> cellKpi5m,
         DataStream<AnomalyEvent> cellAnomalies,
+        DataStream<AnomalyEvent> userAnomalies,
         DataStream<AnomalyEvent> gridAnomalies,
         MetricRuntimeConfig metricConfig) {
         cellKpi1m
@@ -130,6 +142,13 @@ public final class ResultSinks {
             .name("hive-cell-anomaly")
             .sinkTo(HiveSinks.cellAnomalySink())
             .name("cell-anomaly-hive-sink");
+        userAnomalies
+            .process(new SinkLatencyProbe<>("hive-user-anomaly", "User Anomaly Hive Sink", "hive",
+                "user_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
+            .startNewChain()
+            .name("hive-user-anomaly")
+            .sinkTo(HiveSinks.userAnomalySink())
+            .name("user-anomaly-hive-sink");
         gridAnomalies
             .process(new SinkLatencyProbe<>("hive-grid-anomaly", "Grid Anomaly Hive Sink", "hive",
                 "grid_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
@@ -143,6 +162,7 @@ public final class ResultSinks {
         DataStream<CellKpi> cellKpi1m,
         DataStream<CellKpi> cellKpi5m,
         DataStream<AnomalyEvent> cellAnomalies,
+        DataStream<AnomalyEvent> userAnomalies,
         DataStream<AnomalyEvent> gridAnomalies,
         String bootstrap,
         MetricRuntimeConfig metricConfig) {
@@ -167,6 +187,13 @@ public final class ResultSinks {
             .name("kafka-cell-anomaly")
             .sinkTo(KafkaResultSinks.anomalySink(bootstrap, "cell-anomaly-events"))
             .name("cell-anomaly-kafka-sink");
+        userAnomalies
+            .process(new SinkLatencyProbe<>("kafka-user-anomaly", "User Anomaly Kafka Sink", "kafka",
+                "user_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
+            .startNewChain()
+            .name("kafka-user-anomaly")
+            .sinkTo(KafkaResultSinks.anomalySink(bootstrap, "user-anomaly-events"))
+            .name("user-anomaly-kafka-sink");
         gridAnomalies
             .process(new SinkLatencyProbe<>("kafka-grid-anomaly", "Grid Anomaly Kafka Sink", "kafka",
                 "grid_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))

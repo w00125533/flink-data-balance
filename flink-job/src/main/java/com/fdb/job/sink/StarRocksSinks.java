@@ -10,6 +10,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -30,31 +31,34 @@ public final class StarRocksSinks {
     public record StarRocksJdbcConfig(String jdbcUrl, String user, String password, String database) {}
 
     public static String cellAnomalyInsertSql() {
-        return cellAnomalyInsertSql("cell_anomaly_events");
+        return anomalyInsertSql("cell_anomaly_events");
     }
 
     static String cellAnomalyInsertSql(StarRocksJdbcConfig config) {
-        return cellAnomalyInsertSql(qualifiedTable(config.database(), "cell_anomaly_events"));
+        return anomalyInsertSql(qualifiedTable(config.database(), "cell_anomaly_events"));
     }
 
-    private static String cellAnomalyInsertSql(String table) {
-        return "INSERT INTO " + table + " "
-            + "(anomaly_id, detection_ts, cell_id, anomaly_type, event_ts, site_id, grid_id, latitude, longitude, severity, rule_version, context_json) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    public static String userAnomalyInsertSql() {
+        return anomalyInsertSql("user_anomaly_events");
+    }
+
+    static String userAnomalyInsertSql(StarRocksJdbcConfig config) {
+        return anomalyInsertSql(qualifiedTable(config.database(), "user_anomaly_events"));
     }
 
     public static String gridAnomalyInsertSql() {
-        return gridAnomalyInsertSql("grid_anomaly_events");
+        return anomalyInsertSql("grid_anomaly_events");
     }
 
     static String gridAnomalyInsertSql(StarRocksJdbcConfig config) {
-        return gridAnomalyInsertSql(qualifiedTable(config.database(), "grid_anomaly_events"));
+        return anomalyInsertSql(qualifiedTable(config.database(), "grid_anomaly_events"));
     }
 
-    private static String gridAnomalyInsertSql(String table) {
+    private static String anomalyInsertSql(String table) {
         return "INSERT INTO " + table + " "
-            + "(anomaly_id, detection_ts, grid_id, anomaly_type, event_ts, latitude, longitude, severity, rule_version, context_json) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "(anomaly_id, detection_ts, event_ts, entity_type, entity_id, window_start_ts, window_end_ts, "
+            + "imsi, site_id, cell_id, grid_id, latitude, longitude, anomaly_type, severity, rule_version, context_json) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     }
 
     public static String cellKpiInsertSql() {
@@ -65,7 +69,16 @@ public final class StarRocksSinks {
         StarRocksJdbcConfig config = resolveConfig(System.getenv(), System.getProperties());
         return JdbcSink.<AnomalyEvent>builder()
             .withQueryStatement(cellAnomalyInsertSql(config), (statement, event) ->
-                bindValues(statement, cellAnomalyValues(event)))
+                bindValues(statement, anomalyValues("cell", event)))
+            .withExecutionOptions(JdbcExecutionOptions.defaults())
+            .buildAtLeastOnce(connectionOptions(config));
+    }
+
+    public static org.apache.flink.connector.jdbc.core.datastream.sink.JdbcSink<AnomalyEvent> userAnomalySink() {
+        StarRocksJdbcConfig config = resolveConfig(System.getenv(), System.getProperties());
+        return JdbcSink.<AnomalyEvent>builder()
+            .withQueryStatement(userAnomalyInsertSql(config), (statement, event) ->
+                bindValues(statement, anomalyValues("user", event)))
             .withExecutionOptions(JdbcExecutionOptions.defaults())
             .buildAtLeastOnce(connectionOptions(config));
     }
@@ -74,7 +87,7 @@ public final class StarRocksSinks {
         StarRocksJdbcConfig config = resolveConfig(System.getenv(), System.getProperties());
         return JdbcSink.<AnomalyEvent>builder()
             .withQueryStatement(gridAnomalyInsertSql(config), (statement, event) ->
-                bindValues(statement, gridAnomalyValues(event)))
+                bindValues(statement, anomalyValues("grid", event)))
             .withExecutionOptions(JdbcExecutionOptions.defaults())
             .buildAtLeastOnce(connectionOptions(config));
     }
@@ -89,55 +102,57 @@ public final class StarRocksSinks {
     }
 
     static String cellAnomalyId(AnomalyEvent event) {
-        return anomalyId(
-            "cell",
-            event.getEventTs(),
-            text(event.getCellId()),
-            text(event.getAnomalyType()),
-            text(event.getSeverity()),
-            text(event.getRuleVersion()),
-            sha256(text(event.getContextJson()))
-        );
+        return anomalyId("cell", event);
+    }
+
+    static String userAnomalyId(AnomalyEvent event) {
+        return anomalyId("user", event);
     }
 
     static String gridAnomalyId(AnomalyEvent event) {
+        return anomalyId("grid", event);
+    }
+
+    private static String anomalyId(String scope, AnomalyEvent event) {
         return anomalyId(
-            "grid",
+            scope,
             event.getEventTs(),
-            text(event.getGridId()),
+            text(event.getEntityType()),
+            text(event.getEntityId()),
             text(event.getAnomalyType()),
-            text(event.getSeverity()),
             text(event.getRuleVersion()),
             sha256(text(event.getContextJson()))
         );
     }
 
     static List<Object> cellAnomalyValues(AnomalyEvent event) {
-        return List.of(
-            cellAnomalyId(event),
-            event.getDetectionTs(),
-            text(event.getCellId()),
-            text(event.getAnomalyType()),
-            event.getEventTs(),
-            text(event.getSiteId()),
-            text(event.getGridId()),
-            event.getLatitude(),
-            event.getLongitude(),
-            text(event.getSeverity()),
-            text(event.getRuleVersion()),
-            text(event.getContextJson())
-        );
+        return anomalyValues("cell", event);
+    }
+
+    static List<Object> userAnomalyValues(AnomalyEvent event) {
+        return anomalyValues("user", event);
     }
 
     static List<Object> gridAnomalyValues(AnomalyEvent event) {
-        return List.of(
-            gridAnomalyId(event),
+        return anomalyValues("grid", event);
+    }
+
+    private static List<Object> anomalyValues(String scope, AnomalyEvent event) {
+        return Arrays.asList(
+            anomalyId(scope, event),
             event.getDetectionTs(),
-            text(event.getGridId()),
-            text(event.getAnomalyType()),
             event.getEventTs(),
+            text(event.getEntityType()),
+            text(event.getEntityId()),
+            event.getWindowStartTs(),
+            event.getWindowEndTs(),
+            text(event.getImsi()),
+            text(event.getSiteId()),
+            text(event.getCellId()),
+            text(event.getGridId()),
             event.getLatitude(),
             event.getLongitude(),
+            text(event.getAnomalyType()),
             text(event.getSeverity()),
             text(event.getRuleVersion()),
             text(event.getContextJson())

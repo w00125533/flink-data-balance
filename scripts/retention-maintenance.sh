@@ -142,6 +142,7 @@ alter_kafka_retention() {
     cell-kpi-1m
     cell-kpi-5m
     cell-anomaly-events
+    user-anomaly-events
     grid-anomaly-events
     chr-dlq
     pm-dlq
@@ -211,7 +212,7 @@ run_starrocks_retention_sql() {
   local cutoff_ms
   cutoff_ms=$(( $(date -u '+%s') * 1000 - RETENTION_MS ))
   local table
-  for table in cell_anomaly_events grid_anomaly_events; do
+  for table in cell_anomaly_events user_anomaly_events grid_anomaly_events; do
     log "StarRocks retention | ${STARROCKS_DATABASE}.${table} | detection_ts < $cutoff_ms"
     starrocks_mysql -e "DELETE FROM \`${STARROCKS_DATABASE}\`.\`${table}\` WHERE detection_ts < ${cutoff_ms};"
   done

@@ -250,7 +250,7 @@ public class FlinkJobMain {
             .uid("kpi-5m-rollup");
 
         ResultSinks.attachBusinessResultSinks(
-            cellKpi1m, cellKpi5m, cellAnomalies, coverageAnomalies,
+            cellKpi1m, cellKpi5m, cellAnomalies, userAnomalies, coverageAnomalies,
             resultSinkConfig, bootstrap, icebergConfig, metricConfig);
 
         env.execute("fdb-flink-job");

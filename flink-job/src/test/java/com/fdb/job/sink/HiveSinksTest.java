@@ -26,6 +26,8 @@ class HiveSinksTest {
 
         assertThat(HiveSinks.cellAnomalyOutputPath(warehouse))
             .isEqualTo("hdfs://namenode:8020/warehouse/fdb/cell_anomaly_events");
+        assertThat(HiveSinks.userAnomalyOutputPath(warehouse))
+            .isEqualTo("hdfs://namenode:8020/warehouse/fdb/user_anomaly_events");
         assertThat(HiveSinks.gridAnomalyOutputPath(warehouse))
             .isEqualTo("hdfs://namenode:8020/warehouse/fdb/grid_anomaly_events");
     }

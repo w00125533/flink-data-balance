@@ -46,11 +46,14 @@ class IcebergSinksTest {
     void builds_independent_business_table_identifiers() {
         IcebergConfig config = new IcebergConfig(
             true, "hdfs://namenode:8020/warehouse/iceberg", "fdb_iceberg", "iceberg_db", "cell_kpi",
-            "thrift://hive-metastore:9083", "cell_anomaly_events", "grid_anomaly_events");
+            "thrift://hive-metastore:9083", "cell_anomaly_events", "user_anomaly_events",
+            "grid_anomaly_events");
 
         assertThat(IcebergSinks.cellKpiIdentifier(config).toString()).isEqualTo("iceberg_db.cell_kpi");
         assertThat(IcebergSinks.cellAnomalyIdentifier(config).toString())
             .isEqualTo("iceberg_db.cell_anomaly_events");
+        assertThat(IcebergSinks.userAnomalyIdentifier(config).toString())
+            .isEqualTo("iceberg_db.user_anomaly_events");
         assertThat(IcebergSinks.gridAnomalyIdentifier(config).toString())
             .isEqualTo("iceberg_db.grid_anomaly_events");
     }
@@ -60,12 +63,13 @@ class IcebergSinksTest {
         Schema schema = IcebergSinks.anomalySchema();
         PartitionSpec spec = IcebergSinks.anomalyPartitionSpec(schema);
 
-        assertThat(schema.columns()).hasSize(13);
+        assertThat(schema.columns()).hasSize(18);
         assertThat(schema.columns().stream().map(field -> field.name()))
             .containsExactly(
-                "detection_ts", "event_ts", "site_id", "cell_id", "grid_id",
-                "latitude", "longitude", "anomaly_type", "severity", "rule_version",
-                "context_json", "dt", "hour");
+                "detection_ts", "event_ts", "entity_type", "entity_id", "window_start_ts",
+                "window_end_ts", "imsi", "site_id", "cell_id", "grid_id", "latitude",
+                "longitude", "anomaly_type", "severity", "rule_version", "context_json",
+                "dt", "hour");
         assertThat(spec.fields().stream().map(field -> field.name()))
             .containsExactly("dt", "hour");
     }

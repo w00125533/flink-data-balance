@@ -2,6 +2,7 @@ package com.fdb.job.sink;
 
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.AnomalyType;
+import com.fdb.common.avro.EntityType;
 import com.fdb.common.avro.Severity;
 import org.junit.jupiter.api.Test;
 
@@ -18,12 +19,17 @@ class StarRocksSinksTest {
 
     @Test
     void insert_sql_targets_internal_anomaly_tables_only() {
+        String columns = "(anomaly_id, detection_ts, event_ts, entity_type, entity_id, window_start_ts, window_end_ts, "
+            + "imsi, site_id, cell_id, grid_id, latitude, longitude, anomaly_type, severity, rule_version, context_json)";
         assertThat(StarRocksSinks.cellAnomalyInsertSql())
             .contains("INSERT INTO cell_anomaly_events")
-            .contains("(anomaly_id, detection_ts, cell_id, anomaly_type, event_ts, site_id, grid_id, latitude, longitude, severity, rule_version, context_json)");
+            .contains(columns);
+        assertThat(StarRocksSinks.userAnomalyInsertSql())
+            .contains("INSERT INTO user_anomaly_events")
+            .contains(columns);
         assertThat(StarRocksSinks.gridAnomalyInsertSql())
             .contains("INSERT INTO grid_anomaly_events")
-            .contains("(anomaly_id, detection_ts, grid_id, anomaly_type, event_ts, latitude, longitude, severity, rule_version, context_json)");
+            .contains(columns);
         assertThat(StarRocksSinks.cellKpiInsertSql()).isEmpty();
     }
 
@@ -34,6 +40,8 @@ class StarRocksSinksTest {
 
         assertThat(StarRocksSinks.cellAnomalyInsertSql(config))
             .startsWith("INSERT INTO `analytics_db`.cell_anomaly_events");
+        assertThat(StarRocksSinks.userAnomalyInsertSql(config))
+            .startsWith("INSERT INTO `analytics_db`.user_anomaly_events");
         assertThat(StarRocksSinks.gridAnomalyInsertSql(config))
             .startsWith("INSERT INTO `analytics_db`.grid_anomaly_events");
     }
@@ -107,13 +115,18 @@ class StarRocksSinksTest {
         assertThat(StarRocksSinks.cellAnomalyValues(event)).containsExactly(
             anomalyId,
             1_700_000_010_000L,
-            "cell-a",
-            "LOW_SIGNAL",
             1_700_000_000_000L,
+            "CELL",
+            "cell-a",
+            1_699_999_940_000L,
+            1_700_000_000_000L,
+            "460001234567890",
             "site-a",
+            "cell-a",
             "grid-a",
             31.2304,
             121.4737,
+            "CELL_RADIO_BAD",
             "HIGH",
             "rules-v1",
             "{\"reason\":\"rsrp\"}"
@@ -121,18 +134,51 @@ class StarRocksSinksTest {
     }
 
     @Test
-    void grid_anomaly_values_match_starrocks_column_order_without_cell_fields() {
+    void user_anomaly_values_match_starrocks_column_order() {
+        AnomalyEvent event = userAnomalyEvent();
+        String anomalyId = StarRocksSinks.userAnomalyId(event);
+
+        assertThat(StarRocksSinks.userAnomalyValues(event)).containsExactly(
+            anomalyId,
+            1_700_000_010_000L,
+            1_700_000_000_000L,
+            "USER",
+            "460001234567890",
+            1_699_999_400_000L,
+            1_700_000_000_000L,
+            "460001234567890",
+            "site-a",
+            "cell-a",
+            "grid-a",
+            31.2304,
+            121.4737,
+            "USER_FAILURE",
+            "HIGH",
+            "rules-v1",
+            "{\"reason\":\"attach\"}"
+        );
+    }
+
+    @Test
+    void grid_anomaly_values_match_starrocks_column_order() {
         AnomalyEvent event = anomalyEvent();
         String anomalyId = StarRocksSinks.gridAnomalyId(event);
 
         assertThat(StarRocksSinks.gridAnomalyValues(event)).containsExactly(
             anomalyId,
             1_700_000_010_000L,
-            "grid-a",
-            "LOW_SIGNAL",
             1_700_000_000_000L,
+            "CELL",
+            "cell-a",
+            1_699_999_940_000L,
+            1_700_000_000_000L,
+            "460001234567890",
+            "site-a",
+            "cell-a",
+            "grid-a",
             31.2304,
             121.4737,
+            "CELL_RADIO_BAD",
             "HIGH",
             "rules-v1",
             "{\"reason\":\"rsrp\"}"
@@ -141,21 +187,22 @@ class StarRocksSinksTest {
 
     @Test
     void anomaly_values_fallback_to_empty_strings_for_null_text_fields() {
-        AnomalyEvent event = anomalyEvent();
-        event.put(3, null);
-        event.put(4, null);
-        event.put(5, null);
-        event.put(10, null);
-        event.put(11, null);
+        AnomalyEvent event = AnomalyEvent.newBuilder(anomalyEvent())
+            .setImsi(null)
+            .setSiteId(null)
+            .setCellId(null)
+            .setGridId(null)
+            .build();
 
         List<Object> cellValues = StarRocksSinks.cellAnomalyValues(event);
         assertThat(cellValues).containsSubsequence("", "", "", "");
-        assertThat(cellValues.get(11)).isEqualTo("");
+        assertThat(cellValues.get(10)).isEqualTo("");
 
         List<Object> gridValues = StarRocksSinks.gridAnomalyValues(event);
-        assertThat(gridValues.get(2)).isEqualTo("");
+        assertThat(gridValues.get(7)).isEqualTo("");
         assertThat(gridValues.get(8)).isEqualTo("");
         assertThat(gridValues.get(9)).isEqualTo("");
+        assertThat(gridValues.get(10)).isEqualTo("");
     }
 
     @Test
@@ -172,6 +219,8 @@ class StarRocksSinksTest {
         assertThat(StarRocksSinks.gridAnomalyId(first))
             .isEqualTo(StarRocksSinks.gridAnomalyId(retry))
             .startsWith("grid:");
+        assertThat(StarRocksSinks.userAnomalyId(userAnomalyEvent()))
+            .startsWith("user:");
     }
 
     @Test
@@ -183,7 +232,7 @@ class StarRocksSinksTest {
             .setEventTs(event.getEventTs() + 1L)
             .build())).isNotEqualTo(base);
         assertThat(StarRocksSinks.cellAnomalyId(AnomalyEvent.newBuilder(event)
-            .setCellId("cell-b")
+            .setEntityId("cell-b")
             .build())).isNotEqualTo(base);
         assertThat(StarRocksSinks.cellAnomalyId(AnomalyEvent.newBuilder(event)
             .setContextJson("{\"reason\":\"different\"}")
@@ -195,6 +244,10 @@ class StarRocksSinksTest {
         String ddl = readStarRocksDdl();
 
         assertThat(ddl).contains("anomaly_id VARCHAR(128) NOT NULL");
+        assertThat(ddl).contains("entity_type VARCHAR(16) NOT NULL");
+        assertThat(ddl).contains("entity_id VARCHAR(128) NOT NULL");
+        assertThat(ddl).contains("window_start_ts BIGINT NOT NULL");
+        assertThat(ddl).contains("CREATE TABLE IF NOT EXISTS user_anomaly_events");
         assertThat(ddl).contains("PRIMARY KEY(anomaly_id)");
         assertThat(ddl).doesNotContain("DUPLICATE KEY(detection_ts, cell_id, anomaly_type)");
         assertThat(ddl).doesNotContain("DUPLICATE KEY(detection_ts, grid_id, anomaly_type)");
@@ -204,16 +257,41 @@ class StarRocksSinksTest {
         return AnomalyEvent.newBuilder()
             .setDetectionTs(1_700_000_010_000L)
             .setEventTs(1_700_000_000_000L)
+            .setEntityType(EntityType.CELL)
+            .setEntityId("cell-a")
+            .setWindowStartTs(1_699_999_940_000L)
+            .setWindowEndTs(1_700_000_000_000L)
             .setImsi("460001234567890")
             .setSiteId("site-a")
             .setCellId("cell-a")
             .setGridId("grid-a")
             .setLatitude(31.2304)
             .setLongitude(121.4737)
-            .setAnomalyType(AnomalyType.LOW_SIGNAL)
+            .setAnomalyType(AnomalyType.CELL_RADIO_BAD)
             .setSeverity(Severity.HIGH)
             .setRuleVersion("rules-v1")
             .setContextJson("{\"reason\":\"rsrp\"}")
+            .build();
+    }
+
+    private static AnomalyEvent userAnomalyEvent() {
+        return AnomalyEvent.newBuilder()
+            .setDetectionTs(1_700_000_010_000L)
+            .setEventTs(1_700_000_000_000L)
+            .setEntityType(EntityType.USER)
+            .setEntityId("460001234567890")
+            .setWindowStartTs(1_699_999_400_000L)
+            .setWindowEndTs(1_700_000_000_000L)
+            .setImsi("460001234567890")
+            .setSiteId("site-a")
+            .setCellId("cell-a")
+            .setGridId("grid-a")
+            .setLatitude(31.2304)
+            .setLongitude(121.4737)
+            .setAnomalyType(AnomalyType.USER_FAILURE)
+            .setSeverity(Severity.HIGH)
+            .setRuleVersion("rules-v1")
+            .setContextJson("{\"reason\":\"attach\"}")
             .build();
     }
 

@@ -37,12 +37,20 @@ public final class HiveSinks {
         return warehousePath + "/cell_anomaly_events";
     }
 
+    static String userAnomalyOutputPath(String warehousePath) {
+        return warehousePath + "/user_anomaly_events";
+    }
+
     static String gridAnomalyOutputPath(String warehousePath) {
         return warehousePath + "/grid_anomaly_events";
     }
 
     public static FileSink<AnomalyEvent> cellAnomalySink() {
         return anomalySink(cellAnomalyOutputPath(warehousePath()));
+    }
+
+    public static FileSink<AnomalyEvent> userAnomalySink() {
+        return anomalySink(userAnomalyOutputPath(warehousePath()));
     }
 
     public static FileSink<AnomalyEvent> gridAnomalySink() {
