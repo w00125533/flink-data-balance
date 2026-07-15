@@ -1,7 +1,7 @@
 # Flink 数据均衡处理工程 - 设计文档
 
 - **创建日期**: 2026-04-29
-- **最近刷新**: 2026-07-14
+- **最近刷新**: 2026-07-15
 - **状态**: 待评审
 - **关键技术栈**: Java 21 · Flink 1.20 · Maven · Avro · Kafka · StarRocks · Hive HMS · Iceberg · React 18 · TypeScript · Vite · Ant Design · AntV X6 · Prometheus
 
@@ -19,11 +19,11 @@
    - CHR 与 PM 先分别按 `cellId + minuteTs` 做 1 分钟增量汇聚。
    - 以 `cellId + minuteTs` 做 Full JOIN，最多等待迟到 2 分钟。
    - 产出 1 分钟小区 KPI，5 分钟 KPI 从 1 分钟 KPI rollup。
-   - 产出小区级异常与栅格级异常。
+   - 小区级异常在 1 分钟 KPI 后用 CEP 检测，用户级异常在 enrich 后用 CEP 检测，栅格级覆盖空洞保留 geohash 检测。
 4. **动态均衡可选**：默认关闭；关闭时 Flink DAG 不创建动态均衡相关算子。
 5. **单类型业务结果 Sink**：通过 `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 控制本次运行全部业务结果只写一种 sink，便于压测不同存储的上限。
-6. **统一业务结果口径**：KPI 1m、KPI 5m、小区异常、栅格异常均纳入同一个 result sink 开关；Hive/Iceberg 模式下异常结果也落成对应表。
-7. **实时观测控制台**：展示当前 run、实际启用的 DAG、KPI 结果、异常结果、每次 sink 写入耗时、瓶颈候选与压测报告入口。
+6. **统一业务结果口径**：KPI 1m、KPI 5m、小区异常、用户异常、栅格异常均纳入同一个 result sink 开关；Hive/Iceberg 模式下异常结果也落成对应表。
+7. **实时观测控制台**：展示当前 run、实际启用的 DAG、KPI 结果、三类实体异常结果、每次 sink 写入耗时、瓶颈候选与压测报告入口。
 8. **数据老化治理**：业务流和结果数据按 1 小时、10GB 上限治理；compact 配置类 topic 保留最新配置。
 9. **多目标部署入口**：通过统一 `scripts/deploy.sh <target> <command>` 管理本地 Docker 调试和外部 YARN 部署；本地复用 `../shared-data-infra`，外部环境通过 `.env` 连接已部署的 Kafka、HDFS、Hive、StarRocks、YARN 等基础设施。
 10. **压测报告**：每次压测以 `runId` 归档 metrics 历史并生成 `report.md`，用于对比不同 sink、并行度和 checkpoint 配置下的瓶颈。
@@ -62,20 +62,21 @@ Kafka topology / chr-events / pm-stats / cfg-config
       |
       v
 Flink job
-  - CHR source -> keyBy(cellId) -> CHR 1m fact
+  - CHR source -> enrich with CFG/PM context
+      -> user event CEP detector
+      -> coverage-hole detector by geohash
+      -> CHR 1m fact
   - PM  source -> keyBy(cellId) -> PM  1m fact
   - CFG source -> keyBy(cellId) -> latest CFG state
   - CHR 1m fact + PM 1m fact + CFG
       -> Full JOIN by cellId + minuteTs, wait 2 minutes
       -> CellKpi MIN_1
+      -> cell KPI CEP detector
       -> CellKpi MIN_5 rollup
-  - Enriched CHR / KPI context
-      -> cell anomaly detector
-      -> grid anomaly detector
 
 Outputs
   - KPI 1m / 5m -> selected result sink only
-  - cell/grid anomalies -> selected result sink only
+  - cell/user/grid anomalies -> selected result sink only
   - sink metrics -> fdb-stage-metrics -> Observability API memory + local JSONL history
   - benchmark report -> docker/data/observability-runs/<runId>/report.md
 ```
@@ -132,7 +133,7 @@ flink-data-balance/
 │       ├── model/           # Flink 作业内 envelope 与 minute fact
 │       ├── enrich/          # CHR/PM/CFG 富化
 │       ├── kpi/             # CHR/PM 预聚合、分钟拼接、5 分钟 rollup
-│       ├── anomaly/         # 小区级与栅格级异常检测
+│       ├── anomaly/         # 小区 KPI CEP、用户事件 CEP、栅格覆盖空洞检测
 │       ├── balance/         # vbucket 路由与负载均衡
 │       ├── sink/            # ResultSinks、StarRocks/Hive/Iceberg/Kafka sink
 │       ├── metrics/         # StageMetricsProbe、SinkLatencyProbe、metrics publisher
@@ -245,19 +246,35 @@ KPI 由 CHR/PM 分钟事实 Full JOIN 后生成。
 
 ### 3.6 AnomalyEvent
 
-异常拆成小区级与栅格级查询模型，Flink 内部可共用 Avro 基础结构。
+异常拆成 `CELL`、`USER`、`GRID` 三类实体查询模型，Flink 内部共用实体化 Avro 基础结构。字段不再强制把用户专属字段或坐标字段压到小区异常上。
 
 | 字段 | 说明 |
 |---|---|
 | `detectionTs` | 检测时间 |
-| `eventTs` | 触发事件时间 |
-| `siteId` / `cellId` | 小区维度 |
-| `gridId` | geohash |
-| `latitude` / `longitude` | 展示坐标 |
-| `anomalyType` | LOW_SIGNAL、CONFIG_MISMATCH、COVERAGE_HOLE 等 |
+| `eventTs` | 触发事件时间；聚合类异常使用窗口结束时间 |
+| `entityType` | `CELL` / `USER` / `GRID` |
+| `entityId` | 小区异常为 `cellId`，用户异常为 `imsi`，栅格异常为 `gridId` 或 geohash |
+| `windowStartTs` / `windowEndTs` | 检测窗口起止时间 |
+| `siteId` / `cellId` | 已知时填充；用户和栅格异常可作为上下文 |
+| `imsi` | 仅用户异常必填，非用户异常为空 |
+| `gridId` | 栅格异常必填，非栅格异常仅在已有上下文时填充 |
+| `latitude` / `longitude` | 仅在有坐标上下文时填充；小区异常不依赖经纬度 |
+| `anomalyType` | `CELL_RADIO_BAD`、`CELL_SERVICE_BAD`、`USER_FAILURE`、`USER_QOE_BAD`、`COVERAGE_HOLE` |
 | `severity` | LOW / MEDIUM / HIGH |
 | `ruleVersion` | 规则版本 |
-| `contextJson` | CHR、PM、CFG 快照 |
+| `contextJson` | 规则维度、门限、观测值、窗口时间和必要上下文 |
+
+活动异常类型：
+
+| 类型 | 实体 | 来源 | 含义 |
+|---|---|---|---|
+| `CELL_RADIO_BAD` | `CELL` | `CellKpi MIN_1` CEP | 小区连续 1 分钟无线质量劣化，如 RSRP/SINR 低于门限 |
+| `CELL_SERVICE_BAD` | `CELL` | `CellKpi MIN_1` CEP | 小区连续 1 分钟业务质量劣化，如接入、切换、掉话率不满足门限 |
+| `USER_FAILURE` | `USER` | enriched CHR CEP | 同一用户在 10 分钟内同一规则维度连续失败 |
+| `USER_QOE_BAD` | `USER` | enriched CHR CEP | 同一用户在 10 分钟内连续体验劣化 |
+| `COVERAGE_HOLE` | `GRID` | geohash/grid detector | 栅格内低信号事件聚集 |
+
+旧事件级小区异常类型 `LOW_SIGNAL`、`ATTACH_FAILURE_BURST`、`HANDOVER_FAIL_PATTERN`、`CONFIG_MISMATCH` 可以保留在 schema/枚举中用于兼容，但新 DAG 不再主动产出这些类型。
 
 ---
 
@@ -272,8 +289,10 @@ KPI 由 CHR/PM 分钟事实 Full JOIN 后生成。
 | `cell-kpi-1m` | 8 | delete 1h | cellId | 1 分钟 KPI 输出 |
 | `cell-kpi-5m` | 8 | delete 1h | cellId | 5 分钟 KPI 输出 |
 | `cell-anomaly-events` | 16 | delete 1h | cellId | 小区异常 |
+| `user-anomaly-events` | 16 | delete 1h | imsi | 用户异常 |
 | `grid-anomaly-events` | 16 | delete 1h | gridId | 栅格异常 |
-| `chr-dlq` / `pm-dlq` / `cfg-dlq` / `enrichment-late` | 各 4 | delete 1h | 原业务 key | 死信 / 迟到 |
+| `chr-dlq` / `pm-dlq` / `cfg-dlq` | 各 4 | delete 1h | 原业务 key | 无法继续处理的死信 |
+| `enrichment-late` | 4 | delete 1h | 原业务 key | 富化上下文迟到或缺失，主流继续处理 |
 | `fdb-stage-metrics` | 4 | delete 1h | stageId | 阶段与 sink 指标 |
 | `lb-heartbeat` | 1 | delete 1h | subtaskId | 动态均衡心跳，仅启用动态均衡时需要 |
 | `lb-routing` | 1 | compact | cellId | 动态均衡路由，仅启用动态均衡时需要 |
@@ -314,7 +333,8 @@ cfg-config
 1. `version` 更大时更新。
 2. `version` 相同但 `effectiveTs` 更新时更新。
 3. `tombstone=true` 时删除该小区 CFG state。
-4. CFG 缺失不阻塞 KPI 输出，但 `joinQuality` 和 `contextJson` 需体现配置缺失。
+4. CFG 缺失不阻塞 CHR 主流、用户异常检测或 KPI 输出；富化输出 `EnrichedChr(chr, null, latestPm)`，并把 CFG 缺失上下文写入 `enrichment-late` 侧通道。
+5. CFG 缺失需在 `joinQuality`、`contextJson` 或轻量指标中体现，但不能当作业务 DLQ 记录处理。
 
 ### 5.3 PM/CHR 分钟级汇聚
 
@@ -376,35 +396,57 @@ CellKpi MIN_1
 
 ### 5.6 异常检测
 
-小区级异常：
+小区级异常改到 1 分钟 KPI 后检测：
 
 ```
-CellKpi MIN_1 / enriched CHR context
+CellKpi MIN_1
   -> keyBy(cellId)
-  -> CellAnomalyDetector
+  -> CellKpiCepAnomalyDetector
   -> cell-anomaly-events
   -> selected result sink
 ```
 
-栅格级异常：
+小区规则按 `cellId + ruleDimension` 分组，连续 3 个 1 分钟 KPI 周期不满足同一门限时触发。进入异常 streak 时输出一次，直到该规则维度恢复正常前不重复输出。
+
+| 规则维度 | 异常类型 | 默认门限 |
+|---|---|---|
+| `avgRsrp` | `CELL_RADIO_BAD` | `< -110` |
+| `avgSinr` | `CELL_RADIO_BAD` | `< -3` |
+| `attachSuccessRate` | `CELL_SERVICE_BAD` | `< 0.95` |
+| `hoSuccessRate` | `CELL_SERVICE_BAD` | `< 0.90` |
+| `dropRate` | `CELL_SERVICE_BAD` | `> 0.05` |
+
+用户级异常在 enrich 后与事件级链路并列：
 
 ```
-Enriched location / CellKpi
-  -> keyBy(gridId)
+EnrichedChr
+  -> keyBy(imsi + ruleDimension)
+  -> UserEventCepAnomalyDetector
+  -> user-anomaly-events
+  -> selected result sink
+```
+
+用户规则按 `imsi + ruleDimension` 分组。同一用户在 10 分钟内同一规则维度连续 3 个异常事件触发；同一维度出现正常或成功事件即打断序列。进入异常 streak 时输出一次，恢复前不重复输出。缺失 `imsi` 的记录跳过用户 CEP，并计入轻量 invalid-input 指标，不写业务 DLQ。
+
+| 规则维度 | 异常类型 | 默认门限 |
+|---|---|---|
+| attach/session/access failure | `USER_FAILURE` | 10 分钟内连续 3 次失败 |
+| handover failure | `USER_FAILURE` | 10 分钟内连续 3 次失败 |
+| poor RSRP | `USER_QOE_BAD` | `rsrp < -110` 连续 3 个事件 |
+| poor SINR | `USER_QOE_BAD` | `sinr < -3` 连续 3 个事件 |
+| high latency | `USER_QOE_BAD` | `latencyMs > 500` 连续 3 个事件 |
+
+栅格级覆盖空洞保持 geohash/grid 检测：
+
+```
+Enriched location / CellKpi context
+  -> keyBy(gridId or geohash)
   -> GridAnomalyDetector
   -> grid-anomaly-events
   -> selected result sink
 ```
 
-v1 规则：
-
-| 规则 | 维度 | 说明 |
-|---|---|---|
-| LOW_SIGNAL | cellId | RSRP/SINR 连续低于阈值 |
-| ATTACH_FAILURE_BURST | cellId | 接入失败突增 |
-| HANDOVER_FAIL_PATTERN | cellId | 切换失败率异常 |
-| CONFIG_MISMATCH | cellId | CHR 上报配置与 CFG 不一致 |
-| COVERAGE_HOLE | gridId | 栅格内低信号事件聚集 |
+`COVERAGE_HOLE` 仍表示栅格内低信号事件聚集。该规则可以使用经纬度生成 geohash；小区级异常不依赖 latitude/longitude。
 
 ### 5.7 动态均衡实现
 
@@ -435,10 +477,10 @@ KPI window 与重 sink 拆链。观测阶段使用 SinkLatencyProbe stage ID，�
 
 | `FDB_RESULT_SINK` | 创建的业务 sink 分支 |
 |---|---|
-| `starrocks` | `starrocks-kpi-1m`、`starrocks-kpi-5m`、`starrocks-cell-anomaly`、`starrocks-grid-anomaly` |
-| `iceberg` | `iceberg-kpi-1m`、`iceberg-kpi-5m`、`iceberg-cell-anomaly`、`iceberg-grid-anomaly` |
-| `hive` | `hive-kpi-1m`、`hive-kpi-5m`、`hive-cell-anomaly`、`hive-grid-anomaly` |
-| `kafka` | `kafka-kpi-1m`、`kafka-kpi-5m`、`kafka-cell-anomaly`、`kafka-grid-anomaly` |
+| `starrocks` | `starrocks-kpi-1m`、`starrocks-kpi-5m`、`starrocks-cell-anomaly`、`starrocks-user-anomaly`、`starrocks-grid-anomaly` |
+| `iceberg` | `iceberg-kpi-1m`、`iceberg-kpi-5m`、`iceberg-cell-anomaly`、`iceberg-user-anomaly`、`iceberg-grid-anomaly` |
+| `hive` | `hive-kpi-1m`、`hive-kpi-5m`、`hive-cell-anomaly`、`hive-user-anomaly`、`hive-grid-anomaly` |
+| `kafka` | `kafka-kpi-1m`、`kafka-kpi-5m`、`kafka-cell-anomaly`、`kafka-user-anomaly`、`kafka-grid-anomaly` |
 | `none` | 不创建业务结果 sink，仅保留计算链路和可选 metrics |
 
 通过 `startNewChain` / `disableChaining` 或显式算子边界避免 UI 上把窗口和多个 sink 合并为一个 vertex，方便定位 busy、backpressure 和 sink 延迟。
@@ -452,7 +494,7 @@ FDB_RESULT_SINK=starrocks | iceberg | hive | kafka | none
 FDB_DLQ_ENABLED=true | false
 ```
 
-`FDB_RESULT_SINK` 控制 KPI 1m、KPI 5m、小区异常、栅格异常四类业务结果。未选中的业务 sink 分支不创建，Flink Web UI、前端流程图和压测报告中也不展示这些分支。
+`FDB_RESULT_SINK` 控制 KPI 1m、KPI 5m、小区异常、用户异常、栅格异常五类业务结果。未选中的业务 sink 分支不创建，Flink Web UI、前端流程图和压测报告中也不展示这些分支。
 
 DLQ 不属于业务结果 sink。`FDB_DLQ_ENABLED=true` 时，配置缺失、迟到或无法富化的数据可以写入 Kafka 兜底 topic；压测时可关闭以减少额外 Kafka 写入干扰。
 
@@ -468,19 +510,20 @@ Kafka metrics、动态均衡 heartbeat/routing、checkpoint/savepoint 不受 `FD
 
 | 类型 | 落地范围 | 说明 |
 |---|---|---|
-| `starrocks` | `cell_kpi`、`cell_anomaly_events`、`grid_anomaly_events` | 面向在线查询和高吞吐 JDBC 写入压测。 |
-| `iceberg` | `cell_kpi`、`cell_anomaly_events`、`grid_anomaly_events` | 面向湖表写入、checkpoint commit 和小文件成本压测。 |
-| `hive` | `kpi`、`cell_anomaly_events`、`grid_anomaly_events` Parquet 路径 | 面向 HDFS/Hive FileSink 写入压测。 |
-| `kafka` | `cell-kpi-1m`、`cell-kpi-5m`、`cell-anomaly-events`、`grid-anomaly-events` | 面向 Kafka 输出链路压测。 |
+| `starrocks` | `cell_kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` | 面向在线查询和高吞吐 JDBC 写入压测。 |
+| `iceberg` | `cell_kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` | 面向湖表写入、checkpoint commit 和小文件成本压测。 |
+| `hive` | `kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` Parquet 路径 | 面向 HDFS/Hive FileSink 写入压测。 |
+| `kafka` | `cell-kpi-1m`、`cell-kpi-5m`、`cell-anomaly-events`、`user-anomaly-events`、`grid-anomaly-events` | 面向 Kafka 输出链路压测。 |
 | `none` | 无业务结果落地 | 面向纯计算链路压测。 |
 
 ### 6.2 Iceberg 表
 
-Iceberg 模式写入 3 张表：
+Iceberg 模式写入 4 张表：
 
 ```text
 iceberg_db.cell_kpi
 iceberg_db.cell_anomaly_events
+iceberg_db.user_anomaly_events
 iceberg_db.grid_anomaly_events
 ```
 
@@ -506,6 +549,7 @@ Hive 模式按 dataset 分开写入：
 hdfs://namenode:8020/warehouse/fdb/kpi/window_kind=MIN_1/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
 hdfs://namenode:8020/warehouse/fdb/kpi/window_kind=MIN_5/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
 hdfs://namenode:8020/warehouse/fdb/cell_anomaly_events/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
+hdfs://namenode:8020/warehouse/fdb/user_anomaly_events/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
 hdfs://namenode:8020/warehouse/fdb/grid_anomaly_events/dt=<yyyy-MM-dd>/hour=<HH>/*.parquet
 ```
 
@@ -518,6 +562,7 @@ StarRocks 由 `../shared-data-infra` 的 `starrocks` profile 提供，本工程�
 ```text
 fdb.cell_kpi
 fdb.cell_anomaly_events
+fdb.user_anomaly_events
 fdb.grid_anomaly_events
 ```
 
@@ -531,10 +576,13 @@ Kafka 模式写入：
 cell-kpi-1m
 cell-kpi-5m
 cell-anomaly-events
+user-anomaly-events
 grid-anomaly-events
 ```
 
 这些 topic 是业务结果 topic，受 `FDB_RESULT_SINK=kafka` 控制。DLQ topic 和 metrics topic 不属于业务结果，不由 `FDB_RESULT_SINK` 控制。
+
+开发环境初始化时直接重建 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三张异常表，不提供存量升级脚本。
 
 ### 6.6 Sink 耗时指标
 
@@ -546,7 +594,7 @@ grid-anomaly-events
 |---|---|
 | `sinkName` | 具体 sink 名称 |
 | `sinkType` | kafka / starrocks / hive / iceberg |
-| `dataset` | kpi_1m / kpi_5m / cell_anomaly / grid_anomaly |
+| `dataset` | kpi_1m / kpi_5m / cell_anomaly / user_anomaly / grid_anomaly |
 | `records` | 本次写入记录数 |
 | `bytes` | 估算写入字节数 |
 | `startTs` / `endTs` | 写入开始与结束 |
@@ -583,6 +631,7 @@ Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小�
 | `GET /api/results/kpi/1m` | 查询 1 分钟 KPI |
 | `GET /api/results/kpi/5m` | 查询 5 分钟 KPI |
 | `GET /api/results/anomalies/cell` | 查询小区级异常 |
+| `GET /api/results/anomalies/user` | 查询用户级异常 |
 | `GET /api/results/anomalies/grid` | 查询栅格级异常 |
 | `GET /api/results/sink-latency` | 查询 sink 耗时统计 |
 | `GET /api/flow/runtime` | 查询当前 run 配置、result sink、DLQ、metrics、Flink job 状态、并行度和 checkpoint 配置 |
@@ -602,6 +651,7 @@ Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小�
 KPI 1m
 KPI 5m
 小区异常
+用户异常
 栅格异常
 Sink 耗时
 执行历史
@@ -645,9 +695,15 @@ Failures / restarts
 
 `小区异常`：
 
-- 时间、`siteId`、`cellId`、`severity`、`anomalyType` 筛选。
+- 时间、`siteId`、`cellId`、`severity`、`anomalyType`、`entityId` 筛选。
 - 异常明细表。
 - 最近异常趋势。
+
+`用户异常`：
+
+- 时间、`imsi`、`cellId`、`severity`、`anomalyType`、`entityId` 筛选。
+- 展示 `windowStartTs`、`windowEndTs`、规则维度、门限和观测值摘要。
+- 最近用户异常趋势。
 
 `栅格异常`：
 
@@ -664,6 +720,13 @@ Failures / restarts
 ### 7.3 流程图显示规则
 
 控制台流程图只显示实际创建的 DAG 节点。
+
+异常节点显示规则：
+
+- `cell KPI CEP anomaly` 显示在 `CellKpi MIN_1` 之后。
+- `user event CEP anomaly` 显示在 `enrich` 之后，并与后续 CHR 1m fact 链路并列。
+- `grid coverage-hole anomaly` 显示为独立栅格/geohash 分支。
+- 小区异常页面不展示为依赖 `imsi`、`latitude` 或 `longitude` 的流程。
 
 动态均衡关闭时，不显示：
 
@@ -792,6 +855,17 @@ cleanup.policy=compact
 | `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
 | `FDB_RUN_ID` | 自动生成 | 当前压测 run 标识 |
 | `FDB_RUN_LABEL` | 空 | 当前压测 run 可读标签 |
+| `FDB_ANOMALY_CELL_CONSECUTIVE_MINUTES` | `3` | 小区 KPI CEP 连续异常分钟数 |
+| `FDB_ANOMALY_CELL_RSRP_MIN` | `-110` | 小区无线质量 RSRP 下限 |
+| `FDB_ANOMALY_CELL_SINR_MIN` | `-3` | 小区无线质量 SINR 下限 |
+| `FDB_ANOMALY_CELL_ATTACH_SUCCESS_MIN` | `0.95` | 小区接入成功率下限 |
+| `FDB_ANOMALY_CELL_HO_SUCCESS_MIN` | `0.90` | 小区切换成功率下限 |
+| `FDB_ANOMALY_CELL_DROP_RATE_MAX` | `0.05` | 小区掉话率上限 |
+| `FDB_ANOMALY_USER_CONSECUTIVE_EVENTS` | `3` | 用户 CEP 连续异常事件数 |
+| `FDB_ANOMALY_USER_WINDOW_MINUTES` | `10` | 用户 CEP 检测窗口 |
+| `FDB_ANOMALY_USER_RSRP_MIN` | `-110` | 用户体验 RSRP 下限 |
+| `FDB_ANOMALY_USER_SINR_MIN` | `-3` | 用户体验 SINR 下限 |
+| `FDB_ANOMALY_USER_LATENCY_MS_MAX` | `500` | 用户体验时延上限 |
 
 ### 9.2 Kafka topic
 
@@ -803,6 +877,7 @@ cleanup.policy=compact
 | `FDB_KPI_1M_TOPIC` | `cell-kpi-1m` |
 | `FDB_KPI_5M_TOPIC` | `cell-kpi-5m` |
 | `FDB_CELL_ANOMALY_TOPIC` | `cell-anomaly-events` |
+| `FDB_USER_ANOMALY_TOPIC` | `user-anomaly-events` |
 | `FDB_GRID_ANOMALY_TOPIC` | `grid-anomaly-events` |
 
 ### 9.3 StarRocks
@@ -825,6 +900,7 @@ StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external netw
 | `FDB_ICEBERG_DATABASE` | `iceberg_db` |
 | `FDB_ICEBERG_KPI_TABLE` | `cell_kpi` |
 | `FDB_ICEBERG_CELL_ANOMALY_TABLE` | `cell_anomaly_events` |
+| `FDB_ICEBERG_USER_ANOMALY_TABLE` | `user_anomaly_events` |
 | `FDB_ICEBERG_GRID_ANOMALY_TABLE` | `grid_anomaly_events` |
 
 ### 9.5 Hive / File Sink
@@ -998,6 +1074,10 @@ DLQ：
 | Unit | PM schema、CFG state 更新、分钟 accumulator、Full JOIN 到期逻辑 |
 | Unit | `JOINED/CHR_ONLY/PM_ONLY` 输出质量 |
 | Unit | 5 分钟 rollup 从 1 分钟 KPI 聚合 |
+| Unit | 小区 KPI CEP 在连续 3 个 1 分钟异常周期后只触发一次，恢复后才允许再次触发 |
+| Unit | 用户事件 CEP 在 10 分钟内连续 3 个同维度异常事件后触发，正常/成功事件会打断序列 |
+| Unit | 用户事件 CEP 跳过缺失 `imsi` 的记录并计入轻量 invalid-input 指标 |
+| Unit | CFG 缺失时 enrich 主流继续输出，并写入 `enrichment-late` 侧通道 |
 | Unit | 动态均衡开关关闭时不构建相关 DAG 分支 |
 | Unit | `FDB_RESULT_SINK` 只构建一种业务结果 sink，未选 sink 不出现在 StreamGraph/plan |
 | Unit | `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink |
@@ -1005,8 +1085,8 @@ DLQ：
 | Unit | metrics disabled 时 probe 不向 Kafka 发布样本 |
 | Unit | Observability API 将 metrics sample 追加到 `metrics.jsonl` 并生成报告摘要 |
 | Integration | Embedded Kafka + Flink MiniCluster 小流量端到端 |
-| Integration | StarRocks DDL 与 KPI/异常写入 |
-| Integration | Hive/Iceberg KPI 与异常 data files、checkpoint commit、snapshot 可见 |
+| Integration | StarRocks DDL 与 KPI、cell/user/grid 三类异常写入 |
+| Integration | Hive/Iceberg KPI 与 cell/user/grid 三类异常 data files、checkpoint commit、snapshot 可见 |
 | Integration | Hive/Iceberg checkpoint interval 默认 30s，配置值不超过 180s |
 | E2E | 共享 Kafka/Hive/HDFS/StarRocks + 项目 Flink + 控制台 API |
 | Frontend | 总览页按当前 `resultSink` 只渲染真实 sink 节点，并展示报告入口 |
@@ -1029,7 +1109,7 @@ DLQ：
 本轮实现已经落地以下范围：
 
 - Flink job 包结构拆分为 `config/source/model/enrich/kpi/anomaly/balance/sink/metrics` 等子包，`FlinkJobMain` 保持为拓扑入口。
-- `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 控制 KPI 1m、KPI 5m、小区异常和栅格异常四类业务结果，每次运行只构建一种业务 sink 分支。
+- `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 已控制 KPI 1m、KPI 5m、小区异常和栅格异常四类业务结果，每次运行只构建一种业务 sink 分支；2026-07-15 目标态在此基础上扩展用户异常，见 12.2。
 - `FDB_DLQ_ENABLED`、`FDB_METRICS_ENABLED`、`FDB_METRICS_HISTORY_ENABLED`、`FDB_RUN_ID`、`FDB_RUN_LABEL`、`FDB_REPORT_ON_STOP` 等运行时开关已贯通 Flink、observability-api、compose 和 deploy 脚本。
 - metrics 仍走 `fdb-stage-metrics` Kafka topic；observability-api 保留内存最新值，并按 run 写入本地 `metrics.jsonl` 与 `report.md`。
 - 前端流处理总览页读取 `/api/flow/runtime`，展示当前 run/result sink/metrics/DLQ/parallelism/checkpoint/job/report，并按已知 active result sink 过滤流程图、阶段面板和 sink 面板。
@@ -1037,8 +1117,19 @@ DLQ：
 
 仍作为后续增强的项：
 
+- 实体化异常检测重构：小区 1 分钟 KPI 后 CEP、用户 enrich 后 CEP、三张异常结果表、API 与前端异常页同步刷新。
 - Hive/Iceberg 文件数、平均文件大小、小文件数量和 snapshot/checkpoint commit 明细在报告中的深度统计。
 - 前端 `Report` ready 后直接打开 `report.md` 或渲染报告正文。
+
+### 12.2 2026-07-15 Entity Anomaly CEP Design Refresh
+
+目标态刷新为：
+
+- 小区异常从 enriched CHR 事件级检测迁移到 `CellKpi MIN_1` 后的 CEP 检测。
+- 用户异常在 enrich 后新增 CEP 检测分支，与事件级处理链路并列。
+- 栅格覆盖空洞检测保持 geohash/grid 检测，不并入小区异常。
+- 异常结果拆为 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三张表和三类 topic。
+- dev 初始化直接重建三张异常表；当前没有存量部署，不编写升级说明。
 
 ---
 
@@ -1052,11 +1143,16 @@ DLQ：
 - [ ] CHR 与 PM 先生成 1 分钟事实，再按 `cellId + minuteTs` Full JOIN。
 - [ ] PM 或 CHR 单侧缺失时仍输出 `CHR_ONLY` 或 `PM_ONLY`。
 - [ ] 5 分钟 KPI 从 1 分钟 KPI rollup。
+- [ ] CFG 缺失时 enrich 主流继续输出，CFG 缺失上下文写入 `enrichment-late`，不作为业务 DLQ。
+- [ ] 小区异常由 `CellKpi MIN_1` 后的 CEP 检测产出，连续 3 个 1 分钟周期触发，恢复前不重复输出。
+- [ ] 用户异常由 enrich 后的 CEP 检测产出，10 分钟内同维度连续 3 个异常事件触发，正常/成功事件打断序列。
+- [ ] 活动异常类型使用 `CELL_RADIO_BAD`、`CELL_SERVICE_BAD`、`USER_FAILURE`、`USER_QOE_BAD`、`COVERAGE_HOLE`。
 - [x] `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 时，业务结果 sink 每次只创建一种分支。
-- [x] KPI 1m、KPI 5m、小区异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
+- [ ] KPI 1m、KPI 5m、小区异常、用户异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
+- [ ] StarRocks/Iceberg/Hive/Kafka 均具备 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三类异常输出。
 - [x] `FDB_RESULT_SINK=none` 时不创建业务结果 sink，但计算链路可运行。
 - [x] `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink；开启时 DLQ 仅作为 Kafka 兜底链路。
-- [x] 控制台提供 KPI 1m、KPI 5m、小区异常、栅格异常、Sink 耗时页面。
+- [ ] 控制台提供 KPI 1m、KPI 5m、小区异常、用户异常、栅格异常、Sink 耗时页面。
 - [x] 流处理总览页展示当前 run、result sink、metrics、DLQ、parallelism、checkpoint、job status 和 report 状态。
 - [x] 流处理总览页只显示当前真实启用的 sink 节点，并展示瓶颈候选摘要。
 - [ ] 栅格异常至少有表格展示；GIS 展示可用时显示地图或栅格。
