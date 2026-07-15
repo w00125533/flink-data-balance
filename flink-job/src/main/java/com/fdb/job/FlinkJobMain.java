@@ -1,7 +1,8 @@
 package com.fdb.job;
 
-import com.fdb.job.anomaly.AnomalyDetector;
+import com.fdb.job.anomaly.CellKpiCepAnomalyDetector;
 import com.fdb.job.anomaly.CoverageHoleDetector;
+import com.fdb.job.anomaly.UserEventCepAnomalyDetector;
 import com.fdb.job.balance.RoutingAssigner;
 import com.fdb.job.balance.VBucketLoadMeter;
 import com.fdb.job.config.JobConfig;
@@ -182,11 +183,8 @@ public class FlinkJobMain {
         // Anomaly detection
 
         RuleConfig rules = JobConfig.load().rules();
-        DataStream<AnomalyEvent> cellAnomalies = enriched
-            .keyBy(ec -> ec.chrEvent().getCellId().toString())
-            .process(new AnomalyDetector(rules), new GenericTypeInfo<>(AnomalyEvent.class))
-            .name("anomaly-detector")
-            .uid("anomaly-detector");
+        DataStream<AnomalyEvent> userAnomalies = UserEventCepAnomalyDetector
+            .detect(enriched, rules);
         DataStream<AnomalyEvent> coverageAnomalies = enriched
             .keyBy(ec -> Geohash.encode(ec.chrEvent().getLatitude(), ec.chrEvent().getLongitude(), 6))
             .process(new CoverageHoleDetector(rules), new GenericTypeInfo<>(AnomalyEvent.class))
@@ -237,6 +235,8 @@ public class FlinkJobMain {
             .process(new MinuteKpiJoinFunction(Duration.ofMinutes(2)), new GenericTypeInfo<>(CellKpi.class))
             .name("kpi-1m-full-join")
             .uid("kpi-1m-full-join");
+        DataStream<AnomalyEvent> cellAnomalies = CellKpiCepAnomalyDetector
+            .detect(cellKpi1m, rules);
 
         DataStream<CellKpi> cellKpi5m = cellKpi1m
             .assignTimestampsAndWatermarks(

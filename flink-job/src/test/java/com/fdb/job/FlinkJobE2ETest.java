@@ -1,12 +1,12 @@
 package com.fdb.job;
 
-import com.fdb.job.anomaly.AnomalyDetector;
+import com.fdb.job.anomaly.CellKpiCepAnomalyDetector;
 import com.fdb.job.anomaly.CoverageHoleDetector;
+import com.fdb.job.anomaly.UserEventCepAnomalyDetector;
 import com.fdb.job.config.RuleConfig;
 import com.fdb.job.model.EnrichedChr;
 import com.fdb.common.avro.*;
 import com.fdb.common.geo.Geohash;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.CloseableIterator;
@@ -28,54 +28,17 @@ class FlinkJobE2ETest {
     // ─────────────────────────────────────────────────
 
     @Test
-    void anomaly_pipeline_detects_all_rules() throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(1);
+    void entity_anomaly_pipelines_emit_cell_user_and_grid_types() throws Exception {
+        List<AnomalyEvent> cell = runCellKpiCep();
+        List<AnomalyEvent> user = runUserCep();
+        List<AnomalyEvent> grid = runGridCoverage();
 
-        List<ChrEvent> chrEvents = buildChrEvents();
-        List<CfgConfig> cfgConfigs = buildCfgConfigs();
-        List<PmStat> pmStats = buildPmStats();
-
-        List<EnrichedChr> enrichedList = new ArrayList<>();
-        CfgConfig cfg = cfgConfigs.get(0);
-        PmStat pm = pmStats.isEmpty() ? null : pmStats.get(0);
-
-        for (ChrEvent chr : chrEvents) {
-            enrichedList.add(new EnrichedChr(chr, cfg, pm));
-        }
-
-        TypeInformation<EnrichedChr> typeInfo = new GenericTypeInfo<>(EnrichedChr.class);
-        List<AnomalyEvent> anomalies = new ArrayList<>();
-
-        try (CloseableIterator<AnomalyEvent> it = env
-                .fromCollection(enrichedList, typeInfo)
-                .keyBy(ec -> ec.chrEvent().getCellId().toString())
-                .process(new AnomalyDetector(), new GenericTypeInfo<>(AnomalyEvent.class))
-                .executeAndCollect()) {
-            while (it.hasNext()) {
-                anomalies.add(it.next());
-            }
-        }
-
-        // Verify
-        assertThat(anomalies).isNotEmpty();
-
-        long lowSignal = anomalies.stream()
-            .filter(a -> a.getAnomalyType() == AnomalyType.LOW_SIGNAL).count();
-        long attachBurst = anomalies.stream()
-            .filter(a -> a.getAnomalyType() == AnomalyType.ATTACH_FAILURE_BURST).count();
-        long hoPattern = anomalies.stream()
-            .filter(a -> a.getAnomalyType() == AnomalyType.HANDOVER_FAIL_PATTERN).count();
-        long configMismatch = anomalies.stream()
-            .filter(a -> a.getAnomalyType() == AnomalyType.CONFIG_MISMATCH).count();
-        long coverageHole = anomalies.stream()
-            .filter(a -> a.getAnomalyType() == AnomalyType.COVERAGE_HOLE).count();
-
-        assertThat(lowSignal).as("LOW_SIGNAL").isGreaterThanOrEqualTo(54);
-        assertThat(attachBurst).as("ATTACH_FAILURE_BURST").isPositive();
-        assertThat(hoPattern).as("HANDOVER_FAIL_PATTERN").isPositive();
-        assertThat(configMismatch).as("CONFIG_MISMATCH").isEqualTo(1);
-        assertThat(coverageHole).as("COVERAGE_HOLE is emitted by the grid pipeline").isZero();
+        assertThat(cell).extracting(AnomalyEvent::getAnomalyType)
+            .contains(AnomalyType.CELL_RADIO_BAD);
+        assertThat(user).extracting(AnomalyEvent::getAnomalyType)
+            .contains(AnomalyType.USER_FAILURE);
+        assertThat(grid).extracting(AnomalyEvent::getAnomalyType)
+            .containsExactly(AnomalyType.COVERAGE_HOLE);
     }
 
     // ─────────────────────────────────────────────────
@@ -85,18 +48,61 @@ class FlinkJobE2ETest {
     void coverage_hole_pipeline_groups_by_grid() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
+        List<AnomalyEvent> anomalies = runGridCoverage(env);
+        assertThat(anomalies).extracting(AnomalyEvent::getAnomalyType)
+            .containsExactly(AnomalyType.COVERAGE_HOLE);
+    }
+
+    private static List<AnomalyEvent> runCellKpiCep() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        List<CellKpi> input = List.of(
+            cellKpi(0, -111f, 1f, 0.99f, 0.99f, 0.0f),
+            cellKpi(60_000, -112f, 1f, 0.99f, 0.99f, 0.0f),
+            cellKpi(120_000, -113f, 1f, 0.99f, 0.99f, 0.0f));
+        List<AnomalyEvent> anomalies = new ArrayList<>();
+        try (CloseableIterator<AnomalyEvent> it = CellKpiCepAnomalyDetector
+            .detect(env.fromCollection(input, new GenericTypeInfo<>(CellKpi.class)), RuleConfig.defaults())
+            .executeAndCollect()) {
+            while (it.hasNext()) anomalies.add(it.next());
+        }
+        return anomalies;
+    }
+
+    private static List<AnomalyEvent> runUserCep() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        List<EnrichedChr> input = List.of(
+            enrichedChr(chrBaseAt(BASE_TS).setEventType(ChrEventType.ATTACH).setResultCode(1).build()),
+            enrichedChr(chrBaseAt(BASE_TS + 60_000).setEventType(ChrEventType.ATTACH).setResultCode(2).build()),
+            enrichedChr(chrBaseAt(BASE_TS + 120_000).setEventType(ChrEventType.ATTACH).setResultCode(3).build()));
+        List<AnomalyEvent> anomalies = new ArrayList<>();
+        try (CloseableIterator<AnomalyEvent> it = UserEventCepAnomalyDetector
+            .detect(env.fromCollection(input, new GenericTypeInfo<>(EnrichedChr.class)), RuleConfig.defaults())
+            .executeAndCollect()) {
+            while (it.hasNext()) anomalies.add(it.next());
+        }
+        return anomalies;
+    }
+
+    private static List<AnomalyEvent> runGridCoverage() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        return runGridCoverage(env);
+    }
+
+    private static List<AnomalyEvent> runGridCoverage(StreamExecutionEnvironment env) throws Exception {
         List<EnrichedChr> events = new ArrayList<>();
         for (int i = 0; i < 50; i++) events.add(enrichedChrWith(-115f, -5f, 0, null));
         List<AnomalyEvent> anomalies = new ArrayList<>();
         try (CloseableIterator<AnomalyEvent> it = env
-                .fromCollection(events, new GenericTypeInfo<>(EnrichedChr.class))
-                .keyBy(ec -> Geohash.encode(ec.chrEvent().getLatitude(), ec.chrEvent().getLongitude(), 6))
-                .process(new CoverageHoleDetector(RuleConfig.defaults()), new GenericTypeInfo<>(AnomalyEvent.class))
-                .executeAndCollect()) {
+            .fromCollection(events, new GenericTypeInfo<>(EnrichedChr.class))
+            .keyBy(ec -> Geohash.encode(ec.chrEvent().getLatitude(), ec.chrEvent().getLongitude(), 6))
+            .process(new CoverageHoleDetector(RuleConfig.defaults()), new GenericTypeInfo<>(AnomalyEvent.class))
+            .executeAndCollect()) {
             while (it.hasNext()) anomalies.add(it.next());
         }
-        assertThat(anomalies).extracting(AnomalyEvent::getAnomalyType)
-            .containsExactly(AnomalyType.COVERAGE_HOLE);
+        return anomalies;
     }
 
     // ─────────────────────────────────────────────────
@@ -176,9 +182,13 @@ class FlinkJobE2ETest {
     }
 
     private static ChrEvent.Builder chrBase() {
+        return chrBaseAt(BASE_TS);
+    }
+
+    private static ChrEvent.Builder chrBaseAt(long eventTs) {
         return ChrEvent.newBuilder()
             .setChrId(java.util.UUID.randomUUID().toString())
-            .setEventTs(BASE_TS)
+            .setEventTs(eventTs)
             .setImsi("460001234567890")
             .setSiteId(SITE_ID)
             .setCellId(CELL_ID)
@@ -191,6 +201,34 @@ class FlinkJobE2ETest {
             .setResultCode(0)
             .setLatitude(39.9)
             .setLongitude(116.4);
+    }
+
+    private static EnrichedChr enrichedChr(ChrEvent chr) {
+        return new EnrichedChr(chr, cfgConfig(40001, 100, 1000L, 1300), pmStat(0.5f));
+    }
+
+    private static CellKpi cellKpi(long startTs, float rsrp, float sinr, float attach, float ho, float drop) {
+        return CellKpi.newBuilder()
+            .setWindowStartTs(startTs)
+            .setWindowEndTs(startTs + 60_000)
+            .setWindowKind(WindowKind.MIN_1)
+            .setJoinQuality(JoinQuality.JOINED)
+            .setSiteId(SITE_ID)
+            .setCellId(CELL_ID)
+            .setGridId("wx4g0e")
+            .setNumChrEvents(100)
+            .setNumUsers(10)
+            .setRsrpSampleCount(100)
+            .setSinrSampleCount(100)
+            .setAttachAttempts(100)
+            .setAvgRsrp(rsrp)
+            .setAvgSinr(sinr)
+            .setAvgPrbUsageDl(0.5f)
+            .setThroughputDlMbpsAvg(100f)
+            .setDropRate(drop)
+            .setHoSuccessRate(ho)
+            .setAttachSuccessRate(attach)
+            .build();
     }
 
     private static CfgConfig cfgConfig(int tac, int pci, long eci, int arfcn) {
