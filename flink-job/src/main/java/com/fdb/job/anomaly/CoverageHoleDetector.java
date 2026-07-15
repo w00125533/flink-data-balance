@@ -4,6 +4,7 @@ import com.fdb.job.config.RuleConfig;
 import com.fdb.job.model.EnrichedChr;
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.AnomalyType;
+import com.fdb.common.avro.EntityType;
 import com.fdb.common.avro.Severity;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -39,8 +40,28 @@ public class CoverageHoleDetector extends KeyedProcessFunction<String, EnrichedC
         countState.update(count);
         if (count >= rules.coverageHoleThreshold() && !Boolean.TRUE.equals(emittedState.value())) {
             emittedState.update(true);
-            out.collect(AnomalyDetector.buildAnomaly(chr, ctx.getCurrentKey(), AnomalyType.COVERAGE_HOLE,
-                Severity.HIGH, String.format("{\"low_signal_count\":%d,\"window_ms\":%d}", count, WINDOW_MS)));
+            AnomalyRuleEvaluation evaluation = new AnomalyRuleEvaluation(
+                EntityType.GRID,
+                ctx.getCurrentKey(),
+                "coverageHole",
+                true,
+                bucket * WINDOW_MS,
+                bucket * WINDOW_MS + WINDOW_MS,
+                chr.getEventTs(),
+                chr.getSiteId().toString(),
+                chr.getCellId().toString(),
+                null,
+                ctx.getCurrentKey(),
+                chr.getLatitude(),
+                chr.getLongitude(),
+                AnomalyType.COVERAGE_HOLE,
+                Severity.HIGH,
+                rules.ruleVersion(),
+                "lowSignalCount",
+                rules.coverageHoleThreshold(),
+                count,
+                String.format("{\"low_signal_count\":%d,\"window_ms\":%d}", count, WINDOW_MS));
+            out.collect(AnomalyEventFactory.fromEvaluation(evaluation));
         }
     }
 }

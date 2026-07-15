@@ -2,6 +2,7 @@ package com.fdb.job.sink;
 
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.AnomalyType;
+import com.fdb.common.avro.EntityType;
 import com.fdb.common.avro.Severity;
 import org.apache.flink.table.data.RowData;
 import org.junit.jupiter.api.Test;
@@ -12,19 +13,24 @@ class AnomalyEventIcebergMapperTest {
 
     @Test
     void maps_anomaly_event_to_row_data_with_utc_partitions() throws Exception {
-        AnomalyEvent event = new AnomalyEvent(
-            1780383661000L,
-            1780383600000L,
-            "imsi-a",
-            "site-a",
-            "cell-a",
-            "grid-a",
-            31.2304d,
-            121.4737d,
-            AnomalyType.LOW_SIGNAL,
-            Severity.HIGH,
-            "rules-v1",
-            "{\"rsrp\":-118}");
+        AnomalyEvent event = AnomalyEvent.newBuilder()
+            .setDetectionTs(1780383661000L)
+            .setEventTs(1780383600000L)
+            .setEntityType(EntityType.CELL)
+            .setEntityId("cell-a")
+            .setWindowStartTs(1780383540000L)
+            .setWindowEndTs(1780383600000L)
+            .setImsi("imsi-a")
+            .setSiteId("site-a")
+            .setCellId("cell-a")
+            .setGridId("grid-a")
+            .setLatitude(31.2304d)
+            .setLongitude(121.4737d)
+            .setAnomalyType(AnomalyType.LOW_SIGNAL)
+            .setSeverity(Severity.HIGH)
+            .setRuleVersion("rules-v1")
+            .setContextJson("{\"rsrp\":-118}")
+            .build();
 
         RowData row = new AnomalyEventIcebergMapper().map(event);
 
