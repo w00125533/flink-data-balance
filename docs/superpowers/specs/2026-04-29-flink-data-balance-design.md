@@ -1117,7 +1117,6 @@ DLQ：
 
 仍作为后续增强的项：
 
-- 实体化异常检测重构：小区 1 分钟 KPI 后 CEP、用户 enrich 后 CEP、三张异常结果表、API 与前端异常页同步刷新。
 - Hive/Iceberg 文件数、平均文件大小、小文件数量和 snapshot/checkpoint commit 明细在报告中的深度统计。
 - 前端 `Report` ready 后直接打开 `report.md` 或渲染报告正文。
 
@@ -1144,18 +1143,18 @@ DLQ：
 - [ ] PM 或 CHR 单侧缺失时仍输出 `CHR_ONLY` 或 `PM_ONLY`。
 - [ ] 5 分钟 KPI 从 1 分钟 KPI rollup。
 - [ ] CFG 缺失时 enrich 主流继续输出，CFG 缺失上下文写入 `enrichment-late`，不作为业务 DLQ。
-- [ ] 小区异常由 `CellKpi MIN_1` 后的 CEP 检测产出，连续 3 个 1 分钟周期触发，恢复前不重复输出。
-- [ ] 用户异常由 enrich 后的 CEP 检测产出，10 分钟内同维度连续 3 个异常事件触发，正常/成功事件打断序列。
-- [ ] 活动异常类型使用 `CELL_RADIO_BAD`、`CELL_SERVICE_BAD`、`USER_FAILURE`、`USER_QOE_BAD`、`COVERAGE_HOLE`。
+- [x] 小区异常由 `CellKpi MIN_1` 后的 CEP 检测产出，连续 3 个 1 分钟周期触发，恢复前不重复输出。
+- [x] 用户异常由 enrich 后的 CEP 检测产出，10 分钟内同维度连续 3 个异常事件触发，正常/成功事件打断序列。
+- [x] 活动异常类型使用 `CELL_RADIO_BAD`、`CELL_SERVICE_BAD`、`USER_FAILURE`、`USER_QOE_BAD`、`COVERAGE_HOLE`。
 - [x] `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 时，业务结果 sink 每次只创建一种分支。
-- [ ] KPI 1m、KPI 5m、小区异常、用户异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
-- [ ] StarRocks/Iceberg/Hive/Kafka 均具备 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三类异常输出。
+- [x] KPI 1m、KPI 5m、小区异常、用户异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。
+- [x] StarRocks/Iceberg/Hive/Kafka 均具备 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三类异常输出。
 - [x] `FDB_RESULT_SINK=none` 时不创建业务结果 sink，但计算链路可运行。
 - [x] `FDB_DLQ_ENABLED=false` 时不创建 DLQ sink；开启时 DLQ 仅作为 Kafka 兜底链路。
-- [ ] 控制台提供 KPI 1m、KPI 5m、小区异常、用户异常、栅格异常、Sink 耗时页面。
+- [x] 控制台提供 KPI 1m、KPI 5m、小区异常、用户异常、栅格异常、Sink 耗时页面。
 - [x] 流处理总览页展示当前 run、result sink、metrics、DLQ、parallelism、checkpoint、job status 和 report 状态。
 - [x] 流处理总览页只显示当前真实启用的 sink 节点，并展示瓶颈候选摘要。
-- [ ] 栅格异常至少有表格展示；GIS 展示可用时显示地图或栅格。
+- [x] 栅格异常至少有表格展示；GIS 展示可用时显示地图或栅格。
 - [x] 每个 sink 分支记录最近一次耗时、p50/p95/p99、记录数、字节数、失败数。
 - [ ] Hive/Iceberg 展示 checkpoint/snapshot commit 耗时、文件数、平均文件大小和小文件数量。
 - [x] Hive/Iceberg result sink 默认 checkpoint interval 为 30s，配置值不超过 180s。

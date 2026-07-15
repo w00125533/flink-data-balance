@@ -92,10 +92,11 @@ one business result sink for a run. Only one result sink is active at a time for
 benchmark comparability; DLQ output is controlled independently by
 `FDB_DLQ_ENABLED=true|false`.
 
-The selected result sink applies to KPI 1m, KPI 5m, cell anomalies and grid
-anomalies as one unit. Metrics and DLQ are separate observability/safety paths,
-so `FDB_RESULT_SINK=none` disables only business result output while keeping the
-calculation pipeline and optional metrics path available.
+The selected result sink applies to KPI 1m, KPI 5m, cell anomalies, user
+anomalies and grid anomalies as one unit. Metrics and DLQ are separate
+observability/safety paths, so `FDB_RESULT_SINK=none` disables only business
+result output while keeping the calculation pipeline and optional metrics path
+available.
 
 Local submit/report:
 
@@ -162,9 +163,10 @@ The Flink job emits samples for `chr-source`, `pm-source`, `cfg-source`, `kafka`
 `enrichment` and the sink probe stages `kafka-kpi-1m`, `starrocks-kpi-1m`,
 `hive-kpi-1m`, `iceberg-kpi-1m`, `kafka-kpi-5m`, `starrocks-kpi-5m`,
 `hive-kpi-5m`, `iceberg-kpi-5m`, `kafka-cell-anomaly`,
-`kafka-grid-anomaly`, `starrocks-cell-anomaly`, `starrocks-grid-anomaly`,
-`hive-cell-anomaly`, `hive-grid-anomaly`, `iceberg-cell-anomaly` and
-`iceberg-grid-anomaly`.
+`kafka-user-anomaly`, `kafka-grid-anomaly`, `starrocks-cell-anomaly`,
+`starrocks-user-anomaly`, `starrocks-grid-anomaly`, `hive-cell-anomaly`,
+`hive-user-anomaly`, `hive-grid-anomaly`, `iceberg-cell-anomaly`,
+`iceberg-user-anomaly` and `iceberg-grid-anomaly`.
 When `FDB_DYNAMIC_BALANCING_ENABLED=true`, it also emits `assigner` and
 `load-coordinator` samples. The observability API keeps the latest sample per
 stage and renders the `fdb_*` Prometheus series. The Flink containers also
@@ -331,8 +333,9 @@ flowchart LR
     Flink --> KKpi1m["Kafka: cell-kpi-1m"]
     Flink --> KKpi5m["Kafka: cell-kpi-5m"]
     Flink --> KCellAnomaly["Kafka: cell-anomaly-events"]
+    Flink --> KUserAnomaly["Kafka: user-anomaly-events"]
     Flink --> KGridAnomaly["Kafka: grid-anomaly-events"]
-    Flink --> StarRocks["StarRocks: cell_kpi, kpi_1m, kpi_5m, cell/grid anomalies"]
+    Flink --> StarRocks["StarRocks: cell_kpi, kpi_1m, kpi_5m, cell/user/grid anomalies"]
     Flink --> Parquet["Warehouse: cell_kpi/*.parquet"]
     Parquet --> Hive["Hive external table: fdb.cell_kpi"]
 
@@ -346,14 +349,14 @@ flowchart LR
 ### Key Validation Checkpoints
 
 - Kafka input and output: `cfg-config`, `pm-stats`, `chr-events`,
-  `cell-kpi-1m`, `cell-kpi-5m`, `cell-anomaly-events` and
-  `grid-anomaly-events` are summarized; PM messages and the CFG baseline must be
-  present.
+  `cell-kpi-1m`, `cell-kpi-5m`, `cell-anomaly-events`,
+  `user-anomaly-events` and `grid-anomaly-events` are summarized; PM messages
+  and the CFG baseline must be present.
 - StarRocks KPI: `cell_kpi` must contain `MIN_1` and `MIN_5` rows, and
   `kpi_1m` / `kpi_5m` views are initialized for API queries.
-- StarRocks anomaly tables: `cell_anomaly_events` and `grid_anomaly_events`
-  must be queryable. Seeded smoke data is not guaranteed to produce non-zero
-  anomaly rows.
+- StarRocks anomaly tables: `cell_anomaly_events`, `user_anomaly_events` and
+  `grid_anomaly_events` must be queryable. Seeded smoke data is not guaranteed
+  to produce non-zero anomaly rows.
 - Flink DAG: by default, the REST plan must not contain `routing-assigner`,
   `vbucket-load-meter` or `load-coordinator`.
 - Sink latency: `/api/results/sink-latency` must return runtime samples for the
