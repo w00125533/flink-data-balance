@@ -6,3 +6,17 @@ rules:
     threshold: 10
   coverageHole:
     threshold: 50
+  cell:
+    consecutiveMinutes: 3
+    rsrpMin: -110
+    sinrMin: -3
+    attachSuccessMin: 0.95
+    hoSuccessMin: 0.90
+    dropRateMax: 0.05
+  user:
+    consecutiveEvents: 3
+    windowMinutes: 10
+    rsrpMin: -110
+    sinrMin: -3
+    latencyMsMax: 500
+  version: v1.0
