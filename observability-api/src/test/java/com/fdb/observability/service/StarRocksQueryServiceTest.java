@@ -3,6 +3,7 @@ package com.fdb.observability.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fdb.observability.model.AnomalyResultRow;
 import com.fdb.observability.model.KpiResultRow;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -55,6 +56,72 @@ class StarRocksQueryServiceTest {
         + " AND detection_ts <= ? AND grid_id = ? AND severity = ? AND anomaly_type = ?"
         + " ORDER BY detection_ts DESC LIMIT ?");
     assertThat(jdbc.parameters()).containsExactly(900L, 2000L, "wx4g0e", "HIGH", "LOW_SIGNAL", 1000);
+  }
+
+  @Test
+  void userAnomalyQueryUsesEntityPredicatesInStableParameterOrder() throws Exception {
+    CapturingJdbc jdbc = new CapturingJdbc();
+    StarRocksQueryService service = new StarRocksQueryService(jdbc::connection);
+
+    service.queryUserAnomalies(Map.of(
+        "startTs", "100",
+        "endTs", "900",
+        "entityType", "USER",
+        "entityId", "460001234567890",
+        "imsi", "460001234567890",
+        "cellId", "CELL-001",
+        "severity", "HIGH",
+        "anomalyType", "USER_QOE_BAD",
+        "limit", "50"));
+
+    assertThat(jdbc.sql()).isEqualTo("SELECT * FROM user_anomaly_events WHERE detection_ts >= ?"
+        + " AND detection_ts <= ? AND entity_type = ? AND entity_id = ? AND imsi = ? AND cell_id = ?"
+        + " AND severity = ? AND anomaly_type = ? ORDER BY detection_ts DESC LIMIT ?");
+    assertThat(jdbc.parameters()).containsExactly(
+        100L, 900L, "USER", "460001234567890", "460001234567890", "CELL-001", "HIGH", "USER_QOE_BAD", 50);
+  }
+
+  @Test
+  void mapsEntityAwareAnomalyColumns() throws Exception {
+    RowJdbc jdbc = new RowJdbc(row(
+        "detection_ts", 1000L,
+        "event_ts", 900L,
+        "entity_type", "USER",
+        "entity_id", "460001234567890",
+        "window_start_ts", 100L,
+        "window_end_ts", 900L,
+        "imsi", "460001234567890",
+        "site_id", "SITE-001",
+        "cell_id", "CELL-001",
+        "grid_id", "wx4g0e",
+        "anomaly_type", "USER_QOE_BAD",
+        "severity", "HIGH",
+        "context_json", "{\"metric\":\"latencyMs\"}",
+        "latitude", 39.9d,
+        "longitude", 116.4d,
+        "rule_version", "v1.0"));
+    StarRocksQueryService service = new StarRocksQueryService(jdbc::connection);
+
+    List<AnomalyResultRow> rows = service.queryUserAnomalies(Map.of());
+
+    assertThat(rows).singleElement().satisfies(row -> {
+      assertThat(row.detectionTs()).isEqualTo(1000L);
+      assertThat(row.eventTs()).isEqualTo(900L);
+      assertThat(row.entityType()).isEqualTo("USER");
+      assertThat(row.entityId()).isEqualTo("460001234567890");
+      assertThat(row.windowStartTs()).isEqualTo(100L);
+      assertThat(row.windowEndTs()).isEqualTo(900L);
+      assertThat(row.imsi()).isEqualTo("460001234567890");
+      assertThat(row.siteId()).isEqualTo("SITE-001");
+      assertThat(row.cellId()).isEqualTo("CELL-001");
+      assertThat(row.gridId()).isEqualTo("wx4g0e");
+      assertThat(row.anomalyType()).isEqualTo("USER_QOE_BAD");
+      assertThat(row.severity()).isEqualTo("HIGH");
+      assertThat(row.contextJson()).isEqualTo("{\"metric\":\"latencyMs\"}");
+      assertThat(row.latitude()).isEqualTo(39.9d);
+      assertThat(row.longitude()).isEqualTo(116.4d);
+      assertThat(row.ruleVersion()).isEqualTo("v1.0");
+    });
   }
 
   @Test

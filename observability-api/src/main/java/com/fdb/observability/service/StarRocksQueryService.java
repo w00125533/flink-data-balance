@@ -43,6 +43,10 @@ public class StarRocksQueryService {
     return queryAnomalies("cell_anomaly_events", queryParameters);
   }
 
+  public List<AnomalyResultRow> queryUserAnomalies(Map<String, String> queryParameters) throws SQLException {
+    return queryAnomalies("user_anomaly_events", queryParameters);
+  }
+
   public List<AnomalyResultRow> queryGridAnomalies(Map<String, String> queryParameters) throws SQLException {
     return queryAnomalies("grid_anomaly_events", queryParameters);
   }
@@ -69,6 +73,9 @@ public class StarRocksQueryService {
         "detection_ts",
         "detection_ts",
         List.of(
+            new Filter("entityType", "entity_type"),
+            new Filter("entityId", "entity_id"),
+            new Filter("imsi", "imsi"),
             new Filter("siteId", "site_id"),
             new Filter("cellId", "cell_id"),
             new Filter("gridId", "grid_id"),
@@ -140,6 +147,11 @@ public class StarRocksQueryService {
     return new AnomalyResultRow(
         longValue(rs, columns, "detection_ts", "detectionTs"),
         longValue(rs, columns, "event_ts", "eventTs"),
+        stringValue(rs, columns, "entity_type", "entityType"),
+        stringValue(rs, columns, "entity_id", "entityId"),
+        longValue(rs, columns, "window_start_ts", "windowStartTs"),
+        longValue(rs, columns, "window_end_ts", "windowEndTs"),
+        stringValue(rs, columns, "imsi"),
         stringValue(rs, columns, "site_id", "siteId"),
         stringValue(rs, columns, "cell_id", "cellId"),
         stringValue(rs, columns, "grid_id", "gridId"),

@@ -70,9 +70,30 @@ class ObservabilityResultEndpointsTest {
     assertThat(queries.lastCellAnomalyParams).containsEntry("severity", "HIGH");
     assertThat(body.get(0).get("detectionTs").asLong()).isEqualTo(1000L);
     assertThat(body.get(0).get("eventTs").asLong()).isEqualTo(900L);
-    assertThat(body.get(0).get("anomalyType").asText()).isEqualTo("LOW_SIGNAL");
+    assertThat(body.get(0).get("entityType").asText()).isEqualTo("CELL");
+    assertThat(body.get(0).get("entityId").asText()).isEqualTo("CELL-001");
+    assertThat(body.get(0).get("windowStartTs").asLong()).isEqualTo(100L);
+    assertThat(body.get(0).get("windowEndTs").asLong()).isEqualTo(900L);
+    assertThat(body.get(0).get("anomalyType").asText()).isEqualTo("CELL_RADIO_BAD");
     assertThat(body.get(0).get("severity").asText()).isEqualTo("HIGH");
     assertThat(body.get(0).get("contextJson").asText()).isEqualTo("{}");
+  }
+
+  @Test
+  void returnsUserAnomalyResults() throws Exception {
+    FakeStarRocksQueryService queries = new FakeStarRocksQueryService();
+    server = startServer(new ObservabilitySnapshotService(), queries);
+
+    JsonNode body = get("/api/results/anomalies/user?imsi=460001234567890&entityId=460001234567890");
+
+    assertThat(queries.lastUserAnomalyParams).containsEntry("imsi", "460001234567890");
+    assertThat(queries.lastUserAnomalyParams).containsEntry("entityId", "460001234567890");
+    assertThat(body.get(0).get("entityType").asText()).isEqualTo("USER");
+    assertThat(body.get(0).get("entityId").asText()).isEqualTo("460001234567890");
+    assertThat(body.get(0).get("imsi").asText()).isEqualTo("460001234567890");
+    assertThat(body.get(0).get("windowStartTs").asLong()).isEqualTo(100L);
+    assertThat(body.get(0).get("windowEndTs").asLong()).isEqualTo(900L);
+    assertThat(body.get(0).get("anomalyType").asText()).isEqualTo("USER_QOE_BAD");
   }
 
   @Test
@@ -83,6 +104,8 @@ class ObservabilityResultEndpointsTest {
     JsonNode body = get("/api/results/anomalies/grid?gridId=wx4g0e");
 
     assertThat(queries.lastGridAnomalyParams).containsEntry("gridId", "wx4g0e");
+    assertThat(body.get(0).get("entityType").asText()).isEqualTo("GRID");
+    assertThat(body.get(0).get("entityId").asText()).isEqualTo("wx4g0e");
     assertThat(body.get(0).get("gridId").asText()).isEqualTo("wx4g0e");
   }
 
@@ -192,6 +215,7 @@ class ObservabilityResultEndpointsTest {
     private Map<String, String> lastKpi1mParams = Map.of();
     private Map<String, String> lastKpi5mParams = Map.of();
     private Map<String, String> lastCellAnomalyParams = Map.of();
+    private Map<String, String> lastUserAnomalyParams = Map.of();
     private Map<String, String> lastGridAnomalyParams = Map.of();
     private IllegalArgumentException badRequestFailure;
     private SQLException sqlFailure;
@@ -221,14 +245,22 @@ class ObservabilityResultEndpointsTest {
     public List<AnomalyResultRow> queryCellAnomalies(Map<String, String> queryParameters) throws SQLException {
       throwIfConfigured();
       lastCellAnomalyParams = queryParameters;
-      return List.of(anomaly("CELL-001"));
+      return List.of(anomaly("CELL", "CELL-001", null, "CELL-001", "wx4g0e", "CELL_RADIO_BAD"));
+    }
+
+    @Override
+    public List<AnomalyResultRow> queryUserAnomalies(Map<String, String> queryParameters) throws SQLException {
+      throwIfConfigured();
+      lastUserAnomalyParams = queryParameters;
+      return List.of(anomaly("USER", "460001234567890", "460001234567890", "CELL-001", "wx4g0e",
+          "USER_QOE_BAD"));
     }
 
     @Override
     public List<AnomalyResultRow> queryGridAnomalies(Map<String, String> queryParameters) throws SQLException {
       throwIfConfigured();
       lastGridAnomalyParams = queryParameters;
-      return List.of(anomaly(""));
+      return List.of(anomaly("GRID", "wx4g0e", null, null, "wx4g0e", "COVERAGE_HOLE"));
     }
 
     private void throwIfConfigured() throws SQLException {
@@ -248,9 +280,15 @@ class ObservabilityResultEndpointsTest {
           10L, 42L, -92.0d, 12.0d, 0.7d, 120.0d, 0.01d, 0.95d, 0.98d);
     }
 
-    private static AnomalyResultRow anomaly(String cellId) {
-      return new AnomalyResultRow(1000L, 900L, "SITE-001", cellId, "wx4g0e", "LOW_SIGNAL", "HIGH", "{}",
-          39.9d, 116.4d, "v1");
+    private static AnomalyResultRow anomaly(
+        String entityType,
+        String entityId,
+        String imsi,
+        String cellId,
+        String gridId,
+        String anomalyType) {
+      return new AnomalyResultRow(1000L, 900L, entityType, entityId, 100L, 900L, imsi, "SITE-001", cellId,
+          gridId, anomalyType, "HIGH", "{}", 39.9d, 116.4d, "v1");
     }
   }
 

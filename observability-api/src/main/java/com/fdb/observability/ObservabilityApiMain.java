@@ -103,6 +103,8 @@ public final class ObservabilityApiMain {
         exchange -> writeQueryJson(exchange, () -> queryService.queryKpi5m(queryParameters(exchange))));
     server.createContext("/api/results/anomalies/cell",
         exchange -> writeQueryJson(exchange, () -> queryService.queryCellAnomalies(queryParameters(exchange))));
+    server.createContext("/api/results/anomalies/user",
+        exchange -> writeQueryJson(exchange, () -> queryService.queryUserAnomalies(queryParameters(exchange))));
     server.createContext("/api/results/anomalies/grid",
         exchange -> writeQueryJson(exchange, () -> queryService.queryGridAnomalies(queryParameters(exchange))));
     server.createContext("/api/results/sink-latency", exchange -> writeJson(exchange, service.sinkLatencySummaries()));

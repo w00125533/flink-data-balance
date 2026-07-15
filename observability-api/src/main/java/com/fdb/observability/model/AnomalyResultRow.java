@@ -3,6 +3,11 @@ package com.fdb.observability.model;
 public record AnomalyResultRow(
     Long detectionTs,
     Long eventTs,
+    String entityType,
+    String entityId,
+    Long windowStartTs,
+    Long windowEndTs,
+    String imsi,
     String siteId,
     String cellId,
     String gridId,

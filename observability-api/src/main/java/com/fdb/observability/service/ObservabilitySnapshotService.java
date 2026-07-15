@@ -184,12 +184,16 @@ public final class ObservabilitySnapshotService {
     defaults.add(sinkDefault("hive-kpi-5m", "Cell KPI 5m Hive Sink", "hive", "kpi_5m", "MIN_5", now));
     defaults.add(sinkDefault("iceberg-kpi-5m", "Cell KPI 5m Iceberg Sink", "iceberg", "kpi_5m", "MIN_5", now));
     defaults.add(sinkDefault("kafka-cell-anomaly", "Cell Anomaly Kafka Sink", "kafka", "cell_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("kafka-user-anomaly", "User Anomaly Kafka Sink", "kafka", "user_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("kafka-grid-anomaly", "Grid Anomaly Kafka Sink", "kafka", "grid_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("starrocks-cell-anomaly", "Cell Anomaly StarRocks Sink", "starrocks", "cell_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("starrocks-user-anomaly", "User Anomaly StarRocks Sink", "starrocks", "user_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("starrocks-grid-anomaly", "Grid Anomaly StarRocks Sink", "starrocks", "grid_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("hive-cell-anomaly", "Cell Anomaly Hive Sink", "hive", "cell_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("hive-user-anomaly", "User Anomaly Hive Sink", "hive", "user_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("hive-grid-anomaly", "Grid Anomaly Hive Sink", "hive", "grid_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("iceberg-cell-anomaly", "Cell Anomaly Iceberg Sink", "iceberg", "cell_anomaly_events", "ANOMALY", now));
+    defaults.add(sinkDefault("iceberg-user-anomaly", "User Anomaly Iceberg Sink", "iceberg", "user_anomaly_events", "ANOMALY", now));
     defaults.add(sinkDefault("iceberg-grid-anomaly", "Grid Anomaly Iceberg Sink", "iceberg", "grid_anomaly_events", "ANOMALY", now));
     defaults.forEach(sample -> samples.put(sampleKey(sample), sample));
   }
@@ -217,12 +221,16 @@ public final class ObservabilitySnapshotService {
     order.put("hive-kpi-5m", next++);
     order.put("iceberg-kpi-5m", next++);
     order.put("kafka-cell-anomaly", next++);
+    order.put("kafka-user-anomaly", next++);
     order.put("kafka-grid-anomaly", next++);
     order.put("starrocks-cell-anomaly", next++);
+    order.put("starrocks-user-anomaly", next++);
     order.put("starrocks-grid-anomaly", next++);
     order.put("hive-cell-anomaly", next++);
+    order.put("hive-user-anomaly", next++);
     order.put("hive-grid-anomaly", next++);
     order.put("iceberg-cell-anomaly", next++);
+    order.put("iceberg-user-anomaly", next++);
     order.put("iceberg-grid-anomaly", next);
     return order;
   }

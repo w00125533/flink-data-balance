@@ -52,16 +52,16 @@ class ObservabilitySnapshotServiceTest {
         .extracting("sink")
         .contains("kafka-kpi-1m", "starrocks-kpi-1m", "hive-kpi-1m", "iceberg-kpi-1m",
             "kafka-kpi-5m", "starrocks-kpi-5m", "hive-kpi-5m", "iceberg-kpi-5m",
-            "kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-cell-anomaly", "starrocks-grid-anomaly",
-            "hive-cell-anomaly", "hive-grid-anomaly",
-            "iceberg-cell-anomaly", "iceberg-grid-anomaly");
+            "kafka-cell-anomaly", "kafka-user-anomaly", "kafka-grid-anomaly",
+            "starrocks-cell-anomaly", "starrocks-user-anomaly", "starrocks-grid-anomaly",
+            "hive-cell-anomaly", "hive-user-anomaly", "hive-grid-anomaly",
+            "iceberg-cell-anomaly", "iceberg-user-anomaly", "iceberg-grid-anomaly");
     assertThat(service.stageStatuses())
         .extracting("stageId")
-        .contains("kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-cell-anomaly", "starrocks-grid-anomaly",
-            "hive-cell-anomaly", "hive-grid-anomaly",
-            "iceberg-cell-anomaly", "iceberg-grid-anomaly");
+        .contains("kafka-cell-anomaly", "kafka-user-anomaly", "kafka-grid-anomaly",
+            "starrocks-cell-anomaly", "starrocks-user-anomaly", "starrocks-grid-anomaly",
+            "hive-cell-anomaly", "hive-user-anomaly", "hive-grid-anomaly",
+            "iceberg-cell-anomaly", "iceberg-user-anomaly", "iceberg-grid-anomaly");
   }
 
   @Test
@@ -74,10 +74,10 @@ class ObservabilitySnapshotServiceTest {
     assertThat(summaries)
         .filteredOn(summary -> summary.window().equals("ANOMALY"))
         .extracting("sink")
-        .contains("kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-cell-anomaly", "starrocks-grid-anomaly",
-            "hive-cell-anomaly", "hive-grid-anomaly",
-            "iceberg-cell-anomaly", "iceberg-grid-anomaly");
+        .contains("kafka-cell-anomaly", "kafka-user-anomaly", "kafka-grid-anomaly",
+            "starrocks-cell-anomaly", "starrocks-user-anomaly", "starrocks-grid-anomaly",
+            "hive-cell-anomaly", "hive-user-anomaly", "hive-grid-anomaly",
+            "iceberg-cell-anomaly", "iceberg-user-anomaly", "iceberg-grid-anomaly");
   }
 
   @Test
@@ -85,10 +85,12 @@ class ObservabilitySnapshotServiceTest {
     assertThat(service.stageStatuses())
         .extracting("stageId")
         .contains(
-            "kafka-kpi-1m", "kafka-kpi-5m", "kafka-cell-anomaly", "kafka-grid-anomaly",
-            "starrocks-kpi-1m", "starrocks-kpi-5m", "starrocks-cell-anomaly", "starrocks-grid-anomaly",
-            "hive-kpi-1m", "hive-kpi-5m", "hive-cell-anomaly", "hive-grid-anomaly",
-            "iceberg-kpi-1m", "iceberg-kpi-5m", "iceberg-cell-anomaly", "iceberg-grid-anomaly");
+            "kafka-kpi-1m", "kafka-kpi-5m", "kafka-cell-anomaly", "kafka-user-anomaly", "kafka-grid-anomaly",
+            "starrocks-kpi-1m", "starrocks-kpi-5m", "starrocks-cell-anomaly", "starrocks-user-anomaly",
+            "starrocks-grid-anomaly",
+            "hive-kpi-1m", "hive-kpi-5m", "hive-cell-anomaly", "hive-user-anomaly", "hive-grid-anomaly",
+            "iceberg-kpi-1m", "iceberg-kpi-5m", "iceberg-cell-anomaly", "iceberg-user-anomaly",
+            "iceberg-grid-anomaly");
   }
 
   @Test
