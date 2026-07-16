@@ -884,6 +884,28 @@ configuration, stable upper-bound cards per sink, the `sink x cellLevel` matrix,
 failure points, cross-sink metric comparisons, global recommendations, per-sink
 recommendations, and links to every single-run `report.html`.
 
+单轮 `report.html` 采用“顶部总览 + 分区钻取”布局。首屏需要回答本轮是否稳定、
+施加了多大压力、发现了什么瓶颈或告警、下一步建议调优什么；下方再按结构化分区
+展示明细，不再把 Java `toString()` 输出作为主要阅读内容：
+
+- 运行摘要：sink、cell level、目标 CHR EPS、实际 in/out EPS、target、warmup、
+  duration、最终状态和瓶颈原因；
+- Flink 资源：job status、TaskManager 数、slots、job 并行度、checkpoint
+  duration/failure、restart/fail/cancel 信号和 backpressure；
+- 算子吞吐：每个 Flink vertex/operator 一行，展示名称、并行度、records/bytes
+  in/out per second、busy/idle/backpressure（可采集时）和紧凑健康状态；
+- 时延：source delay、KPI 1m 可见性、KPI 5m 可见性、sink latency 和
+  watermark lag，优先展示 p50/p95/p99；第一版如果只有 p95，则先展示 p95；
+- sink 与存储：sink records/s、bytes/s、p50/p95/p99、失败数，以及所选 sink
+  的 storage probe 明细；包括 StarRocks 健康检查、Kafka offsets、Hive
+  file/in-progress files、Iceberg files/snapshots 等适用信息；
+- 原始产物：链接到 `run.json`、`flink-snapshot.json`、
+  `fdb-metrics-snapshot.json` 和 `storage-snapshot.json`，用于机器级复盘。
+
+视觉呈现保持紧凑、偏运维诊断：优先使用状态 badge、小型指标卡和表格，少用长段文字。
+大段原始 JSON 或 preformatted 内容不放在主阅读区域，只通过链接或页面末尾的原始
+快照区暴露。
+
 The first version does not generate Markdown reports. JSON and CSV files are
 kept for repeatable analysis and post-processing.
 
@@ -1308,6 +1330,14 @@ DLQ：
   `runs/<runId>/report.html`。JSON/CSV 仅用于机器分析和复盘。
 - `index.html` 集成全局结论、每个 sink 的稳定上限、失败点、横向对比、
   优化建议和所有单轮详情链接，不单独生成 recommendations 文件。
+- 单轮 `report.html` 按 C 方案实现：顶部为运行状态、瓶颈原因、调优建议和
+  核心指标卡；下方按运行摘要、Flink 资源、算子吞吐、时延、Sink 与存储、
+  原始产物分区钻取。页面应主要使用状态 badge、指标卡和表格，避免把
+  Java record `toString()` 或大段 JSON 作为主阅读内容。
+- 第一版单轮详情页必须补齐 Flink REST 的 TaskManager/slot/job vertex
+  明细、Observability API 的 KPI/sink/watermark 时延摘要，以及 storage
+  probe 的结构化展示；dry-run 也要输出足够丰富的示例数据，避免测试报告
+  看起来像空壳。
 - Java tests 覆盖配置、矩阵、Flink API 解析、判定引擎、fake clients、
   JSON/CSV 和 HTML 生成。`scripts/test-benchmark-dispatch.sh` 只覆盖 shell
   启动入口，不挂入 Maven lifecycle。
