@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+
+usage() {
+  echo "Usage: scripts/benchmark.sh <local|external-yarn> [runner args]"
+  echo "Examples:"
+  echo "  FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local"
+  echo "  FDB_ENV_FILE=.env.external bash scripts/benchmark.sh external-yarn --dry-run"
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  usage
+  exit 0
+fi
+
+TARGET="${1:-}"
+if [[ -z "$TARGET" ]]; then
+  usage >&2
+  echo "[ERROR] missing target" >&2
+  exit 1
+fi
+case "$TARGET" in
+  local | external-yarn) ;;
+  *)
+    echo "[ERROR] unsupported target: $TARGET" >&2
+    exit 1
+    ;;
+esac
+shift
+
+ENV_FILE="${FDB_ENV_FILE:-.env}"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "[ERROR] env file not found: $ENV_FILE" >&2
+  exit 1
+fi
+
+env_file_lookup() {
+  local key="$1"
+  local line value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" == "$key="* ]] || continue
+    value="${line#*=}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'* && "$value" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    printf '%s\n' "$value"
+    return 0
+  done < "$ENV_FILE"
+  return 1
+}
+
+JAR="${FDB_BENCHMARK_RUNNER_JAR:-$(env_file_lookup FDB_BENCHMARK_RUNNER_JAR || true)}"
+JAR="${JAR:-benchmark-runner/target/benchmark-runner-0.1.0-SNAPSHOT.jar}"
+if [[ ! -f "$JAR" ]]; then
+  echo "[ERROR] benchmark-runner jar not found: $JAR" >&2
+  echo "[ERROR] build it with: mvn -pl benchmark-runner -am package" >&2
+  exit 1
+fi
+
+exec java -jar "$JAR" "$TARGET" --env "$ENV_FILE" "$@"

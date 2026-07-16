@@ -19,14 +19,14 @@
    - CHR 与 PM 先分别按 `cellId + minuteTs` 做 1 分钟增量汇聚。
    - 以 `cellId + minuteTs` 做 Full JOIN，最多等待迟到 2 分钟。
    - 产出 1 分钟小区 KPI，5 分钟 KPI 从 1 分钟 KPI rollup。
-   - 小区级异常在 1 分钟 KPI 后用 CEP 检测，用户级异常在 enrich 后用 CEP 检测，栅格级覆盖空洞保留 geohash 检测。
+   - 小区级异常在 1 分钟 KPI 后做规则状态检测，用户级异常在 enrich 后做规则状态检测，栅格级覆盖空洞保留 geohash 检测。
 4. **动态均衡可选**：默认关闭；关闭时 Flink DAG 不创建动态均衡相关算子。
 5. **单类型业务结果 Sink**：通过 `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 控制本次运行全部业务结果只写一种 sink，便于压测不同存储的上限。
 6. **统一业务结果口径**：KPI 1m、KPI 5m、小区异常、用户异常、栅格异常均纳入同一个 result sink 开关；Hive/Iceberg 模式下异常结果也落成对应表。
 7. **实时观测控制台**：展示当前 run、实际启用的 DAG、KPI 结果、三类实体异常结果、每次 sink 写入耗时、瓶颈候选与压测报告入口。
 8. **数据老化治理**：业务流和结果数据按 1 小时、10GB 上限治理；compact 配置类 topic 保留最新配置。
 9. **多目标部署入口**：通过统一 `scripts/deploy.sh <target> <command>` 管理本地 Docker 调试和外部 YARN 部署；本地复用 `../shared-data-infra`，外部环境通过 `.env` 连接已部署的 Kafka、HDFS、Hive、StarRocks、YARN 等基础设施。
-10. **压测报告**：每次压测以 `runId` 归档 metrics 历史并生成 `report.md`，用于对比不同 sink、并行度和 checkpoint 配置下的瓶颈。
+10. **压测报告**：每次压测以 `benchmarkId/runId` 归档运行配置、Flink 快照、业务 metrics、存储探测和 HTML 报告，用于对比不同 sink 压力档位下的稳定上限与瓶颈。
 
 ### 1.2 非目标
 
@@ -63,7 +63,7 @@ Kafka topology / chr-events / pm-stats / cfg-config
       v
 Flink job
   - CHR source -> enrich with CFG/PM context
-      -> user event CEP detector
+      -> user event anomaly detect-dedup
       -> coverage-hole detector by geohash
       -> CHR 1m fact
   - PM  source -> keyBy(cellId) -> PM  1m fact
@@ -71,14 +71,14 @@ Flink job
   - CHR 1m fact + PM 1m fact + CFG
       -> Full JOIN by cellId + minuteTs, wait 2 minutes
       -> CellKpi MIN_1
-      -> cell KPI CEP detector
+      -> cell KPI anomaly detect-dedup
       -> CellKpi MIN_5 rollup
 
 Outputs
   - KPI 1m / 5m -> selected result sink only
   - cell/user/grid anomalies -> selected result sink only
   - sink metrics -> fdb-stage-metrics -> Observability API memory + local JSONL history
-  - benchmark report -> docker/data/observability-runs/<runId>/report.md
+  - benchmark report -> benchmark-runner/output/benchmark-runs/<benchmarkId>/index.html
 ```
 
 默认链路中不创建动态均衡相关算子。Flink Web UI 和观测控制台都只展示实际存在的 source、aggregation、join、anomaly、sink 和 observability 节点。
@@ -133,7 +133,7 @@ flink-data-balance/
 │       ├── model/           # Flink 作业内 envelope 与 minute fact
 │       ├── enrich/          # CHR/PM/CFG 富化
 │       ├── kpi/             # CHR/PM 预聚合、分钟拼接、5 分钟 rollup
-│       ├── anomaly/         # 小区 KPI CEP、用户事件 CEP、栅格覆盖空洞检测
+│       ├── anomaly/         # 小区 KPI、用户事件、栅格覆盖空洞规则检测
 │       ├── balance/         # vbucket 路由与负载均衡
 │       ├── sink/            # ResultSinks、StarRocks/Hive/Iceberg/Kafka sink
 │       ├── metrics/         # StageMetricsProbe、SinkLatencyProbe、metrics publisher
@@ -268,10 +268,10 @@ KPI 由 CHR/PM 分钟事实 Full JOIN 后生成。
 
 | 类型 | 实体 | 来源 | 含义 |
 |---|---|---|---|
-| `CELL_RADIO_BAD` | `CELL` | `CellKpi MIN_1` CEP | 小区连续 1 分钟无线质量劣化，如 RSRP/SINR 低于门限 |
-| `CELL_SERVICE_BAD` | `CELL` | `CellKpi MIN_1` CEP | 小区连续 1 分钟业务质量劣化，如接入、切换、掉话率不满足门限 |
-| `USER_FAILURE` | `USER` | enriched CHR CEP | 同一用户在 10 分钟内同一规则维度连续失败 |
-| `USER_QOE_BAD` | `USER` | enriched CHR CEP | 同一用户在 10 分钟内连续体验劣化 |
+| `CELL_RADIO_BAD` | `CELL` | `CellKpi MIN_1` detect-dedup | 小区连续 1 分钟无线质量劣化，如 RSRP/SINR 低于门限 |
+| `CELL_SERVICE_BAD` | `CELL` | `CellKpi MIN_1` detect-dedup | 小区连续 1 分钟业务质量劣化，如接入、切换、掉话率不满足门限 |
+| `USER_FAILURE` | `USER` | enriched CHR detect-dedup | 同一用户在 10 分钟内同一规则维度连续失败 |
+| `USER_QOE_BAD` | `USER` | enriched CHR detect-dedup | 同一用户在 10 分钟内连续体验劣化 |
 | `COVERAGE_HOLE` | `GRID` | geohash/grid detector | 栅格内低信号事件聚集 |
 
 旧事件级小区异常类型 `LOW_SIGNAL`、`ATTACH_FAILURE_BURST`、`HANDOVER_FAIL_PATTERN`、`CONFIG_MISMATCH` 可以保留在 schema/枚举中用于兼容，但新 DAG 不再主动产出这些类型。
@@ -400,8 +400,9 @@ CellKpi MIN_1
 
 ```
 CellKpi MIN_1
-  -> keyBy(cellId)
-  -> CellKpiCepAnomalyDetector
+  -> cell-kpi-anomaly-evaluations
+  -> keyBy(cellId + ruleDimension)
+  -> cell-kpi-anomaly-detect-dedup
   -> cell-anomaly-events
   -> selected result sink
 ```
@@ -413,20 +414,21 @@ CellKpi MIN_1
 | `avgRsrp` | `CELL_RADIO_BAD` | `< -110` |
 | `avgSinr` | `CELL_RADIO_BAD` | `< -3` |
 | `attachSuccessRate` | `CELL_SERVICE_BAD` | `< 0.95` |
-| `hoSuccessRate` | `CELL_SERVICE_BAD` | `< 0.90` |
+| `hoSuccessRate` | 暂不触发 | 保留为 KPI 字段；`CellKpi` 尚无 handover attempt 分母，当前不作为 `CELL_SERVICE_BAD` 规则输入 |
 | `dropRate` | `CELL_SERVICE_BAD` | `> 0.05` |
 
 用户级异常在 enrich 后与事件级链路并列：
 
 ```
 EnrichedChr
+  -> user-event-anomaly-evaluations
   -> keyBy(imsi + ruleDimension)
-  -> UserEventCepAnomalyDetector
+  -> user-event-anomaly-detect-dedup
   -> user-anomaly-events
   -> selected result sink
 ```
 
-用户规则按 `imsi + ruleDimension` 分组。同一用户在 10 分钟内同一规则维度连续 3 个异常事件触发；同一维度出现正常或成功事件即打断序列。进入异常 streak 时输出一次，恢复前不重复输出。缺失 `imsi` 的记录跳过用户 CEP，并计入轻量 invalid-input 指标，不写业务 DLQ。
+用户规则按 `imsi + ruleDimension` 分组。同一用户在 10 分钟内同一规则维度连续 3 个异常事件触发；同一维度出现正常或成功事件即打断序列。进入异常 streak 时输出一次，恢复前不重复输出。缺失 `imsi` 的记录跳过用户级异常检测，并计入轻量 invalid-input 指标，不写业务 DLQ。
 
 | 规则维度 | 异常类型 | 默认门限 |
 |---|---|---|
@@ -510,7 +512,7 @@ Kafka metrics、动态均衡 heartbeat/routing、checkpoint/savepoint 不受 `FD
 
 | 类型 | 落地范围 | 说明 |
 |---|---|---|
-| `starrocks` | `cell_kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` | 面向在线查询和高吞吐 JDBC 写入压测。 |
+| `starrocks` | `cell_kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` | 面向在线查询和 StarRocks connector/Stream Load 写入压测。 |
 | `iceberg` | `cell_kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` | 面向湖表写入、checkpoint commit 和小文件成本压测。 |
 | `hive` | `kpi`、`cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` Parquet 路径 | 面向 HDFS/Hive FileSink 写入压测。 |
 | `kafka` | `cell-kpi-1m`、`cell-kpi-5m`、`cell-anomaly-events`、`user-anomaly-events`、`grid-anomaly-events` | 面向 Kafka 输出链路压测。 |
@@ -566,7 +568,7 @@ fdb.user_anomaly_events
 fdb.grid_anomaly_events
 ```
 
-`cell_kpi` 中通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`。异常表使用稳定业务 key 或可容忍重复的 DUPLICATE KEY 设计；分区由维护脚本按小时创建与删除。
+`cell_kpi` 中通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`。业务结果通过 StarRocks Flink connector 以 Stream Load 写入，默认 `exactly-once` 语义随 checkpoint 事务提交；KPI 表使用 `(window_start_ts, window_kind, cell_id)` 主键，三类异常表使用稳定 `anomaly_id` 主键，便于重放和失败恢复时去重。
 
 ### 6.5 Kafka Result Topics
 
@@ -610,13 +612,20 @@ SinkLatencyProbe
   -> fdb-stage-metrics
   -> Observability API
   -> 内存最新态
-  -> docker/data/observability-runs/<runId>/metrics.jsonl
+  -> FDB_RUN_HISTORY_DIR/<runId>/metrics.jsonl
   -> 控制台 Sink 耗时页 / 压测报告
 
 Flink metrics
   -> Prometheus
   -> 指标面板
 ```
+
+时延指标口径：
+
+- Source delay：CHR/PM/CFG 入口按 `processing_time - source_event_time` 统计 p50/p95/p99。
+- KPI availability delay：`kpi-1m` 与 `kpi-5m` 按 `processing_time - CellKpi.windowEndTs` 统计出数时延。
+- Sink probe delay：业务结果进入选定 connector 分支前，按 `processing_time - result_window_end_or_detection_time` 统计 p50/p95/p99。该指标表示 connector handoff/probe 时延，不等同于后端 commit 时延或查询可见时延。
+- Backend-visible latency 后续可通过在业务结果表增加 `write_ts` 并由查询器确认目标系统可查/可消费时间来补充。
 
 Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小、小于 1MB 文件数量，因为 file-based sink 的数据可见性和小文件成本会直接影响性能规格。
 
@@ -635,7 +644,7 @@ Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小�
 | `GET /api/results/anomalies/grid` | 查询栅格级异常 |
 | `GET /api/results/sink-latency` | 查询 sink 耗时统计 |
 | `GET /api/flow/runtime` | 查询当前 run 配置、result sink、DLQ、metrics、Flink job 状态、并行度和 checkpoint 配置 |
-| `GET /api/flow/stages` | 查询 Flink 阶段状态 |
+| `GET /api/flow/status` | 查询 Flink 阶段状态；benchmark-runner 优先使用该实际接口，并兼容历史 `/api/flow/stages` |
 | `GET /api/runs` | 查询历史压测 run |
 | `GET /api/runs/{runId}` | 查询单次 run 明细、metrics 历史摘要和报告状态 |
 | `GET /api/events/stream` | SSE 推送阶段、sink、异常摘要 |
@@ -683,7 +692,7 @@ Small files
 Failures / restarts
 ```
 
-`Report` 显示 `collecting / ready / failed`；ready 时可打开 `report.md` 或 API 渲染后的摘要。
+`Report` 显示 `collecting / ready / failed`；ready 时可打开 API 渲染后的临时摘要。benchmark-runner 压测交付以 `index.html` 和单轮 `report.html` 为准。
 
 `KPI 1m` / `KPI 5m`：
 
@@ -723,8 +732,8 @@ Failures / restarts
 
 异常节点显示规则：
 
-- `cell KPI CEP anomaly` 显示在 `CellKpi MIN_1` 之后。
-- `user event CEP anomaly` 显示在 `enrich` 之后，并与后续 CHR 1m fact 链路并列。
+- `cell-kpi-anomaly-detect-dedup` 显示在 `CellKpi MIN_1` 之后。
+- `user-event-anomaly-detect-dedup` 显示在 `enrich` 之后，并与后续 CHR 1m fact 链路并列。
 - `grid coverage-hole anomaly` 显示为独立栅格/geohash 分支。
 - 小区异常页面不展示为依赖 `imsi`、`latitude` 或 `longitude` 的流程。
 
@@ -743,20 +752,146 @@ load-coordinator
 
 ### 7.4 压测报告
 
-每次压测使用 `runId` 归档运行配置、metrics 历史和报告：
+每次 sink 上限压测使用 `benchmarkId` 归档批次配置、结构化结果、
+Flink/业务/存储快照和 HTML 报告。压测交付件固定输出到
+`benchmark-runner/output/benchmark-runs/<benchmarkId>/`，不使用 Docker volume
+路径，也不提供输出目录配置项：
 
 ```text
-docker/data/observability-runs/<runId>/run.json
-docker/data/observability-runs/<runId>/metrics.jsonl
-docker/data/observability-runs/<runId>/report.md
+benchmark-runner/output/benchmark-runs/<benchmarkId>/
+  benchmark-config.json
+  benchmark-results.json
+  benchmark-summary.csv
+  index.html
+  runs/<runId>/
+    run.json
+    flink-snapshot.json
+    fdb-metrics-snapshot.json
+    storage-snapshot.json
+    report.html
 ```
 
-报告生成入口：
+Observability API 仍保留按 run 生成临时报告的能力，用于本地调试或
+前端实时查看；正式压测交付以 `benchmark-runner` 生成的 HTML 为准。
+Observability API 报告生成入口：
 
 ```bash
 bash scripts/deploy.sh local report
 bash scripts/deploy.sh external-yarn report
 ```
+
+Sink benchmark orchestration entry:
+
+```bash
+bash scripts/benchmark.sh local
+bash scripts/benchmark.sh external-yarn
+```
+
+`scripts/benchmark.sh` is a thin launcher for the Java `benchmark-runner`
+module. It loads `.env`, locates the runner jar, and passes the target plus CLI
+arguments through. It does not contain benchmark state-machine logic.
+
+The Java `benchmark-runner` owns sink upper-bound benchmarking:
+
+- run a `sink x cellLevel` matrix;
+- use cell count as the primary pressure multiplier;
+- calculate `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`;
+- start topology-service plus CFG/PM/CHR simulators on the runner host;
+- submit and stop Flink through the existing `deploy.sh <target> submit/stop`
+  commands so local and external-yarn deployment behavior stays centralized;
+- poll Flink REST API, Observability API, and storage probes during warmup and
+  measurement;
+- stop higher cell levels for a sink after the first unstable or failed level;
+- generate HTML reports and machine-readable JSON/CSV output.
+
+First-version benchmark matrix:
+
+```text
+FDB_BENCHMARK_SINKS=none starrocks kafka hive iceberg
+FDB_BENCHMARK_CELL_LEVELS=10000 20000 40000
+FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3
+FDB_BENCHMARK_WARMUP_SEC=60
+FDB_BENCHMARK_DURATION_SEC=300
+```
+
+Pressure model:
+
+- `cellLevel` controls topology size and is the primary benchmark multiplier.
+- `FDB_SITES_COUNT` is set per level; `sites.cellsPerSite` remains fixed in the
+  first version.
+- CFG baseline records grow with cell count.
+- PM emits roughly one record per cell every 10 seconds.
+- CHR total target EPS grows linearly with cell count.
+- KPI and sink output volume grow with active cells.
+
+Run id format:
+
+```text
+<benchmarkId>-<sink>-cells<cellLevel>-eps<targetChrEps>
+```
+
+Observation sources:
+
+- Flink REST API: job status, vertices, subtasks, records/bytes in/out, busy,
+  idle, backpressure, checkpoint summary, latest checkpoint duration/failures,
+  TaskManager and slot status.
+- Observability API / fdb metrics: CHR/PM/CFG source delay, KPI 1m/5m
+  availability delay, sink probe p50/p95/p99, sink records/s, watermark lag,
+  dataset and window dimensions.
+- Storage probes: Kafka offsets, StarRocks row ranges, Hive file/in-progress
+  files, Iceberg files/snapshots/metadata and recent partitions.
+
+Stable/unstable/failed decisions:
+
+- `failed`: submit failed, Flink job failed/canceled, or the run cannot complete.
+- `unstable`: sustained backpressure, checkpoint failures or slow checkpoint,
+  KPI availability delay over threshold, sink latency over threshold, growing
+  sink failures, or storage probe anomalies.
+- `stable`: job stays RUNNING and all thresholds remain healthy through the
+  measurement window.
+
+Default thresholds:
+
+```text
+FDB_BENCHMARK_POLL_INTERVAL_SEC=10
+FDB_BENCHMARK_MAX_BACKPRESSURE_RATIO=0.2
+FDB_BENCHMARK_MAX_CHECKPOINT_DURATION_MS=120000
+FDB_BENCHMARK_MAX_CONSECUTIVE_CHECKPOINT_FAILURES=2
+FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS=180000
+FDB_BENCHMARK_MAX_SINK_P95_MS=180000
+FDB_BENCHMARK_MAX_WATERMARK_LAG_MS=180000
+```
+
+Benchmark artifacts are fixed under the runner module and are not Docker-volume
+paths:
+
+```text
+benchmark-runner/output/benchmark-runs/<benchmarkId>/
+  benchmark-config.json
+  benchmark-results.json
+  benchmark-summary.csv
+  index.html
+  runs/<runId>/
+    run.json
+    flink-snapshot.json
+    fdb-metrics-snapshot.json
+    storage-snapshot.json
+    report.html
+```
+
+`index.html` is the primary delivery artifact. It includes benchmark
+configuration, stable upper-bound cards per sink, the `sink x cellLevel` matrix,
+failure points, cross-sink metric comparisons, global recommendations, per-sink
+recommendations, and links to every single-run `report.html`.
+
+The first version does not generate Markdown reports. JSON and CSV files are
+kept for repeatable analysis and post-processing.
+
+`benchmark-runner` unit tests cover configuration parsing, matrix expansion,
+Flink REST parsing, decision rules, fake-client orchestration, JSON/CSV output,
+HTML generation, and output path safety. `scripts/test-benchmark-dispatch.sh`
+only covers the thin shell launcher: help output, jar checks, env loading, and
+argument pass-through. Shell tests are not attached to the Maven lifecycle.
 
 `FDB_REPORT_ON_STOP=true` 时，`stop` 后自动尝试生成报告。报告内容包括：
 
@@ -853,16 +988,28 @@ cleanup.policy=compact
 | `FDB_METRICS_EMIT_INTERVAL_MS` | `5000` | metrics 采样输出间隔 |
 | `FDB_METRICS_HISTORY_ENABLED` | `true` | Observability API 是否写本地 JSONL 历史 |
 | `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
+| `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | `benchmark-runner` 顺序执行的 sink 列表，支持空格或逗号分隔 |
+| `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | 小区数升压档位；第一版用小区数作为主压力倍率 |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | 每小区 CHR EPS；总 CHR EPS = cellLevel * epsPerCell |
+| `FDB_BENCHMARK_WARMUP_SEC` | `60` | 单轮 submit 后、正式计量前的预热秒数 |
+| `FDB_BENCHMARK_DURATION_SEC` | `300` | 单轮计量秒数，结束后由 runner 判定 stable/unstable/failed |
+| `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | runner 采样 Flink REST、Observability API 和存储探测的周期 |
+| `FDB_BENCHMARK_MAX_BACKPRESSURE_RATIO` | `0.2` | 持续反压阈值，超过则当前档位 unstable |
+| `FDB_BENCHMARK_MAX_CHECKPOINT_DURATION_MS` | `120000` | checkpoint duration 阈值 |
+| `FDB_BENCHMARK_MAX_CONSECUTIVE_CHECKPOINT_FAILURES` | `2` | 连续 checkpoint 失败阈值 |
+| `FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS` | `180000` | KPI 1m/5m 出数 p95 延迟阈值 |
+| `FDB_BENCHMARK_MAX_SINK_P95_MS` | `180000` | 当前 sink p95 延迟阈值 |
+| `FDB_BENCHMARK_MAX_WATERMARK_LAG_MS` | `180000` | watermark lag 阈值 |
 | `FDB_RUN_ID` | 自动生成 | 当前压测 run 标识 |
 | `FDB_RUN_LABEL` | 空 | 当前压测 run 可读标签 |
-| `FDB_ANOMALY_CELL_CONSECUTIVE_MINUTES` | `3` | 小区 KPI CEP 连续异常分钟数 |
+| `FDB_ANOMALY_CELL_CONSECUTIVE_MINUTES` | `3` | 小区 KPI 连续异常分钟数 |
 | `FDB_ANOMALY_CELL_RSRP_MIN` | `-110` | 小区无线质量 RSRP 下限 |
 | `FDB_ANOMALY_CELL_SINR_MIN` | `-3` | 小区无线质量 SINR 下限 |
 | `FDB_ANOMALY_CELL_ATTACH_SUCCESS_MIN` | `0.95` | 小区接入成功率下限 |
-| `FDB_ANOMALY_CELL_HO_SUCCESS_MIN` | `0.90` | 小区切换成功率下限 |
+| `FDB_ANOMALY_CELL_HO_SUCCESS_MIN` | `0.90` | 预留配置；`CellKpi` 尚无 handover attempt 分母，当前不触发小区服务异常 |
 | `FDB_ANOMALY_CELL_DROP_RATE_MAX` | `0.05` | 小区掉话率上限 |
-| `FDB_ANOMALY_USER_CONSECUTIVE_EVENTS` | `3` | 用户 CEP 连续异常事件数 |
-| `FDB_ANOMALY_USER_WINDOW_MINUTES` | `10` | 用户 CEP 检测窗口 |
+| `FDB_ANOMALY_USER_CONSECUTIVE_EVENTS` | `3` | 用户级连续异常事件数 |
+| `FDB_ANOMALY_USER_WINDOW_MINUTES` | `10` | 用户级异常检测窗口 |
 | `FDB_ANOMALY_USER_RSRP_MIN` | `-110` | 用户体验 RSRP 下限 |
 | `FDB_ANOMALY_USER_SINR_MIN` | `-3` | 用户体验 SINR 下限 |
 | `FDB_ANOMALY_USER_LATENCY_MS_MAX` | `500` | 用户体验时延上限 |
@@ -885,11 +1032,15 @@ cleanup.policy=compact
 | 配置 | 默认值 |
 |---|---|
 | `FDB_STARROCKS_FE_ENDPOINT` | `starrocks-fe:9030` |
+| `FDB_STARROCKS_CONNECTOR_JDBC_URL` | `jdbc:mysql://starrocks-fe:9030` |
+| `FDB_STARROCKS_LOAD_URL` | `starrocks-fe:8030` |
 | `FDB_STARROCKS_USER` | `root` |
 | `FDB_STARROCKS_PASSWORD` | 空 |
 | `FDB_STARROCKS_DATABASE` | `fdb` |
+| `FDB_STARROCKS_SINK_SEMANTIC` | `exactly-once` |
+| `FDB_STARROCKS_SINK_LABEL_PREFIX` | 运行时按 `FDB_RUN_ID` 派生 |
 
-StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external network。
+StarRocks FE/BE 来自 `../shared-data-infra`，本工程只接入 external network。`FDB_STARROCKS_JDBC_URL` 仍可用于 API 和维护脚本的 SQL 查询；Flink 作业写入使用 connector 专用的 JDBC 查询端点与 Stream Load 端点。
 
 ### 9.4 Iceberg
 
@@ -949,7 +1100,10 @@ FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn smoke
 | `YARN_CONF_DIR` | 空或同 Hadoop | `/etc/hadoop/conf` | external-yarn 必填 |
 | `FDB_FLINK_YARN_QUEUE` | 空 | `default` | 外部 YARN 队列 |
 | `FDB_FLINK_CHECKPOINT_DIR` | `file:///tmp/fdb-checkpoints` | `hdfs://nameservice1/flink-data-balance/checkpoints` | checkpoint 目录 |
-| `FDB_STARROCKS_FE_ENDPOINT` | `starrocks-fe:9030` | `starrocks-fe01:9030` | StarRocks FE |
+| `FDB_STARROCKS_FE_ENDPOINT` | `starrocks-fe:9030` | `starrocks-fe01:9030` | StarRocks FE 查询端口，脚本可据此派生 connector JDBC URL |
+| `FDB_STARROCKS_CONNECTOR_JDBC_URL` | `jdbc:mysql://starrocks-fe:9030` | `jdbc:mysql://starrocks-fe01:9030` | StarRocks connector JDBC 查询端点，可覆盖自动派生值 |
+| `FDB_STARROCKS_LOAD_URL` | `starrocks-fe:8030` | `starrocks-fe01:8030` | StarRocks Stream Load endpoint，可覆盖自动派生值 |
+| `FDB_STARROCKS_SINK_SEMANTIC` | `exactly-once` | `exactly-once` | StarRocks connector 写入语义 |
 
 配置文件建议分为：
 
@@ -1053,7 +1207,7 @@ logs/external-yarn-current.env
 | CHR/PM minute aggregate | exactly-once state | 依赖 Flink checkpoint |
 | Full JOIN | exactly-once state | 到期输出最终结果 |
 | Kafka result sink | at-least-once | Avro topic，可重放 |
-| StarRocks result sink | at-least-once + 幂等 key | 业务结果表按业务 key 去重或容忍重复 |
+| StarRocks result sink | connector exactly-once + 幂等主键 | 默认随 checkpoint 事务提交；KPI 和异常表按主键去重 |
 | Hive sink | checkpoint rolling | 文件可见性受 checkpoint 影响 |
 | Iceberg sink | exactly-once append | checkpoint 触发 commit |
 | Sink metrics | at-least-once | 指标允许重复，API 聚合时按时间窗口处理 |
@@ -1074,9 +1228,9 @@ DLQ：
 | Unit | PM schema、CFG state 更新、分钟 accumulator、Full JOIN 到期逻辑 |
 | Unit | `JOINED/CHR_ONLY/PM_ONLY` 输出质量 |
 | Unit | 5 分钟 rollup 从 1 分钟 KPI 聚合 |
-| Unit | 小区 KPI CEP 在连续 3 个 1 分钟异常周期后只触发一次，恢复后才允许再次触发 |
-| Unit | 用户事件 CEP 在 10 分钟内连续 3 个同维度异常事件后触发，正常/成功事件会打断序列 |
-| Unit | 用户事件 CEP 跳过缺失 `imsi` 的记录并计入轻量 invalid-input 指标 |
+| Unit | 小区 KPI 单输入 detect-dedup 算子在连续 3 个 1 分钟异常周期后只触发一次，恢复后才允许再次触发 |
+| Unit | 用户事件单输入 detect-dedup 算子在 10 分钟内连续 3 个同维度异常事件后触发，正常/成功事件会打断序列 |
+| Unit | 用户事件异常检测跳过缺失 `imsi` 的记录并计入轻量 invalid-input 指标 |
 | Unit | CFG 缺失时 enrich 主流继续输出，并写入 `enrichment-late` 侧通道 |
 | Unit | 动态均衡开关关闭时不构建相关 DAG 分支 |
 | Unit | `FDB_RESULT_SINK` 只构建一种业务结果 sink，未选 sink 不出现在 StreamGraph/plan |
@@ -1111,24 +1265,52 @@ DLQ：
 - Flink job 包结构拆分为 `config/source/model/enrich/kpi/anomaly/balance/sink/metrics` 等子包，`FlinkJobMain` 保持为拓扑入口。
 - `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 已控制 KPI 1m、KPI 5m、小区异常和栅格异常四类业务结果，每次运行只构建一种业务 sink 分支；2026-07-15 目标态在此基础上扩展用户异常，见 12.2。
 - `FDB_DLQ_ENABLED`、`FDB_METRICS_ENABLED`、`FDB_METRICS_HISTORY_ENABLED`、`FDB_RUN_ID`、`FDB_RUN_LABEL`、`FDB_REPORT_ON_STOP` 等运行时开关已贯通 Flink、observability-api、compose 和 deploy 脚本。
-- metrics 仍走 `fdb-stage-metrics` Kafka topic；observability-api 保留内存最新值，并按 run 写入本地 `metrics.jsonl` 与 `report.md`。
+- `deploy.sh local|external-yarn benchmark` 曾作为第一版脚本级闭环复用 submit/stop/report，按 `FDB_BENCHMARK_SINKS` 顺序执行 sink 压测矩阵，并生成早期批次汇总文件。2026-07-16 目标态调整为 `scripts/benchmark.sh` 启动 Java `benchmark-runner`，见 12.3。
+- metrics 仍走 `fdb-stage-metrics` Kafka topic；observability-api 保留内存最新值，并按 run 写入本地 `metrics.jsonl`。正式压测报告由 benchmark-runner 生成 HTML。
 - 前端流处理总览页读取 `/api/flow/runtime`，展示当前 run/result sink/metrics/DLQ/parallelism/checkpoint/job/report，并按已知 active result sink 过滤流程图、阶段面板和 sink 面板。
-- 本地验证在 shared-data-infra 运行时完成了 `starrocks` run：Flink job RUNNING 时 60/60 tasks running，plan 只包含 StarRocks business sink，不包含 Hive/Iceberg/Kafka business sink；`deploy.sh local report` 返回 `status=ready` 并生成 `report.md`。
+- 本地验证在 shared-data-infra 运行时完成了 `starrocks` run：Flink job RUNNING 时 60/60 tasks running，plan 只包含 StarRocks business sink，不包含 Hive/Iceberg/Kafka business sink；`deploy.sh local report` 返回 `status=ready` 并生成过 Observability API 临时报告。
 
 仍作为后续增强的项：
 
 - Hive/Iceberg 文件数、平均文件大小、小文件数量和 snapshot/checkpoint commit 明细在报告中的深度统计。
-- 前端 `Report` ready 后直接打开 `report.md` 或渲染报告正文。
+- 前端 `Report` ready 后渲染 Observability API 临时报告正文；benchmark-runner 交付报告通过静态 HTML 打开。
 
-### 12.2 2026-07-15 Entity Anomaly CEP Design Refresh
+### 12.2 2026-07-15 Entity Anomaly Design Refresh
 
 目标态刷新为：
 
-- 小区异常从 enriched CHR 事件级检测迁移到 `CellKpi MIN_1` 后的 CEP 检测。
-- 用户异常在 enrich 后新增 CEP 检测分支，与事件级处理链路并列。
+- 小区异常从 enriched CHR 事件级检测迁移到 `CellKpi MIN_1` 后的单输入规则状态检测。
+- 用户异常在 enrich 后新增单输入规则状态检测分支，与事件级处理链路并列。
 - 栅格覆盖空洞检测保持 geohash/grid 检测，不并入小区异常。
 - 异常结果拆为 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三张表和三类 topic。
 - dev 初始化直接重建三张异常表；当前没有存量部署，不编写升级说明。
+
+### 12.3 2026-07-16 Sink Upper-Bound Benchmark Runner Design
+
+目标态刷新为 Java `benchmark-runner` 承载压测编排，`scripts/benchmark.sh`
+仅作为启动入口。`deploy.sh` 继续负责部署动作，不再承载复杂压测状态机。
+
+- 压测主线为 Sink 上限压测，第一版只做 `sink x cellLevel`，不展开
+  parallelism/checkpoint 矩阵。
+- 升压方式为逐级升压。每个 sink 从低 cell level 开始，遇到
+  `unstable` 或 `failed` 后停止该 sink 后续更高档位。
+- 压力倍率以小区数为主。`cellLevel` 控制 topology size、CFG baseline、
+  PM 窗口记录数、KPI key 空间和 sink 写入规模。
+- CHR 总 EPS 由 `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`
+  计算，保持每小区 CHR EPS 稳定。
+- 运行态判断优先使用 Flink REST API，结合 Observability API 的业务语义
+  metrics 和 Kafka/StarRocks/Hive/Iceberg storage probes。
+- 稳定性判定输出 `stable`、`unstable`、`failed` 三类状态；上一档
+  `stable` 作为该 sink 的稳定上限，首个非稳定档作为失败点。
+- 报告固定写入 `benchmark-runner/output/benchmark-runs/<benchmarkId>/`，
+  不使用 Docker volume 路径，也不提供输出目录配置项。
+- 报告交付为 HTML-only：批次入口 `index.html`，单轮详情
+  `runs/<runId>/report.html`。JSON/CSV 仅用于机器分析和复盘。
+- `index.html` 集成全局结论、每个 sink 的稳定上限、失败点、横向对比、
+  优化建议和所有单轮详情链接，不单独生成 recommendations 文件。
+- Java tests 覆盖配置、矩阵、Flink API 解析、判定引擎、fake clients、
+  JSON/CSV 和 HTML 生成。`scripts/test-benchmark-dispatch.sh` 只覆盖 shell
+  启动入口，不挂入 Maven lifecycle。
 
 ---
 
@@ -1143,8 +1325,8 @@ DLQ：
 - [ ] PM 或 CHR 单侧缺失时仍输出 `CHR_ONLY` 或 `PM_ONLY`。
 - [ ] 5 分钟 KPI 从 1 分钟 KPI rollup。
 - [ ] CFG 缺失时 enrich 主流继续输出，CFG 缺失上下文写入 `enrichment-late`，不作为业务 DLQ。
-- [x] 小区异常由 `CellKpi MIN_1` 后的 CEP 检测产出，连续 3 个 1 分钟周期触发，恢复前不重复输出。
-- [x] 用户异常由 enrich 后的 CEP 检测产出，10 分钟内同维度连续 3 个异常事件触发，正常/成功事件打断序列。
+- [x] 小区异常由 `CellKpi MIN_1` 后的 `cell-kpi-anomaly-detect-dedup` 产出，连续 3 个 1 分钟周期触发，恢复前不重复输出。
+- [x] 用户异常由 enrich 后的 `user-event-anomaly-detect-dedup` 产出，10 分钟内同维度连续 3 个异常事件触发，正常/成功事件打断序列。
 - [x] 活动异常类型使用 `CELL_RADIO_BAD`、`CELL_SERVICE_BAD`、`USER_FAILURE`、`USER_QOE_BAD`、`COVERAGE_HOLE`。
 - [x] `FDB_RESULT_SINK=starrocks|iceberg|hive|kafka|none` 时，业务结果 sink 每次只创建一种分支。
 - [x] KPI 1m、KPI 5m、小区异常、用户异常、栅格异常均跟随 `FDB_RESULT_SINK` 写入对应 StarRocks/Iceberg/Hive/Kafka 目标。

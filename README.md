@@ -112,17 +112,43 @@ FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn submit
 FDB_ENV_FILE=.env.external bash scripts/deploy.sh external-yarn report
 ```
 
+Benchmark runner:
+
+```bash
+mvn -pl benchmark-runner -am package
+FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local
+FDB_ENV_FILE=.env.external bash scripts/benchmark.sh external-yarn
+```
+
+For a local dry run that only validates matrix expansion and report generation:
+
+```bash
+FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local --dry-run
+```
+
+The runner expands a `sink x cellLevel` matrix. For each run it sets a distinct
+`FDB_RUN_ID`, `FDB_RUN_LABEL` and `FDB_RESULT_SINK`, calls the target-specific
+`scripts/deploy.sh <target> submit/stop`, starts the local topology and
+simulator processes with `FDB_SITES_COUNT` and `FDB_RATE_EPS`, observes Flink
+REST plus the observability API, and stops higher pressure levels for a sink
+after the first unstable or failed run.
+
 Each `submit` generates `FDB_RUN_ID=run-<UTC timestamp>` when it is not already
 set, passes that value into the Flink runtime, and writes the current run state
 to `logs/local-current.env` or `logs/external-yarn-current.env`. You can also set
 `FDB_RUN_ID` manually in the env file or command environment when rerunning a
-known benchmark label.
+known benchmark label. In benchmark-runner mode, the per-run id is generated
+from the benchmark id, sink, cell count and target CHR EPS.
 
-`bash scripts/deploy.sh <target> report` calls
-`${FDB_OBSERVABILITY_API_URL:-http://localhost:18080}/api/runs/report` with the
-current run id and prints the JSON response. The API writes the Markdown report
-to `FDB_RUN_HISTORY_DIR/<runId>/report.md`; in the local Docker profile this is
-mapped to `docker/data/observability-runs/<runId>/report.md`.
+The runner writes static HTML and machine-readable artifacts under:
+
+```text
+benchmark-runner/output/benchmark-runs/<benchmarkId>/
+```
+
+Open `index.html` for the batch summary and follow per-run links to
+`runs/<runId>/report.html`. The same directory also contains
+`benchmark-config.json`, `benchmark-results.json` and `benchmark-summary.csv`.
 
 When `FDB_METRICS_HISTORY_ENABLED=true`, observability-api appends sampled
 runtime metrics to `metrics.jsonl` under the same run directory. The report is
@@ -133,6 +159,24 @@ The default checkpoint interval is `FDB_FLINK_CHECKPOINT_INTERVAL_MS=30000`.
 Hive and Iceberg writers have an effective cap of 180s. For sink benchmarking,
 adjust the interval per sink only when the sink needs it, and do not set it below
 or far below 30s unless you are intentionally testing checkpoint pressure.
+
+Benchmark-specific environment variables:
+
+| Variable | Default | Description |
+|---|---:|---|
+| `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | Space- or comma-separated sink list: `starrocks`, `iceberg`, `hive`, `kafka`, `none` |
+| `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | Space- or comma-separated cell-count pressure levels |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | Target CHR EPS multiplier per cell |
+| `FDB_BENCHMARK_WARMUP_SEC` | `60` | Warmup time after submit and before measurement |
+| `FDB_BENCHMARK_DURATION_SEC` | `300` | Measurement time before stop/report |
+| `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | Intended observation poll interval for benchmark sampling |
+| `FDB_BENCHMARK_ID` | generated | Output directory name for the benchmark batch |
+| `FDB_BENCHMARK_MAX_BACKPRESSURE_RATIO` | `0.2` | Marks a run unstable when Flink backpressure ratio exceeds this value |
+| `FDB_BENCHMARK_MAX_CHECKPOINT_DURATION_MS` | `120000` | Marks a run unstable when checkpoint duration exceeds this value |
+| `FDB_BENCHMARK_MAX_CONSECUTIVE_CHECKPOINT_FAILURES` | `2` | Marks a run unstable after consecutive checkpoint failures |
+| `FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS` | `180000` | Marks a run unstable when KPI 1m/5m p95 exceeds this value |
+| `FDB_BENCHMARK_MAX_SINK_P95_MS` | `180000` | Marks a run unstable when sink write p95 exceeds this value |
+| `FDB_BENCHMARK_MAX_WATERMARK_LAG_MS` | `180000` | Marks a run unstable when watermark lag exceeds this value |
 
 ## 实时观测控制台
 
@@ -160,9 +204,10 @@ Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> 
 ```
 
 The Flink job emits samples for `chr-source`, `pm-source`, `cfg-source`, `kafka`,
-`enrichment` and the sink probe stages `kafka-kpi-1m`, `starrocks-kpi-1m`,
-`hive-kpi-1m`, `iceberg-kpi-1m`, `kafka-kpi-5m`, `starrocks-kpi-5m`,
-`hive-kpi-5m`, `iceberg-kpi-5m`, `kafka-cell-anomaly`,
+`enrichment`, `kpi-1m`, `kpi-5m` and the sink probe stages
+`kafka-kpi-1m`, `starrocks-kpi-1m`, `hive-kpi-1m`, `iceberg-kpi-1m`,
+`kafka-kpi-5m`, `starrocks-kpi-5m`, `hive-kpi-5m`, `iceberg-kpi-5m`,
+`kafka-cell-anomaly`,
 `kafka-user-anomaly`, `kafka-grid-anomaly`, `starrocks-cell-anomaly`,
 `starrocks-user-anomaly`, `starrocks-grid-anomaly`, `hive-cell-anomaly`,
 `hive-user-anomaly`, `hive-grid-anomaly`, `iceberg-cell-anomaly`,
@@ -172,6 +217,15 @@ When `FDB_DYNAMIC_BALANCING_ENABLED=true`, it also emits `assigner` and
 stage and renders the `fdb_*` Prometheus series. The Flink containers also
 enable the Flink Prometheus reporter on port `9249` for native
 JobManager/TaskManager metrics.
+
+Latency metrics use three lightweight runtime probes:
+
+- Source delay: `processing_time - event_time` for CHR, PM and CFG sources.
+- KPI availability delay: `processing_time - CellKpi.windowEndTs` for `kpi-1m`
+  and `kpi-5m`.
+- Sink probe delay: `processing_time - result window end/detection time` at the
+  point where the record is handed to the selected connector branch. This is a
+  connector handoff/probe latency, not a backend commit or query-visible latency.
 
 The flow overview page reads `/api/flow/runtime` and filters the graph, stage
 panel and sink panel to the active known result sink. If the runtime endpoint is
@@ -188,15 +242,16 @@ The script builds the project, starts the Docker `e2e` profile with Flink,
 starts topology and simulators, submits the job, and checks shared Kafka, StarRocks,
 HDFS Parquet, Iceberg and shared Hive outputs.
 
-StarRocks receives JDBC batches from the Flink checkpoint path. The default
-checkpoint interval is `FDB_FLINK_CHECKPOINT_INTERVAL_MS=30000`; keep it near
-that default for local smoke tests unless you also tune StarRocks compaction.
-The default StarRocks JDBC settings are `FDB_STARROCKS_JDBC_BATCH_SIZE=100000`,
-`FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS=60000` and
-`FDB_STARROCKS_JDBC_MAX_RETRIES=1` to avoid many small loads creating too many
-tablet versions. Keep `rewriteBatchedStatements=true` and
-`useServerPrepStmts=false` in `FDB_STARROCKS_JDBC_URL`; the job also appends
-them automatically for `jdbc:mysql:` URLs when they are absent.
+StarRocks result writes use the official StarRocks Flink connector and Stream
+Load, not Flink JDBC inserts. The local default connector endpoints are
+`FDB_STARROCKS_CONNECTOR_JDBC_URL=jdbc:mysql://starrocks-fe:9030` and
+`FDB_STARROCKS_LOAD_URL=starrocks-fe:8030`; external deployments derive them
+from `FDB_STARROCKS_FE_ENDPOINT` unless explicitly configured. The default
+`FDB_STARROCKS_SINK_SEMANTIC=exactly-once` flushes through checkpoint
+transactions, so keep `FDB_FLINK_CHECKPOINT_INTERVAL_MS` near the 30 second
+default for smoke tests unless you intentionally want slower StarRocks
+visibility. `FDB_STARROCKS_JDBC_URL` remains for StarRocks SQL queries from the
+API and maintenance scripts.
 
 The local Flink containers also set explicit memory defaults:
 `FDB_FLINK_TASKMANAGER_MEMORY=4096m`, `FDB_FLINK_TASKMANAGER_SLOTS=4`,
