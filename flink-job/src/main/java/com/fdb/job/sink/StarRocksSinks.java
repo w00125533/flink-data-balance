@@ -1,104 +1,216 @@
 package com.fdb.job.sink;
 
 import com.fdb.common.avro.AnomalyEvent;
-import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
-import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
-import org.apache.flink.connector.jdbc.JdbcSink;
+import com.fdb.common.avro.CellKpi;
+import com.starrocks.connector.flink.StarRocksSink;
+import com.starrocks.connector.flink.row.sink.StarRocksSinkOP;
+import com.starrocks.connector.flink.row.sink.StarRocksSinkRowBuilder;
+import com.starrocks.connector.flink.table.sink.StarRocksSinkOptions;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.TableSchema;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.regex.Pattern;
 
 public final class StarRocksSinks {
 
-    private static final String DEFAULT_JDBC_URL = "jdbc:mysql://starrocks-fe:9030/fdb";
+    private static final String DEFAULT_CONNECTOR_JDBC_URL = "jdbc:mysql://starrocks-fe:9030";
+    private static final String DEFAULT_LOAD_URL = "starrocks-fe:8030";
     private static final String DEFAULT_USER = "root";
     private static final String DEFAULT_PASSWORD = "";
     private static final String DEFAULT_DATABASE = "fdb";
-    private static final String MYSQL_DRIVER = "com.mysql.cj.jdbc.Driver";
-    private static final Pattern SAFE_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    private static final String DEFAULT_SEMANTIC = "exactly-once";
+    private static final String DEFAULT_LABEL_PREFIX = "fdb-starrocks";
+    private static final String DEFAULT_SINK_VERSION = "AUTO";
+
+    public static final int UPSERT_OP = StarRocksSinkOP.UPSERT.ordinal();
 
     private StarRocksSinks() {}
 
-    public record StarRocksJdbcConfig(String jdbcUrl, String user, String password, String database) {}
+    public record StarRocksConnectorConfig(
+        String jdbcUrl,
+        String loadUrl,
+        String user,
+        String password,
+        String database,
+        String semantic,
+        String labelPrefix) {}
 
-    public static String cellAnomalyInsertSql() {
-        return anomalyInsertSql("cell_anomaly_events");
+    public static SinkFunction<CellKpi> cellKpiSink(String labelSuffix) {
+        return StarRocksSink.sink(
+            cellKpiSchema(),
+            sinkOptions(resolveConnectorConfig(System.getenv(), System.getProperties()), "cell_kpi", labelSuffix),
+            cellKpiRowBuilder());
     }
 
-    static String cellAnomalyInsertSql(StarRocksJdbcConfig config) {
-        return anomalyInsertSql(qualifiedTable(config.database(), "cell_anomaly_events"));
+    public static SinkFunction<AnomalyEvent> cellAnomalySink() {
+        return anomalySink("cell_anomaly_events", "cell-anomaly", cellAnomalyRowBuilder());
     }
 
-    public static String userAnomalyInsertSql() {
-        return anomalyInsertSql("user_anomaly_events");
+    public static SinkFunction<AnomalyEvent> userAnomalySink() {
+        return anomalySink("user_anomaly_events", "user-anomaly", userAnomalyRowBuilder());
     }
 
-    static String userAnomalyInsertSql(StarRocksJdbcConfig config) {
-        return anomalyInsertSql(qualifiedTable(config.database(), "user_anomaly_events"));
+    public static SinkFunction<AnomalyEvent> gridAnomalySink() {
+        return anomalySink("grid_anomaly_events", "grid-anomaly", gridAnomalyRowBuilder());
     }
 
-    public static String gridAnomalyInsertSql() {
-        return anomalyInsertSql("grid_anomaly_events");
+    private static SinkFunction<AnomalyEvent> anomalySink(
+        String tableName,
+        String labelSuffix,
+        StarRocksSinkRowBuilder<AnomalyEvent> rowBuilder) {
+        return StarRocksSink.sink(
+            anomalySchema(),
+            sinkOptions(resolveConnectorConfig(System.getenv(), System.getProperties()), tableName, labelSuffix),
+            rowBuilder);
     }
 
-    static String gridAnomalyInsertSql(StarRocksJdbcConfig config) {
-        return anomalyInsertSql(qualifiedTable(config.database(), "grid_anomaly_events"));
-    }
+    static StarRocksConnectorConfig resolveConnectorConfig(Map<String, String> env, Properties properties) {
+        String runId = resolve(env, properties, "FDB_RUN_ID", "fdb.run.id", "");
+        String labelPrefix = resolve(
+            env,
+            properties,
+            "FDB_STARROCKS_SINK_LABEL_PREFIX",
+            "fdb.starrocks.sink.label-prefix",
+            runId.isBlank() ? DEFAULT_LABEL_PREFIX : "fdb-" + runId);
+        String semantic = resolve(
+            env,
+            properties,
+            "FDB_STARROCKS_SINK_SEMANTIC",
+            "fdb.starrocks.sink.semantic",
+            DEFAULT_SEMANTIC);
+        validateSemantic(semantic);
 
-    private static String anomalyInsertSql(String table) {
-        return "INSERT INTO " + table + " "
-            + "(anomaly_id, detection_ts, event_ts, entity_type, entity_id, window_start_ts, window_end_ts, "
-            + "imsi, site_id, cell_id, grid_id, latitude, longitude, anomaly_type, severity, rule_version, context_json) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    }
-
-    public static String cellKpiInsertSql() {
-        return "";
-    }
-
-    public static org.apache.flink.connector.jdbc.core.datastream.sink.JdbcSink<AnomalyEvent> cellAnomalySink() {
-        StarRocksJdbcConfig config = resolveConfig(System.getenv(), System.getProperties());
-        return JdbcSink.<AnomalyEvent>builder()
-            .withQueryStatement(cellAnomalyInsertSql(config), (statement, event) ->
-                bindValues(statement, anomalyValues("cell", event)))
-            .withExecutionOptions(JdbcExecutionOptions.defaults())
-            .buildAtLeastOnce(connectionOptions(config));
-    }
-
-    public static org.apache.flink.connector.jdbc.core.datastream.sink.JdbcSink<AnomalyEvent> userAnomalySink() {
-        StarRocksJdbcConfig config = resolveConfig(System.getenv(), System.getProperties());
-        return JdbcSink.<AnomalyEvent>builder()
-            .withQueryStatement(userAnomalyInsertSql(config), (statement, event) ->
-                bindValues(statement, anomalyValues("user", event)))
-            .withExecutionOptions(JdbcExecutionOptions.defaults())
-            .buildAtLeastOnce(connectionOptions(config));
-    }
-
-    public static org.apache.flink.connector.jdbc.core.datastream.sink.JdbcSink<AnomalyEvent> gridAnomalySink() {
-        StarRocksJdbcConfig config = resolveConfig(System.getenv(), System.getProperties());
-        return JdbcSink.<AnomalyEvent>builder()
-            .withQueryStatement(gridAnomalyInsertSql(config), (statement, event) ->
-                bindValues(statement, anomalyValues("grid", event)))
-            .withExecutionOptions(JdbcExecutionOptions.defaults())
-            .buildAtLeastOnce(connectionOptions(config));
-    }
-
-    static StarRocksJdbcConfig resolveConfig(Map<String, String> env, Properties properties) {
-        return new StarRocksJdbcConfig(
-            resolve(env, properties, "FDB_STARROCKS_JDBC_URL", "fdb.starrocks.jdbc.url", DEFAULT_JDBC_URL),
+        return new StarRocksConnectorConfig(
+            resolve(env, properties, "FDB_STARROCKS_CONNECTOR_JDBC_URL",
+                "fdb.starrocks.connector.jdbc.url", DEFAULT_CONNECTOR_JDBC_URL),
+            resolve(env, properties, "FDB_STARROCKS_LOAD_URL", "fdb.starrocks.load.url", DEFAULT_LOAD_URL),
             resolve(env, properties, "FDB_STARROCKS_USER", "fdb.starrocks.user", DEFAULT_USER),
             resolve(env, properties, "FDB_STARROCKS_PASSWORD", "fdb.starrocks.password", DEFAULT_PASSWORD),
-            resolve(env, properties, "FDB_STARROCKS_DATABASE", "fdb.starrocks.database", DEFAULT_DATABASE)
-        );
+            resolve(env, properties, "FDB_STARROCKS_DATABASE", "fdb.starrocks.database", DEFAULT_DATABASE),
+            semantic,
+            labelPrefix);
+    }
+
+    static Map<String, String> connectorProperties(
+        StarRocksConnectorConfig config,
+        String tableName,
+        String labelSuffix) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        properties.put("jdbc-url", config.jdbcUrl());
+        properties.put("load-url", config.loadUrl());
+        properties.put("database-name", config.database());
+        properties.put("table-name", tableName);
+        properties.put("username", config.user());
+        properties.put("password", config.password());
+        properties.put("sink.version", DEFAULT_SINK_VERSION);
+        properties.put("sink.semantic", config.semantic());
+        properties.put("sink.label-prefix", config.labelPrefix() + "-" + labelSuffix);
+        properties.put("sink.sanitize-error-log", "true");
+        return properties;
+    }
+
+    private static StarRocksSinkOptions sinkOptions(
+        StarRocksConnectorConfig config,
+        String tableName,
+        String labelSuffix) {
+        StarRocksSinkOptions.Builder builder = StarRocksSinkOptions.builder();
+        connectorProperties(config, tableName, labelSuffix)
+            .forEach(builder::withProperty);
+        return builder.build();
+    }
+
+    static TableSchema cellKpiSchema() {
+        return TableSchema.builder()
+            .field("window_start_ts", DataTypes.BIGINT().notNull())
+            .field("window_kind", DataTypes.STRING().notNull())
+            .field("cell_id", DataTypes.STRING().notNull())
+            .field("window_end_ts", DataTypes.BIGINT().notNull())
+            .field("join_quality", DataTypes.STRING().notNull())
+            .field("site_id", DataTypes.STRING().notNull())
+            .field("grid_id", DataTypes.STRING().notNull())
+            .field("num_chr_events", DataTypes.BIGINT().notNull())
+            .field("num_users", DataTypes.BIGINT().notNull())
+            .field("rsrp_sample_count", DataTypes.BIGINT().notNull())
+            .field("sinr_sample_count", DataTypes.BIGINT().notNull())
+            .field("attach_attempts", DataTypes.BIGINT().notNull())
+            .field("avg_rsrp", DataTypes.FLOAT().notNull())
+            .field("avg_sinr", DataTypes.FLOAT().notNull())
+            .field("avg_prb_usage_dl", DataTypes.FLOAT().notNull())
+            .field("throughput_dl_mbps_avg", DataTypes.FLOAT().notNull())
+            .field("drop_rate", DataTypes.FLOAT().notNull())
+            .field("ho_success_rate", DataTypes.FLOAT().notNull())
+            .field("attach_success_rate", DataTypes.FLOAT().notNull())
+            .primaryKey("window_start_ts", "window_kind", "cell_id")
+            .build();
+    }
+
+    static TableSchema anomalySchema() {
+        return TableSchema.builder()
+            .field("anomaly_id", DataTypes.STRING().notNull())
+            .field("detection_ts", DataTypes.BIGINT().notNull())
+            .field("event_ts", DataTypes.BIGINT().notNull())
+            .field("entity_type", DataTypes.STRING().notNull())
+            .field("entity_id", DataTypes.STRING().notNull())
+            .field("window_start_ts", DataTypes.BIGINT().notNull())
+            .field("window_end_ts", DataTypes.BIGINT().notNull())
+            .field("imsi", DataTypes.STRING())
+            .field("site_id", DataTypes.STRING())
+            .field("cell_id", DataTypes.STRING())
+            .field("grid_id", DataTypes.STRING())
+            .field("latitude", DataTypes.DOUBLE())
+            .field("longitude", DataTypes.DOUBLE())
+            .field("anomaly_type", DataTypes.STRING().notNull())
+            .field("severity", DataTypes.STRING().notNull())
+            .field("rule_version", DataTypes.STRING().notNull())
+            .field("context_json", DataTypes.STRING())
+            .primaryKey("anomaly_id")
+            .build();
+    }
+
+    static StarRocksSinkRowBuilder<CellKpi> cellKpiRowBuilder() {
+        return (row, kpi) -> {
+            row[0] = kpi.getWindowStartTs();
+            row[1] = text(kpi.getWindowKind());
+            row[2] = text(kpi.getCellId());
+            row[3] = kpi.getWindowEndTs();
+            row[4] = text(kpi.getJoinQuality());
+            row[5] = text(kpi.getSiteId());
+            row[6] = text(kpi.getGridId());
+            row[7] = kpi.getNumChrEvents();
+            row[8] = kpi.getNumUsers();
+            row[9] = kpi.getRsrpSampleCount();
+            row[10] = kpi.getSinrSampleCount();
+            row[11] = kpi.getAttachAttempts();
+            row[12] = kpi.getAvgRsrp();
+            row[13] = kpi.getAvgSinr();
+            row[14] = kpi.getAvgPrbUsageDl();
+            row[15] = kpi.getThroughputDlMbpsAvg();
+            row[16] = kpi.getDropRate();
+            row[17] = kpi.getHoSuccessRate();
+            row[18] = kpi.getAttachSuccessRate();
+            row[19] = UPSERT_OP;
+        };
+    }
+
+    static StarRocksSinkRowBuilder<AnomalyEvent> cellAnomalyRowBuilder() {
+        return (row, event) -> bindRow(row, cellAnomalyValues(event));
+    }
+
+    static StarRocksSinkRowBuilder<AnomalyEvent> userAnomalyRowBuilder() {
+        return (row, event) -> bindRow(row, userAnomalyValues(event));
+    }
+
+    static StarRocksSinkRowBuilder<AnomalyEvent> gridAnomalyRowBuilder() {
+        return (row, event) -> bindRow(row, gridAnomalyValues(event));
     }
 
     static String cellAnomalyId(AnomalyEvent event) {
@@ -113,18 +225,6 @@ public final class StarRocksSinks {
         return anomalyId("grid", event);
     }
 
-    private static String anomalyId(String scope, AnomalyEvent event) {
-        return anomalyId(
-            scope,
-            event.getEventTs(),
-            text(event.getEntityType()),
-            text(event.getEntityId()),
-            text(event.getAnomalyType()),
-            text(event.getRuleVersion()),
-            sha256(text(event.getContextJson()))
-        );
-    }
-
     static List<Object> cellAnomalyValues(AnomalyEvent event) {
         return anomalyValues("cell", event);
     }
@@ -135,6 +235,13 @@ public final class StarRocksSinks {
 
     static List<Object> gridAnomalyValues(AnomalyEvent event) {
         return anomalyValues("grid", event);
+    }
+
+    private static void bindRow(Object[] row, List<Object> values) {
+        for (int i = 0; i < values.size(); i++) {
+            row[i] = values.get(i);
+        }
+        row[values.size()] = UPSERT_OP;
     }
 
     private static List<Object> anomalyValues(String scope, AnomalyEvent event) {
@@ -159,21 +266,6 @@ public final class StarRocksSinks {
         );
     }
 
-    private static JdbcConnectionOptions connectionOptions(StarRocksJdbcConfig config) {
-        return new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
-            .withUrl(config.jdbcUrl())
-            .withDriverName(MYSQL_DRIVER)
-            .withUsername(config.user())
-            .withPassword(config.password())
-            .build();
-    }
-
-    private static void bindValues(PreparedStatement statement, List<Object> values) throws SQLException {
-        for (int i = 0; i < values.size(); i++) {
-            statement.setObject(i + 1, values.get(i));
-        }
-    }
-
     private static String resolve(
         Map<String, String> env,
         Properties properties,
@@ -190,11 +282,23 @@ public final class StarRocksSinks {
         return configured.trim();
     }
 
-    private static String qualifiedTable(String database, String tableName) {
-        if (!SAFE_IDENTIFIER.matcher(database).matches()) {
-            throw new IllegalArgumentException("Invalid StarRocks database identifier: " + database);
+    private static void validateSemantic(String semantic) {
+        if (!"at-least-once".equals(semantic) && !"exactly-once".equals(semantic)) {
+            throw new IllegalArgumentException("FDB_STARROCKS_SINK_SEMANTIC must be at-least-once or exactly-once: "
+                + semantic);
         }
-        return "`" + database + "`." + tableName;
+    }
+
+    private static String anomalyId(String scope, AnomalyEvent event) {
+        return anomalyId(
+            scope,
+            event.getEventTs(),
+            text(event.getEntityType()),
+            text(event.getEntityId()),
+            text(event.getAnomalyType()),
+            text(event.getRuleVersion()),
+            sha256(text(event.getContextJson()))
+        );
     }
 
     private static String anomalyId(String prefix, Object... parts) {

@@ -26,6 +26,7 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     private long records;
     private long approxBytes;
     private long startedAtNanos = -1L;
+    private final LatencyStats latencyStats = new LatencyStats();
     private transient MetricSamplePublisher metricPublisher;
 
     public SinkLatencyProbe(String stageId, String displayName, String sinkType, String dataset,
@@ -52,8 +53,9 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
 
     @Override
     public void processElement(T value, Context ctx, Collector<T> out) {
-        record(value);
-        publishMetric(ctx.timerService().currentProcessingTime());
+        long nowMs = ctx.timerService().currentProcessingTime();
+        record(value, nowMs);
+        publishMetric(nowMs);
         out.collect(value);
     }
 
@@ -65,11 +67,16 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     }
 
     T record(T value) {
+        return record(value, System.currentTimeMillis());
+    }
+
+    T record(T value, long nowMs) {
         if (startedAtNanos < 0L) {
             startedAtNanos = System.nanoTime();
         }
         records++;
         approxBytes += estimateBytes(value);
+        latencyStats.recordObservedAt(nowMs, latencyBaseTimestamp(value));
         if (shouldEmit()) {
             log.info(summaryLine());
         }
@@ -85,11 +92,9 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     }
 
     StageMetricSample metricSample(long nowMs) {
-        long latencyP95Ms = approximateLatencyP95Ms();
-        long latencyP50Ms = latencyP95Ms / 2L;
-        long latencyP99Ms = latencyP95Ms;
+        LatencyStats.Snapshot latency = latencyStats.snapshotAndReset();
         return StageMetricSample.sinkLatency(stageId, displayName, "healthy", sinkType, dataset, windowKind,
-            records, approxBytes, durationMs(), latencyP50Ms, latencyP95Ms, latencyP99Ms, 0L, "", -1L, nowMs)
+            records, approxBytes, durationMs(), latency.p50Ms(), latency.p95Ms(), latency.p99Ms(), 0L, "", -1L, nowMs)
             .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism());
     }
 
@@ -121,13 +126,6 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
         return Math.max(0L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
     }
 
-    private long approximateLatencyP95Ms() {
-        if (records == 0L || startedAtNanos < 0L) {
-            return 0L;
-        }
-        return Math.max(1L, Math.round(1000.0d / Math.max(recordsPerSecond(), 0.001d)));
-    }
-
     private double recordsPerSecond() {
         if (records == 0L || startedAtNanos < 0L) {
             return 0.0d;
@@ -144,6 +142,22 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
             return estimateAnomalyBytes(anomaly);
         }
         return value == null ? 0L : utf8Bytes(value.toString());
+    }
+
+    private static long latencyBaseTimestamp(Object value) {
+        if (value instanceof CellKpi kpi) {
+            return kpi.getWindowEndTs();
+        }
+        if (value instanceof AnomalyEvent anomaly) {
+            if (anomaly.getWindowEndTs() > 0L) {
+                return anomaly.getWindowEndTs();
+            }
+            if (anomaly.getDetectionTs() > 0L) {
+                return anomaly.getDetectionTs();
+            }
+            return anomaly.getEventTs();
+        }
+        return Long.MIN_VALUE;
     }
 
     private static long estimateCellKpiBytes(CellKpi value) {

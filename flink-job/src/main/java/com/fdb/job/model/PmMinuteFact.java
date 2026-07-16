@@ -11,6 +11,7 @@ public class PmMinuteFact implements Serializable {
     private long pmWindowCount;
     private double prbUsageDlSum;
     private double throughputDlMbpsSum;
+    private long activeUsersSum;
     private long dropCount;
     private long handoverSuccess;
     private long handoverFailure;
@@ -28,12 +29,28 @@ public class PmMinuteFact implements Serializable {
         long dropCount,
         long handoverSuccess,
         long handoverFailure) {
+        this(cellId, siteId, minuteTs, pmWindowCount, prbUsageDlSum, throughputDlMbpsSum,
+            0L, dropCount, handoverSuccess, handoverFailure);
+    }
+
+    public PmMinuteFact(
+        String cellId,
+        String siteId,
+        long minuteTs,
+        long pmWindowCount,
+        double prbUsageDlSum,
+        double throughputDlMbpsSum,
+        long activeUsersSum,
+        long dropCount,
+        long handoverSuccess,
+        long handoverFailure) {
         this.cellId = cellId;
         this.siteId = siteId;
         this.minuteTs = minuteTs;
         this.pmWindowCount = pmWindowCount;
         this.prbUsageDlSum = prbUsageDlSum;
         this.throughputDlMbpsSum = throughputDlMbpsSum;
+        this.activeUsersSum = activeUsersSum;
         this.dropCount = dropCount;
         this.handoverSuccess = handoverSuccess;
         this.handoverFailure = handoverFailure;
@@ -111,6 +128,18 @@ public class PmMinuteFact implements Serializable {
         this.throughputDlMbpsSum = throughputDlMbpsSum;
     }
 
+    public long activeUsersSum() {
+        return activeUsersSum;
+    }
+
+    public long getActiveUsersSum() {
+        return activeUsersSum;
+    }
+
+    public void setActiveUsersSum(long activeUsersSum) {
+        this.activeUsersSum = activeUsersSum;
+    }
+
     public long dropCount() {
         return dropCount;
     }
@@ -159,6 +188,7 @@ public class PmMinuteFact implements Serializable {
             && pmWindowCount == that.pmWindowCount
             && Double.compare(that.prbUsageDlSum, prbUsageDlSum) == 0
             && Double.compare(that.throughputDlMbpsSum, throughputDlMbpsSum) == 0
+            && activeUsersSum == that.activeUsersSum
             && dropCount == that.dropCount
             && handoverSuccess == that.handoverSuccess
             && handoverFailure == that.handoverFailure
@@ -169,7 +199,7 @@ public class PmMinuteFact implements Serializable {
     @Override
     public int hashCode() {
         return Objects.hash(cellId, siteId, minuteTs, pmWindowCount, prbUsageDlSum,
-            throughputDlMbpsSum, dropCount, handoverSuccess, handoverFailure);
+            throughputDlMbpsSum, activeUsersSum, dropCount, handoverSuccess, handoverFailure);
     }
 
     @Override
@@ -181,6 +211,7 @@ public class PmMinuteFact implements Serializable {
             + ", pmWindowCount=" + pmWindowCount
             + ", prbUsageDlSum=" + prbUsageDlSum
             + ", throughputDlMbpsSum=" + throughputDlMbpsSum
+            + ", activeUsersSum=" + activeUsersSum
             + ", dropCount=" + dropCount
             + ", handoverSuccess=" + handoverSuccess
             + ", handoverFailure=" + handoverFailure

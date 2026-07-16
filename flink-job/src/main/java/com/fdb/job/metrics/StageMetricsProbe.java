@@ -20,12 +20,15 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     private final String status;
     private final long emitIntervalMs;
     private final MetricRuntimeConfig metricConfig;
+    private final LatencyTimestampExtractor<T> latencyTimestampExtractor;
 
     private transient MetricSamplePublisher metricPublisher;
     private transient Counter eventCounter;
+    private final LatencyStats latencyStats = new LatencyStats();
     private long eventsSinceLastEmit;
     private long lastEmitAtMs = -1L;
     private double lastEps;
+    private long latestWatermarkLagMs;
 
     public StageMetricsProbe(String stageId, String displayName, String status, long emitIntervalMs) {
         this(stageId, displayName, status, emitIntervalMs, MetricRuntimeConfig.fromEnvironment());
@@ -33,11 +36,18 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
 
     public StageMetricsProbe(String stageId, String displayName, String status, long emitIntervalMs,
                              MetricRuntimeConfig metricConfig) {
+        this(stageId, displayName, status, emitIntervalMs, metricConfig, null);
+    }
+
+    public StageMetricsProbe(String stageId, String displayName, String status, long emitIntervalMs,
+                             MetricRuntimeConfig metricConfig,
+                             LatencyTimestampExtractor<T> latencyTimestampExtractor) {
         this.stageId = stageId;
         this.displayName = displayName;
         this.status = status;
         this.emitIntervalMs = emitIntervalMs > 0 ? emitIntervalMs : 5_000L;
         this.metricConfig = metricConfig;
+        this.latencyTimestampExtractor = latencyTimestampExtractor;
     }
 
     @Override
@@ -56,8 +66,9 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
 
     @Override
     public void processElement(T value, Context ctx, Collector<T> out) {
-        record(value, ctx.timerService().currentProcessingTime());
-        publish(drainDueSamples(ctx.timerService().currentProcessingTime()));
+        long nowMs = ctx.timerService().currentProcessingTime();
+        record(value, nowMs, ctx.timerService().currentWatermark());
+        publish(drainDueSamples(nowMs));
         out.collect(value);
     }
 
@@ -69,12 +80,20 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     }
 
     T record(T value, long nowMs) {
+        return record(value, nowMs, Long.MIN_VALUE);
+    }
+
+    T record(T value, long nowMs, long currentWatermarkMs) {
         if (lastEmitAtMs < 0L) {
             lastEmitAtMs = nowMs;
         }
         eventsSinceLastEmit++;
         if (eventCounter != null) {
             eventCounter.inc();
+        }
+        recordLatency(value, nowMs);
+        if (currentWatermarkMs != Long.MIN_VALUE && currentWatermarkMs != Long.MAX_VALUE) {
+            latestWatermarkLagMs = Math.max(0L, nowMs - currentWatermarkMs);
         }
         return value;
     }
@@ -85,14 +104,26 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
         }
         double elapsedSeconds = Math.max((nowMs - lastEmitAtMs) / 1000.0d, 0.001d);
         lastEps = eventsSinceLastEmit / elapsedSeconds;
-        StageMetricSample sample = StageMetricSample.stage(stageId, displayName, status,
-            lastEps, lastEps, 0L, 0L, 0L, nowMs)
+        LatencyStats.Snapshot latency = latencyStats.snapshotAndReset();
+        StageMetricSample sample = StageMetricSample.stageLatency(stageId, displayName, status,
+            lastEps, lastEps, latency.p50Ms(), latency.p95Ms(), latency.p99Ms(), latestWatermarkLagMs, 0L, nowMs)
             .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism());
         eventsSinceLastEmit = 0L;
         lastEmitAtMs = nowMs;
         List<StageMetricSample> samples = new ArrayList<>();
         samples.add(sample);
         return samples;
+    }
+
+    private void recordLatency(T value, long nowMs) {
+        if (latencyTimestampExtractor == null) {
+            return;
+        }
+        try {
+            latencyStats.recordObservedAt(nowMs, latencyTimestampExtractor.extractTimestampMs(value));
+        } catch (RuntimeException e) {
+            log.debug("Failed to extract latency timestamp for stage={}", stageId, e);
+        }
     }
 
     private void publish(List<StageMetricSample> samples) {

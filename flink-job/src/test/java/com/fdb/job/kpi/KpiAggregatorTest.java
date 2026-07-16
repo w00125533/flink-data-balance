@@ -24,7 +24,7 @@ class KpiAggregatorTest {
         KpiAggregator agg = new KpiAggregator(WindowKind.MIN_1);
         KpiAccumulator acc = agg.createAccumulator();
 
-        EnrichedChr enriched = enrichedChrWith(-100f, 5f, 0, pmStat(0.6f));
+        EnrichedChr enriched = enrichedChrWith(-100f, 5f, 0, pmStat(0.6f, 20, 1));
         acc = agg.add(enriched, acc);
 
         EnrichedChr enriched2 = enrichedChrWith(-80f, 15f, 1, null);
@@ -48,21 +48,21 @@ class KpiAggregatorTest {
         assertThat(result.getAttachAttempts()).isZero();
         assertThat(result.getAvgRsrp()).isEqualTo(-90f);
         assertThat(result.getAvgSinr()).isEqualTo(10f);
-        assertThat(result.getDropRate()).isZero();
+        assertThat(result.getDropRate()).isEqualTo(0.05f);
         assertThat(result.getAvgPrbUsageDl()).isEqualTo(0.6f);
         assertThat(result.getAttachSuccessRate()).isZero();
         assertThat(result.getNumUsers()).isEqualTo(1);
         assertThat(result.getThroughputDlMbpsAvg()).isEqualTo(50f);
     }
 
-    private static PmStat pmStat(float prbUsageDl) {
+    private static PmStat pmStat(float prbUsageDl, int activeUsers, int droppedConnections) {
         return PmStat.newBuilder()
             .setSiteId(SITE_ID).setCellId(CELL_ID)
             .setWindowStartTs(BASE_TS).setWindowEndTs(BASE_TS + 10_000)
-            .setPrbUsageDl(prbUsageDl).setPrbUsageUl(0.3f).setActiveUsers(5)
+            .setPrbUsageDl(prbUsageDl).setPrbUsageUl(0.3f).setActiveUsers(activeUsers)
             .setAvgRsrp(-95f).setAvgRsrq(-10f).setAvgSinr(8f).setAvgCqi(10f)
             .setAvgMcs(18f).setAvgBler(0.01f).setThroughputDlMbps(50f)
-            .setThroughputUlMbps(10f).setDroppedConnections(0)
+            .setThroughputUlMbps(10f).setDroppedConnections(droppedConnections)
             .setHandoverSuccess(5).setHandoverFailure(0)
             .setPrachAttempt(2).setPrachFailure(0)
             .setRrcEstabAttempt(5).setRrcEstabSuccess(5)

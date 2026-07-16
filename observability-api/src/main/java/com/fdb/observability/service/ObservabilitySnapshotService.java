@@ -172,6 +172,8 @@ public final class ObservabilitySnapshotService {
       defaults.add(StageMetricSample.stage("assigner", "VBucket Assigner", "unknown", 0, 0, 0, 0, 0, now));
     }
     defaults.add(StageMetricSample.stage("enrichment", "Enrichment Process", "unknown", 0, 0, 0, 0, 0, now));
+    defaults.add(StageMetricSample.stage("kpi-1m", "KPI 1m Full Join", "unknown", 0, 0, 0, 0, 0, now));
+    defaults.add(StageMetricSample.stage("kpi-5m", "KPI 5m Rollup", "unknown", 0, 0, 0, 0, 0, now));
     if (dynamicBalancingEnabled) {
       defaults.add(StageMetricSample.stage("load-coordinator", "Load Coordinator", "unknown", 0, 0, 0, 0, 0, now));
     }
@@ -209,6 +211,8 @@ public final class ObservabilitySnapshotService {
       order.put("assigner", next++);
     }
     order.put("enrichment", next++);
+    order.put("kpi-1m", next++);
+    order.put("kpi-5m", next++);
     if (dynamicBalancingEnabled) {
       order.put("load-coordinator", next++);
     }

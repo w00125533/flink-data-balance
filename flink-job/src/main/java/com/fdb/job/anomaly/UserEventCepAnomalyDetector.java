@@ -9,21 +9,10 @@ import com.fdb.common.avro.Severity;
 import com.fdb.job.config.RuleConfig;
 import com.fdb.job.model.EnrichedChr;
 import java.time.Duration;
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
-import org.apache.flink.cep.CEP;
-import org.apache.flink.cep.functions.PatternProcessFunction;
-import org.apache.flink.cep.nfa.aftermatch.AfterMatchSkipStrategy;
-import org.apache.flink.cep.pattern.Pattern;
-import org.apache.flink.cep.pattern.conditions.SimpleCondition;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 
 public final class UserEventCepAnomalyDetector {
@@ -42,45 +31,15 @@ public final class UserEventCepAnomalyDetector {
                 .withTimestampAssigner((evaluation, timestamp) -> evaluation.eventTs()))
             .name("user-event-anomaly-evaluations");
 
-        DataStream<AnomalySignal> triggers = triggerSignals(
-            evaluations,
-            rules.userConsecutiveEvents(),
-            Duration.ofMinutes(Math.max(1, rules.userWindowMinutes())));
-        DataStream<AnomalySignal> recoveries = evaluations
-            .filter(evaluation -> !evaluation.abnormal())
-            .map(AnomalySignal::recovery)
-            .returns(new GenericTypeInfo<>(AnomalySignal.class))
-            .name("user-event-anomaly-recoveries");
-
-        return triggers.union(recoveries)
-            .keyBy(AnomalySignal::key)
-            .process(new ActivationFunction(), new GenericTypeInfo<>(AnomalyEvent.class))
-            .name("user-event-cep-anomaly-activation");
-    }
-
-    private static DataStream<AnomalySignal> triggerSignals(
-        DataStream<AnomalyRuleEvaluation> evaluations,
-        int consecutiveEvents,
-        Duration window) {
-        Pattern<AnomalyRuleEvaluation, ?> pattern = Pattern
-            .<AnomalyRuleEvaluation>begin("bad", AfterMatchSkipStrategy.skipPastLastEvent())
-            .where(new AbnormalCondition())
-            .times(Math.max(1, consecutiveEvents))
-            .consecutive()
-            .within(window);
-
-        return CEP.pattern(evaluations.keyBy(AnomalyRuleEvaluation::key), pattern)
-            .process(new PatternProcessFunction<AnomalyRuleEvaluation, AnomalySignal>() {
-                @Override
-                public void processMatch(
-                    Map<String, List<AnomalyRuleEvaluation>> match,
-                    Context ctx,
-                    Collector<AnomalySignal> out) {
-                    out.collect(AnomalySignal.trigger(match.get("bad")));
-                }
-            })
-            .returns(new GenericTypeInfo<>(AnomalySignal.class))
-            .name("user-event-cep-anomaly-triggers");
+        return evaluations
+            .keyBy(AnomalyRuleEvaluation::key)
+            .process(
+                new ConsecutiveAnomalyDedupFunction(
+                    "user-event-anomaly",
+                    rules.userConsecutiveEvents(),
+                    Duration.ofMinutes(Math.max(1, rules.userWindowMinutes()))),
+                new GenericTypeInfo<>(AnomalyEvent.class))
+            .name("user-event-anomaly-detect-dedup");
     }
 
     private static void emitEvaluations(
@@ -221,49 +180,4 @@ public final class UserEventCepAnomalyDetector {
         return value == null ? null : value.toString();
     }
 
-    private static final class AbnormalCondition extends SimpleCondition<AnomalyRuleEvaluation> {
-        @Override
-        public boolean filter(AnomalyRuleEvaluation value) {
-            return value.abnormal();
-        }
-    }
-
-    private static final class ActivationFunction
-        extends KeyedProcessFunction<String, AnomalySignal, AnomalyEvent> {
-        private transient ValueState<Boolean> active;
-        private transient ValueState<Long> activeSinceTs;
-        private transient ValueState<Long> lastRecoveryTs;
-
-        @Override
-        public void open(Configuration parameters) {
-            active = getRuntimeContext().getState(
-                new ValueStateDescriptor<>("user-event-anomaly-active", Boolean.class));
-            activeSinceTs = getRuntimeContext().getState(
-                new ValueStateDescriptor<>("user-event-anomaly-active-since-ts", Long.class));
-            lastRecoveryTs = getRuntimeContext().getState(
-                new ValueStateDescriptor<>("user-event-anomaly-last-recovery-ts", Long.class));
-        }
-
-        @Override
-        public void processElement(AnomalySignal signal, Context ctx, Collector<AnomalyEvent> out)
-            throws Exception {
-            if (signal.type() == AnomalySignal.SignalType.RECOVERY) {
-                Long previousRecovery = lastRecoveryTs.value();
-                long eventTs = signal.current().eventTs();
-                if (previousRecovery == null || eventTs > previousRecovery) {
-                    lastRecoveryTs.update(eventTs);
-                }
-                active.update(false);
-                return;
-            }
-            Long recoveryTs = lastRecoveryTs.value();
-            Long activeTs = activeSinceTs.value();
-            boolean recoveredAfterActivation = recoveryTs != null && (activeTs == null || recoveryTs > activeTs);
-            if (!Boolean.TRUE.equals(active.value()) || recoveredAfterActivation) {
-                active.update(true);
-                activeSinceTs.update(signal.current().eventTs());
-                out.collect(AnomalyEventFactory.fromEvaluation(signal.current()));
-            }
-        }
-    }
 }

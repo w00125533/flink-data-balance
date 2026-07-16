@@ -35,7 +35,7 @@ class MinuteKpiJoinFunctionTest {
             harness.processElement(MinuteFactEnvelope.chr(new ChrMinuteFact(
                 "cell-a", "site-a", 0L, 2L, 2L, -190.0, 20.0, 2L, 1L, 2L, 2L)), 0L);
             harness.processElement(MinuteFactEnvelope.pm(new PmMinuteFact(
-                "cell-a", "site-a", 0L, 2L, 1.20, 220.0, 1L, 9L, 1L)), 1L);
+                "cell-a", "site-a", 0L, 2L, 1.20, 220.0, 100L, 1L, 9L, 1L)), 1L);
 
             List<CellKpi> output = harness.extractOutputValues();
             assertThat(output).hasSize(1);
@@ -48,6 +48,7 @@ class MinuteKpiJoinFunctionTest {
             assertThat(kpi.getSinrSampleCount()).isEqualTo(2L);
             assertThat(kpi.getAttachAttempts()).isEqualTo(2L);
             assertThat(kpi.getAvgPrbUsageDl()).isEqualTo(0.60f);
+            assertThat(kpi.getDropRate()).isEqualTo(0.01f);
 
             harness.processWatermark(3 * MINUTE);
             assertThat(harness.extractOutputValues()).hasSize(1);

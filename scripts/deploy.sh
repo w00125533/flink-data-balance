@@ -249,6 +249,47 @@ shared_starrocks_mysql() {
   fi
 }
 
+starrocks_cell_kpi_connector_column_sql() {
+  local column=$1
+  case "$column" in
+    join_quality)
+      echo "ADD COLUMN join_quality VARCHAR(16) NOT NULL DEFAULT 'JOINED' AFTER window_end_ts"
+      ;;
+    rsrp_sample_count)
+      echo 'ADD COLUMN rsrp_sample_count BIGINT NOT NULL DEFAULT "0" AFTER num_users'
+      ;;
+    sinr_sample_count)
+      echo 'ADD COLUMN sinr_sample_count BIGINT NOT NULL DEFAULT "0" AFTER rsrp_sample_count'
+      ;;
+    attach_attempts)
+      echo 'ADD COLUMN attach_attempts BIGINT NOT NULL DEFAULT "0" AFTER sinr_sample_count'
+      ;;
+    *)
+      die "unsupported StarRocks cell_kpi connector column: $column"
+      ;;
+  esac
+}
+
+local_starrocks_column_exists() {
+  local column=$1
+  shared_starrocks_mysql -N -B -e "SHOW COLUMNS FROM cell_kpi LIKE '$column';" \
+    | grep -Eq "^${column}[[:space:]]"
+}
+
+ensure_local_starrocks_cell_kpi_connector_schema() {
+  local column
+  local alter_sql
+  local columns=(join_quality rsrp_sample_count sinr_sample_count attach_attempts)
+
+  for column in "${columns[@]}"; do
+    if ! local_starrocks_column_exists "$column"; then
+      alter_sql="$(starrocks_cell_kpi_connector_column_sql "$column")"
+      log "adding StarRocks cell_kpi connector column: $column"
+      shared_starrocks_mysql -e "ALTER TABLE cell_kpi ${alter_sql};"
+    fi
+  done
+}
+
 wait_for_command() {
   local label=$1
   local max_attempts=$2
@@ -484,6 +525,7 @@ local_init() {
 
   log "initializing shared StarRocks tables"
   shared_starrocks_mysql --no-database < scripts/init-starrocks.sql
+  ensure_local_starrocks_cell_kpi_connector_schema
 
   log "initializing shared Hive table"
   bash scripts/init-hive.sh
@@ -494,9 +536,17 @@ local_init() {
 
 local_submit() {
   local explicit_run_id="${FDB_RUN_ID:-}"
+  local explicit_run_label="${FDB_RUN_LABEL:-}"
+  local explicit_result_sink="${FDB_RESULT_SINK:-}"
   load_env_optional
   if [[ -n "$explicit_run_id" ]]; then
     export FDB_RUN_ID="$explicit_run_id"
+  fi
+  if [[ -n "$explicit_run_label" ]]; then
+    export FDB_RUN_LABEL="$explicit_run_label"
+  fi
+  if [[ -n "$explicit_result_sink" ]]; then
+    export FDB_RESULT_SINK="$explicit_result_sink"
   fi
   ensure_run_context
   local jar="${FDB_FLINK_JOB_JAR:-/opt/fdb/flink-job-0.1.0-SNAPSHOT.jar}"
@@ -814,6 +864,10 @@ external_starrocks_port() {
   echo "${FDB_STARROCKS_FE_ENDPOINT:-}" | awk -F: '{print ($2 == "" ? 9030 : $2)}'
 }
 
+external_starrocks_load_port() {
+  echo "${FDB_STARROCKS_LOAD_PORT:-8030}"
+}
+
 external_mysql_select_one() {
   local host=$1
   local port=$2
@@ -871,6 +925,39 @@ external_mysql_run_sql() {
   mysql "${args[@]}"
 }
 
+external_starrocks_column_exists() {
+  local column=$1
+  external_mysql_run_sql \
+    "$(external_starrocks_host)" \
+    "$(external_starrocks_port)" \
+    "${FDB_STARROCKS_USER:-root}" \
+    "${FDB_STARROCKS_PASSWORD:-}" \
+    "${FDB_STARROCKS_DATABASE:-fdb}" <<SQL | grep -Eq "^${column}[[:space:]]"
+SHOW COLUMNS FROM cell_kpi LIKE '${column}';
+SQL
+}
+
+ensure_external_starrocks_cell_kpi_connector_schema() {
+  local column
+  local alter_sql
+  local columns=(join_quality rsrp_sample_count sinr_sample_count attach_attempts)
+
+  for column in "${columns[@]}"; do
+    if ! external_starrocks_column_exists "$column"; then
+      alter_sql="$(starrocks_cell_kpi_connector_column_sql "$column")"
+      log "adding external StarRocks cell_kpi connector column: $column"
+      external_mysql_run_sql \
+        "$(external_starrocks_host)" \
+        "$(external_starrocks_port)" \
+        "${FDB_STARROCKS_USER:-root}" \
+        "${FDB_STARROCKS_PASSWORD:-}" \
+        "${FDB_STARROCKS_DATABASE:-fdb}" <<SQL
+ALTER TABLE cell_kpi ${alter_sql};
+SQL
+    fi
+  done
+}
+
 external_hdfs_exec() {
   hdfs dfs -fs "$FDB_HDFS_URI" "$@"
 }
@@ -919,6 +1006,15 @@ external_hdfs_path_from_location() {
 external_apply_runtime_defaults() {
   if [[ -z "${FDB_STARROCKS_JDBC_URL:-}" && -n "${FDB_STARROCKS_FE_ENDPOINT:-}" ]]; then
     export FDB_STARROCKS_JDBC_URL="jdbc:mysql://$(external_starrocks_host):$(external_starrocks_port)/${FDB_STARROCKS_DATABASE:-fdb}?rewriteBatchedStatements=true&useServerPrepStmts=false"
+  fi
+  if [[ -z "${FDB_STARROCKS_CONNECTOR_JDBC_URL:-}" && -n "${FDB_STARROCKS_FE_ENDPOINT:-}" ]]; then
+    export FDB_STARROCKS_CONNECTOR_JDBC_URL="jdbc:mysql://$(external_starrocks_host):$(external_starrocks_port)"
+  fi
+  if [[ -z "${FDB_STARROCKS_LOAD_URL:-}" && -n "${FDB_STARROCKS_FE_ENDPOINT:-}" ]]; then
+    export FDB_STARROCKS_LOAD_URL="$(external_starrocks_host):$(external_starrocks_load_port)"
+  fi
+  if [[ -z "${FDB_STARROCKS_SINK_SEMANTIC:-}" ]]; then
+    export FDB_STARROCKS_SINK_SEMANTIC="exactly-once"
   fi
   if [[ -z "${FDB_HIVE_WAREHOUSE:-}" && -n "${FDB_HDFS_URI:-}" ]]; then
     export FDB_HIVE_WAREHOUSE
@@ -1032,11 +1128,12 @@ build_external_flink_env_args() {
     FDB_KAFKA_BOOTSTRAP
     FDB_STARROCKS_FE_ENDPOINT
     FDB_STARROCKS_JDBC_URL
+    FDB_STARROCKS_CONNECTOR_JDBC_URL
+    FDB_STARROCKS_LOAD_URL
     FDB_STARROCKS_USER
     FDB_STARROCKS_DATABASE
-    FDB_STARROCKS_JDBC_BATCH_SIZE
-    FDB_STARROCKS_JDBC_BATCH_INTERVAL_MS
-    FDB_STARROCKS_JDBC_MAX_RETRIES
+    FDB_STARROCKS_SINK_SEMANTIC
+    FDB_STARROCKS_SINK_LABEL_PREFIX
     FDB_RESULT_SINK
     FDB_DLQ_ENABLED
     FDB_HIVE_WAREHOUSE
@@ -1250,15 +1347,24 @@ external_init() {
     "${FDB_STARROCKS_PASSWORD:-}" \
     "" \
     scripts/init-starrocks.sql
+  ensure_external_starrocks_cell_kpi_connector_schema
 
   ok "external-yarn dependencies initialized"
 }
 
 external_submit() {
   local explicit_run_id="${FDB_RUN_ID:-}"
+  local explicit_run_label="${FDB_RUN_LABEL:-}"
+  local explicit_result_sink="${FDB_RESULT_SINK:-}"
   load_env
   if [[ -n "$explicit_run_id" ]]; then
     export FDB_RUN_ID="$explicit_run_id"
+  fi
+  if [[ -n "$explicit_run_label" ]]; then
+    export FDB_RUN_LABEL="$explicit_run_label"
+  fi
+  if [[ -n "$explicit_result_sink" ]]; then
+    export FDB_RESULT_SINK="$explicit_result_sink"
   fi
   [[ "${FDB_DEPLOY_TARGET:-}" == "external-yarn" ]] || die "FDB_DEPLOY_TARGET must be external-yarn"
   require_env FDB_KAFKA_BOOTSTRAP
@@ -1270,7 +1376,10 @@ external_submit() {
   [[ -x "$(external_flink_bin)" ]] || die "flink command not executable: $(external_flink_bin)"
   ensure_run_context
   external_apply_runtime_defaults
-  require_env FDB_STARROCKS_JDBC_URL
+  if [[ "${FDB_RESULT_SINK:-starrocks}" == "starrocks" ]]; then
+    require_env FDB_STARROCKS_CONNECTOR_JDBC_URL
+    require_env FDB_STARROCKS_LOAD_URL
+  fi
   require_env FDB_HIVE_WAREHOUSE
   require_env FDB_ICEBERG_WAREHOUSE
   require_env FDB_FLINK_CHECKPOINT_DIR

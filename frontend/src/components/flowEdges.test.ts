@@ -41,11 +41,17 @@ describe('resolveFlowEdges', () => {
     expect(edges).not.toContainEqual(['kafka', 'enrichment']);
   });
 
-  it('connects enrichment to every current sink stage id', () => {
-    const edges = resolveFlowEdges(['kafka', 'enrichment', ...currentSinkStageIds]);
+  it('connects KPI and anomaly stages from their producing stages', () => {
+    const edges = resolveFlowEdges(['kafka', 'enrichment', 'kpi-1m', 'kpi-5m', ...currentSinkStageIds]);
 
-    currentSinkStageIds.forEach((sinkStageId) => {
-      expect(edges).toContainEqual(['enrichment', sinkStageId]);
+    expect(edges).toContainEqual(['kafka', 'kpi-1m']);
+    expect(edges).toContainEqual(['kpi-1m', 'kpi-5m']);
+    ['kafka', 'starrocks', 'hive', 'iceberg'].forEach((sink) => {
+      expect(edges).toContainEqual(['kpi-1m', `${sink}-kpi-1m`]);
+      expect(edges).toContainEqual(['kpi-5m', `${sink}-kpi-5m`]);
+      expect(edges).toContainEqual(['kpi-1m', `${sink}-cell-anomaly`]);
+      expect(edges).toContainEqual(['enrichment', `${sink}-user-anomaly`]);
+      expect(edges).toContainEqual(['enrichment', `${sink}-grid-anomaly`]);
     });
     expect(edges).not.toContainEqual(['enrichment', 'cell-anomaly-kafka-sink']);
     expect(edges).not.toContainEqual(['enrichment', 'grid-anomaly-kafka-sink']);
@@ -60,6 +66,8 @@ describe('resolveFlowEdges', () => {
       'cfg-source',
       'kafka',
       'enrichment',
+      'kpi-1m',
+      'kpi-5m',
       'starrocks-kpi-1m',
       'starrocks-kpi-5m',
       'starrocks-cell-anomaly',
@@ -67,34 +75,36 @@ describe('resolveFlowEdges', () => {
       'starrocks-grid-anomaly'
     ]);
 
-    expect(edges).toContainEqual(['enrichment', 'starrocks-kpi-1m']);
-    expect(edges).toContainEqual(['enrichment', 'starrocks-kpi-5m']);
-    expect(edges).toContainEqual(['enrichment', 'starrocks-cell-anomaly']);
+    expect(edges).toContainEqual(['kpi-1m', 'starrocks-kpi-1m']);
+    expect(edges).toContainEqual(['kpi-5m', 'starrocks-kpi-5m']);
+    expect(edges).toContainEqual(['kpi-1m', 'starrocks-cell-anomaly']);
     expect(edges).toContainEqual(['enrichment', 'starrocks-user-anomaly']);
     expect(edges).toContainEqual(['enrichment', 'starrocks-grid-anomaly']);
-    expect(edges).not.toContainEqual(['enrichment', 'kafka-kpi-1m']);
-    expect(edges).not.toContainEqual(['enrichment', 'kafka-kpi-5m']);
+    expect(edges).not.toContainEqual(['kpi-1m', 'kafka-kpi-1m']);
+    expect(edges).not.toContainEqual(['kpi-5m', 'kafka-kpi-5m']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-cell-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-user-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'kafka-grid-anomaly']);
-    expect(edges).not.toContainEqual(['enrichment', 'hive-kpi-1m']);
-    expect(edges).not.toContainEqual(['enrichment', 'hive-kpi-5m']);
+    expect(edges).not.toContainEqual(['kpi-1m', 'hive-kpi-1m']);
+    expect(edges).not.toContainEqual(['kpi-5m', 'hive-kpi-5m']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-cell-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-user-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'hive-grid-anomaly']);
-    expect(edges).not.toContainEqual(['enrichment', 'iceberg-kpi-1m']);
-    expect(edges).not.toContainEqual(['enrichment', 'iceberg-kpi-5m']);
+    expect(edges).not.toContainEqual(['kpi-1m', 'iceberg-kpi-1m']);
+    expect(edges).not.toContainEqual(['kpi-5m', 'iceberg-kpi-5m']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-cell-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-user-anomaly']);
     expect(edges).not.toContainEqual(['enrichment', 'iceberg-grid-anomaly']);
   });
 
-  it('keeps only source, kafka, and enrichment base edges in none mode', () => {
-    expect(resolveFlowEdges(['chr-source', 'pm-source', 'cfg-source', 'kafka', 'enrichment'])).toEqual([
+  it('keeps only source, kafka, enrichment, and KPI compute edges in none mode', () => {
+    expect(resolveFlowEdges(['chr-source', 'pm-source', 'cfg-source', 'kafka', 'enrichment', 'kpi-1m', 'kpi-5m'])).toEqual([
       ['chr-source', 'kafka'],
       ['pm-source', 'kafka'],
       ['cfg-source', 'kafka'],
-      ['kafka', 'enrichment']
+      ['kafka', 'enrichment'],
+      ['kafka', 'kpi-1m'],
+      ['kpi-1m', 'kpi-5m']
     ]);
   });
 });

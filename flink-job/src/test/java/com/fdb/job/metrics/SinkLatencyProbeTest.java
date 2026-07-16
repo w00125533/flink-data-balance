@@ -72,6 +72,22 @@ class SinkLatencyProbeTest {
     }
 
     @Test
+    void records_sink_probe_latency_from_result_window_end_timestamp() {
+        SinkLatencyProbe<CellKpi> probe = new SinkLatencyProbe<>(
+            "starrocks-kpi-1m", "StarRocks KPI 1m Sink", "starrocks",
+            "kpi_1m", "MIN_1", 2, new MetricRuntimeConfig("run-a", "starrocks", 4, false));
+
+        probe.record(kpi(0L, "a"), 70_000L);
+        probe.record(kpi(0L, "bb"), 100_000L);
+
+        StageMetricSample sample = probe.metricSample(100_000L);
+
+        assertThat(sample.latencyP50Ms()).isEqualTo(10_000L);
+        assertThat(sample.latencyP95Ms()).isEqualTo(40_000L);
+        assertThat(sample.latencyP99Ms()).isEqualTo(40_000L);
+    }
+
+    @Test
     void open_uses_disabled_noop_publisher_without_creating_real_producer() throws Exception {
         SinkLatencyProbe<CellKpi> probe = new SinkLatencyProbe<>(
             "starrocks-kpi-1m", "StarRocks KPI 1m Sink", "starrocks",

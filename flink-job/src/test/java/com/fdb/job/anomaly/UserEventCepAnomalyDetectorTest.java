@@ -13,11 +13,33 @@ import com.fdb.job.model.EnrichedChr;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Test;
 
 class UserEventCepAnomalyDetectorTest {
+
+    @Test
+    void execution_plan_uses_single_detect_dedup_operator() {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        DataStream<AnomalyEvent> anomalies = UserEventCepAnomalyDetector
+            .detect(
+                env.fromCollection(
+                    List.of(enriched(chr("a", 0, ChrEventType.ATTACH, 1, -90f, 10f, 10f))),
+                    new GenericTypeInfo<>(EnrichedChr.class)),
+                RuleConfig.defaults());
+        anomalies.print().name("user-anomaly-test-sink");
+
+        String plan = env.getExecutionPlan();
+
+        assertThat(plan).contains("user-event-anomaly-detect-dedup");
+        assertThat(plan)
+            .doesNotContain("user-event-cep-anomaly-triggers")
+            .doesNotContain("user-event-anomaly-recoveries")
+            .doesNotContain("user-event-cep-anomaly-activation");
+    }
 
     @Test
     void emits_user_failure_after_three_attach_failures_within_window() throws Exception {

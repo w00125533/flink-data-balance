@@ -25,6 +25,19 @@ class StageMetricSampleTest {
     }
 
     @Test
+    void creates_stage_latency_metric_sample_with_percentiles() {
+        StageMetricSample sample = StageMetricSample.stageLatency(
+            "kpi-1m", "KPI 1m Full Join", "healthy", 12.0, 10.0,
+            8L, 20L, 40L, 500L, 0L, 1_717_400_000_000L);
+
+        assertThat(sample.stageId()).isEqualTo("kpi-1m");
+        assertThat(sample.latencyP50Ms()).isEqualTo(8L);
+        assertThat(sample.latencyP95Ms()).isEqualTo(20L);
+        assertThat(sample.latencyP99Ms()).isEqualTo(40L);
+        assertThat(sample.watermarkLagMs()).isEqualTo(500L);
+    }
+
+    @Test
     void creates_sink_metric_sample_with_sink_labels() {
         StageMetricSample sample = StageMetricSample.sink(
             "iceberg-sink", "Iceberg Sink", "warning", "iceberg", "1m", 340, 420, 1_717_400_000_000L);

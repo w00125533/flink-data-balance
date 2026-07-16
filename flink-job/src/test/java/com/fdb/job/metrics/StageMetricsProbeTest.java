@@ -58,4 +58,25 @@ class StageMetricsProbeTest {
             assertThat(sample.runId()).isEqualTo("run-a");
         });
     }
+
+    @Test
+    void records_latency_percentiles_from_event_timestamp() {
+        StageMetricsProbe<String> probe = new StageMetricsProbe<>(
+            "chr-source", "CHR Source", "healthy", 5_000L,
+            new MetricRuntimeConfig("run-a", "starrocks", 4, false),
+            Long::parseLong);
+
+        probe.record("1000", 2_000L, 1_500L);
+        probe.record("1300", 2_000L, 1_500L);
+        probe.record("1800", 2_000L, 1_500L);
+
+        List<StageMetricSample> samples = probe.drainDueSamples(7_000L);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.latencyP50Ms()).isEqualTo(700L);
+            assertThat(sample.latencyP95Ms()).isEqualTo(1_000L);
+            assertThat(sample.latencyP99Ms()).isEqualTo(1_000L);
+            assertThat(sample.watermarkLagMs()).isEqualTo(500L);
+        });
+    }
 }

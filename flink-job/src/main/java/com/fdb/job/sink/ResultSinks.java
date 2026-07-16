@@ -82,36 +82,36 @@ public final class ResultSinks {
                 "kpi_1m", "MIN_1", 100, metricConfig), new GenericTypeInfo<>(CellKpi.class))
             .startNewChain()
             .name("starrocks-kpi-1m")
-            .sinkTo(JdbcSinks.cellKpiSink())
-            .name("cell-kpi-jdbc-sink");
+            .addSink(StarRocksSinks.cellKpiSink("kpi-1m"))
+            .name("cell-kpi-starrocks-connector-sink");
         cellKpi5m
             .process(new SinkLatencyProbe<>("starrocks-kpi-5m", "Cell KPI 5m StarRocks Sink", "starrocks",
                 "kpi_5m", "MIN_5", 100, metricConfig), new GenericTypeInfo<>(CellKpi.class))
             .startNewChain()
             .name("starrocks-kpi-5m")
-            .sinkTo(JdbcSinks.cellKpiSink())
-            .name("cell-kpi-5m-jdbc-sink");
+            .addSink(StarRocksSinks.cellKpiSink("kpi-5m"))
+            .name("cell-kpi-5m-starrocks-connector-sink");
         cellAnomalies
             .process(new SinkLatencyProbe<>("starrocks-cell-anomaly", "Cell Anomaly StarRocks Sink", "starrocks",
                 "cell_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
             .name("starrocks-cell-anomaly")
-            .sinkTo(StarRocksSinks.cellAnomalySink())
-            .name("cell-anomaly-starrocks-sink");
+            .addSink(StarRocksSinks.cellAnomalySink())
+            .name("cell-anomaly-starrocks-connector-sink");
         userAnomalies
             .process(new SinkLatencyProbe<>("starrocks-user-anomaly", "User Anomaly StarRocks Sink", "starrocks",
                 "user_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
             .name("starrocks-user-anomaly")
-            .sinkTo(StarRocksSinks.userAnomalySink())
-            .name("user-anomaly-starrocks-sink");
+            .addSink(StarRocksSinks.userAnomalySink())
+            .name("user-anomaly-starrocks-connector-sink");
         gridAnomalies
             .process(new SinkLatencyProbe<>("starrocks-grid-anomaly", "Grid Anomaly StarRocks Sink", "starrocks",
                 "grid_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
             .name("starrocks-grid-anomaly")
-            .sinkTo(StarRocksSinks.gridAnomalySink())
-            .name("grid-anomaly-starrocks-sink");
+            .addSink(StarRocksSinks.gridAnomalySink())
+            .name("grid-anomaly-starrocks-connector-sink");
     }
 
     private static void attachHiveSinks(

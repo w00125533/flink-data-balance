@@ -66,6 +66,16 @@ public record StageMetricSample(
             0L, 0L, 0L, "", -1L, "unknown-run", "", -1, updatedAtEpochMs);
     }
 
+    public static StageMetricSample stageLatency(String stageId, String displayName, String status,
+                                                 double inEps, double outEps,
+                                                 long latencyP50Ms, long latencyP95Ms,
+                                                 long latencyP99Ms, long watermarkLagMs,
+                                                 long errorCount, long updatedAtEpochMs) {
+        return new StageMetricSample(stageId, displayName, status, inEps, outEps, latencyP95Ms,
+            watermarkLagMs, errorCount, 0L, 0L, sourceName(stageId), "", "", "", "", "", 0L, 0L, 0L,
+            latencyP50Ms, latencyP99Ms, 0L, "", -1L, "unknown-run", "", -1, updatedAtEpochMs);
+    }
+
     public static StageMetricSample sink(String stageId, String displayName, String status,
                                          String sink, String window, long rowsWritten,
                                          long latencyP95Ms, long updatedAtEpochMs) {

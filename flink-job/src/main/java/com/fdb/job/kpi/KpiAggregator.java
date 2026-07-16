@@ -39,6 +39,7 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
             var pm = enriched.latestPm();
             acc.prbUsageDlSum += pm.getPrbUsageDl();
             acc.throughputDlSum += pm.getThroughputDlMbps();
+            acc.activeUsersSum += Math.max(0, pm.getActiveUsers());
             acc.droppedConnections += pm.getDroppedConnections();
             acc.handoverSuccess += pm.getHandoverSuccess();
             acc.handoverFailure += pm.getHandoverFailure();
@@ -64,7 +65,7 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
             .setAvgRsrp(avg(acc.rsrpSum, acc.rsrpCount)).setAvgSinr(avg(acc.sinrSum, acc.sinrCount))
             .setAvgPrbUsageDl(avg(acc.prbUsageDlSum, acc.pmCount))
             .setThroughputDlMbpsAvg(avg(acc.throughputDlSum, acc.pmCount))
-            .setDropRate(avg(acc.droppedConnections, acc.pmCount))
+            .setDropRate(avg(acc.droppedConnections, acc.activeUsersSum))
             .setHoSuccessRate(avg(acc.handoverSuccess, hoAttempts))
             .setAttachSuccessRate(avg(acc.attachSuccess, acc.attachAttempts))
             .build();
@@ -76,7 +77,7 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
         a.sinrSum += b.sinrSum; a.sinrCount += b.sinrCount;
         a.attachAttempts += b.attachAttempts; a.attachSuccess += b.attachSuccess;
         a.prbUsageDlSum += b.prbUsageDlSum; a.throughputDlSum += b.throughputDlSum;
-        a.droppedConnections += b.droppedConnections; a.handoverSuccess += b.handoverSuccess;
+        a.activeUsersSum += b.activeUsersSum; a.droppedConnections += b.droppedConnections; a.handoverSuccess += b.handoverSuccess;
         a.handoverFailure += b.handoverFailure; a.pmCount += b.pmCount;
         a.users.addAll(b.users); a.pmWindows.addAll(b.pmWindows);
         if (a.siteId == null) a.siteId = b.siteId;
@@ -101,6 +102,7 @@ class KpiAccumulator {
     int attachSuccess;
     float prbUsageDlSum;
     float throughputDlSum;
+    int activeUsersSum;
     int droppedConnections;
     int handoverSuccess;
     int handoverFailure;

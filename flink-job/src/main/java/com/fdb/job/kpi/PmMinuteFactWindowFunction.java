@@ -15,6 +15,7 @@ public class PmMinuteFactWindowFunction
         long count = 0L;
         double prbUsageDlSum = 0.0;
         double throughputDlMbpsSum = 0.0;
+        long activeUsersSum = 0L;
         long dropCount = 0L;
         long handoverSuccess = 0L;
         long handoverFailure = 0L;
@@ -26,6 +27,7 @@ public class PmMinuteFactWindowFunction
             count++;
             prbUsageDlSum += pm.getPrbUsageDl();
             throughputDlMbpsSum += pm.getThroughputDlMbps();
+            activeUsersSum += Math.max(0, pm.getActiveUsers());
             dropCount += pm.getDroppedConnections();
             handoverSuccess += pm.getHandoverSuccess();
             handoverFailure += pm.getHandoverFailure();
@@ -33,7 +35,7 @@ public class PmMinuteFactWindowFunction
 
         if (count > 0L) {
             out.collect(new PmMinuteFact(cellId, siteId, ctx.window().getStart(), count,
-                prbUsageDlSum, throughputDlMbpsSum, dropCount, handoverSuccess, handoverFailure));
+                prbUsageDlSum, throughputDlMbpsSum, activeUsersSum, dropCount, handoverSuccess, handoverFailure));
         }
     }
 }

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -96,9 +97,39 @@ public final class BenchmarkReportService {
     out.append("- Invalid sample lines: ").append(result.invalidLines()).append('\n');
     out.append("- Result sink: ").append(resultSink).append('\n');
     out.append("- Parallelism: ").append(parallelism).append("\n\n");
+    appendStageLatencyMetrics(out, samples);
     appendSinkMetrics(out, samples);
     appendBottleneckCandidates(out, samples);
     return out.toString();
+  }
+
+  private static void appendStageLatencyMetrics(StringBuilder out, List<StageMetricSample> samples) {
+    out.append("## Stage Latency Metrics\n\n");
+    List<StageMetricSample> stageSamples = latestByStage(samples).values().stream()
+        .filter(sample -> sample.sink().isBlank())
+        .filter(sample -> sample.latencyP50Ms() > 0L
+            || sample.latencyP95Ms() > 0L
+            || sample.latencyP99Ms() > 0L
+            || sample.watermarkLagMs() > 0L)
+        .sorted(Comparator.comparing(StageMetricSample::stageId))
+        .toList();
+    if (stageSamples.isEmpty()) {
+      out.append("No stage latency metrics were collected.\n\n");
+      return;
+    }
+    out.append("| Stage | Display | EPS | P50 ms | P95 ms | P99 ms | Watermark lag ms |\n");
+    out.append("| --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
+    for (StageMetricSample sample : stageSamples) {
+      out.append("| ").append(sample.stageId())
+          .append(" | ").append(sample.displayName())
+          .append(" | ").append(String.format(Locale.ROOT, "%.2f", sample.outEps()))
+          .append(" | ").append(sample.latencyP50Ms())
+          .append(" | ").append(sample.latencyP95Ms())
+          .append(" | ").append(sample.latencyP99Ms())
+          .append(" | ").append(sample.watermarkLagMs())
+          .append(" |\n");
+    }
+    out.append('\n');
   }
 
   private static void appendSinkMetrics(StringBuilder out, List<StageMetricSample> samples) {
@@ -159,6 +190,14 @@ public final class BenchmarkReportService {
     samples.stream()
         .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
         .forEach(sample -> latest.put(sample.stageId() + ":" + sample.sink() + ":" + sample.window(), sample));
+    return latest;
+  }
+
+  private static Map<String, StageMetricSample> latestByStage(List<StageMetricSample> samples) {
+    Map<String, StageMetricSample> latest = new LinkedHashMap<>();
+    samples.stream()
+        .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .forEach(sample -> latest.put(sample.stageId(), sample));
     return latest;
   }
 

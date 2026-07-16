@@ -15,6 +15,7 @@ import com.fdb.job.kpi.ChrMinuteFactWindowFunction;
 import com.fdb.job.kpi.MinuteKpiJoinFunction;
 import com.fdb.job.kpi.PmMinuteFactWindowFunction;
 import com.fdb.job.metrics.StageMetricsProbe;
+import com.fdb.job.metrics.LatencyTimestampExtractor;
 import com.fdb.job.metrics.MetricRuntimeConfig;
 import com.fdb.job.model.ChrMinuteFact;
 import com.fdb.job.model.EnrichedChr;
@@ -111,7 +112,8 @@ public class FlinkJobMain {
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((event, ts) -> event.getEventTs()),
             "chr-source")
-            .process(stageMetricsProbe("chr-source", "CHR Source", "healthy", resultSinkConfig, metricConfig))
+            .process(stageMetricsProbe("chr-source", "CHR Source", "healthy", resultSinkConfig, metricConfig,
+                ChrEvent::getEventTs))
             .name("chr-source-metrics");
 
         DataStream<PmStat> pmStream = env.fromSource(pmSource,
@@ -119,14 +121,16 @@ public class FlinkJobMain {
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((pm, ts) -> pmEventTimestamp(pm)),
             "pm-source")
-            .process(stageMetricsProbe("pm-source", "PM Source", "healthy", resultSinkConfig, metricConfig))
+            .process(stageMetricsProbe("pm-source", "PM Source", "healthy", resultSinkConfig, metricConfig,
+                PmStat::getWindowEndTs))
             .name("pm-source-metrics");
 
         DataStream<CfgConfig> cfgStream = env.fromSource(cfgSource,
             WatermarkStrategy.<CfgConfig>forMonotonousTimestamps()
                 .withIdleness(Duration.ofMinutes(1)),
             "cfg-source")
-            .process(stageMetricsProbe("cfg-source", "CFG Source", "healthy", resultSinkConfig, metricConfig))
+            .process(stageMetricsProbe("cfg-source", "CFG Source", "healthy", resultSinkConfig, metricConfig,
+                CfgConfig::getEffectiveTs))
             .name("cfg-source-metrics");
 
         // Enrichment pipeline: unify CHR + PM + CFG, enrich, detect anomalies and KPI
@@ -165,7 +169,8 @@ public class FlinkJobMain {
             .name("enrichment")
             .uid("enrichment");
         DataStream<EnrichedChr> enriched = enrichedRaw
-            .process(stageMetricsProbe("enrichment", "Enrichment Process", "healthy", resultSinkConfig, metricConfig))
+            .process(stageMetricsProbe("enrichment", "Enrichment Process", "healthy", resultSinkConfig, metricConfig,
+                enrichedChr -> enrichedChr.chrEvent().getEventTs()))
             .name("enrichment-metrics");
 
         if (resultSinkConfig.dlqEnabled()) {
@@ -234,7 +239,10 @@ public class FlinkJobMain {
             .keyBy(MinuteFactEnvelope::cellId)
             .process(new MinuteKpiJoinFunction(Duration.ofMinutes(2)), new GenericTypeInfo<>(CellKpi.class))
             .name("kpi-1m-full-join")
-            .uid("kpi-1m-full-join");
+            .uid("kpi-1m-full-join")
+            .process(stageMetricsProbe("kpi-1m", "KPI 1m Full Join", "healthy", resultSinkConfig, metricConfig,
+                CellKpi::getWindowEndTs))
+            .name("kpi-1m-metrics");
         DataStream<AnomalyEvent> cellAnomalies = CellKpiCepAnomalyDetector
             .detect(cellKpi1m, rules);
 
@@ -247,7 +255,10 @@ public class FlinkJobMain {
             .window(TumblingEventTimeWindows.of(Time.minutes(5)))
             .process(new CellKpiRollupAggregator(), new GenericTypeInfo<>(CellKpi.class))
             .name("kpi-5m-rollup")
-            .uid("kpi-5m-rollup");
+            .uid("kpi-5m-rollup")
+            .process(stageMetricsProbe("kpi-5m", "KPI 5m Rollup", "healthy", resultSinkConfig, metricConfig,
+                CellKpi::getWindowEndTs))
+            .name("kpi-5m-metrics");
 
         ResultSinks.attachBusinessResultSinks(
             cellKpi1m, cellKpi5m, cellAnomalies, userAnomalies, coverageAnomalies,
@@ -330,8 +341,16 @@ public class FlinkJobMain {
     static <T> StageMetricsProbe<T> stageMetricsProbe(String stageId, String displayName, String status,
                                                       ResultSinkConfig resultSinkConfig,
                                                       MetricRuntimeConfig metricConfig) {
+        return stageMetricsProbe(stageId, displayName, status, resultSinkConfig, metricConfig, null);
+    }
+
+    static <T> StageMetricsProbe<T> stageMetricsProbe(String stageId, String displayName, String status,
+                                                      ResultSinkConfig resultSinkConfig,
+                                                      MetricRuntimeConfig metricConfig,
+                                                      LatencyTimestampExtractor<T> latencyTimestampExtractor) {
         return new StageMetricsProbe<>(
-            stageId, displayName, status, resultSinkConfig.metricsEmitIntervalMs(), metricConfig);
+            stageId, displayName, status, resultSinkConfig.metricsEmitIntervalMs(), metricConfig,
+            latencyTimestampExtractor);
     }
 
     static RoutedEnvelope directRoute(InputEnvelope envelope) {

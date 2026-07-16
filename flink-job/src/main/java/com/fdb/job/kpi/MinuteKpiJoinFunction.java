@@ -168,7 +168,7 @@ public class MinuteKpiJoinFunction
             .setAvgSinr(chr == null ? 0.0f : avg(chr.sinrSum(), chr.sinrCount()))
             .setAvgPrbUsageDl(pm == null ? 0.0f : avg(pm.prbUsageDlSum(), pm.pmWindowCount()))
             .setThroughputDlMbpsAvg(pm == null ? 0.0f : avg(pm.throughputDlMbpsSum(), pm.pmWindowCount()))
-            .setDropRate(pm == null ? 0.0f : avg(pm.dropCount(), pm.pmWindowCount()))
+            .setDropRate(pm == null ? 0.0f : avg(pm.dropCount(), pm.activeUsersSum()))
             .setHoSuccessRate(pm == null ? 0.0f : avg(pm.handoverSuccess(), hoAttempts))
             .setAttachSuccessRate(chr == null ? 0.0f : avg(chr.attachSuccess(), chr.attachAttempts()))
             .build();

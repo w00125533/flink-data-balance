@@ -15,6 +15,10 @@ class BenchmarkReportServiceTest {
   @Test
   void generatesReportFromSinkLatencySamples() throws Exception {
     MetricsHistoryService history = new MetricsHistoryService(tempDir, true);
+    history.append(StageMetricSample.stageLatency(
+        "kpi-1m", "KPI 1m Full Join", "healthy", 10.0, 10.0,
+        8, 20, 40, 500, 0, 1_717_399_999_000L)
+        .withRunMetadata("run-a", "starrocks", 4));
     history.append(StageMetricSample.sinkLatency(
         "starrocks-kpi-1m", "Cell KPI 1m StarRocks Sink", "healthy", "starrocks", "kpi_1m", "MIN_1",
         123, 4_096, 250, 20, 45, 80, 0, "", 7, 1_717_400_000_000L)
@@ -26,6 +30,8 @@ class BenchmarkReportServiceTest {
     String markdown = Files.readString(report);
     assertThat(markdown).contains("# Benchmark Report: run-a");
     assertThat(markdown).contains("starrocks-kpi-1m");
+    assertThat(markdown).contains("## Stage Latency Metrics");
+    assertThat(markdown).contains("| kpi-1m | KPI 1m Full Join | 10.00 | 8 | 20 | 40 | 500 |");
     assertThat(markdown).contains("123");
     assertThat(markdown).contains("Result sink: starrocks");
     assertThat(markdown).contains("Parallelism: 4");

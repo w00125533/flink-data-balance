@@ -17,25 +17,30 @@ const directRoutingEdges: FlowEdge[] = [
   ['kafka', 'enrichment']
 ];
 
+const computeEdges: FlowEdge[] = [
+  ['kafka', 'kpi-1m'],
+  ['kpi-1m', 'kpi-5m']
+];
+
 const possibleSinkEdges: FlowEdge[] = [
-  ['enrichment', 'kafka-kpi-1m'],
-  ['enrichment', 'kafka-kpi-5m'],
-  ['enrichment', 'starrocks-kpi-1m'],
-  ['enrichment', 'starrocks-kpi-5m'],
-  ['enrichment', 'hive-kpi-1m'],
-  ['enrichment', 'hive-kpi-5m'],
-  ['enrichment', 'iceberg-kpi-1m'],
-  ['enrichment', 'iceberg-kpi-5m'],
-  ['enrichment', 'kafka-cell-anomaly'],
+  ['kpi-1m', 'kafka-kpi-1m'],
+  ['kpi-5m', 'kafka-kpi-5m'],
+  ['kpi-1m', 'starrocks-kpi-1m'],
+  ['kpi-5m', 'starrocks-kpi-5m'],
+  ['kpi-1m', 'hive-kpi-1m'],
+  ['kpi-5m', 'hive-kpi-5m'],
+  ['kpi-1m', 'iceberg-kpi-1m'],
+  ['kpi-5m', 'iceberg-kpi-5m'],
+  ['kpi-1m', 'kafka-cell-anomaly'],
   ['enrichment', 'kafka-user-anomaly'],
   ['enrichment', 'kafka-grid-anomaly'],
-  ['enrichment', 'starrocks-cell-anomaly'],
+  ['kpi-1m', 'starrocks-cell-anomaly'],
   ['enrichment', 'starrocks-user-anomaly'],
   ['enrichment', 'starrocks-grid-anomaly'],
-  ['enrichment', 'hive-cell-anomaly'],
+  ['kpi-1m', 'hive-cell-anomaly'],
   ['enrichment', 'hive-user-anomaly'],
   ['enrichment', 'hive-grid-anomaly'],
-  ['enrichment', 'iceberg-cell-anomaly'],
+  ['kpi-1m', 'iceberg-cell-anomaly'],
   ['enrichment', 'iceberg-user-anomaly'],
   ['enrichment', 'iceberg-grid-anomaly']
 ];
@@ -47,6 +52,7 @@ export function resolveFlowEdges(stageIds: Iterable<string>): FlowEdge[] {
   return [
     ...sourceEdges,
     ...(dynamicBalancingEnabled ? dynamicRoutingEdges : directRoutingEdges),
+    ...computeEdges.filter(([source, target]) => ids.has(source) && ids.has(target)),
     ...possibleSinkEdges.filter(([source, target]) => ids.has(source) && ids.has(target))
   ];
 }

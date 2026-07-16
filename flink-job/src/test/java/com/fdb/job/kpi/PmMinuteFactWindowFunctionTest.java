@@ -38,6 +38,7 @@ class PmMinuteFactWindowFunctionTest {
         assertThat(fact.pmWindowCount()).isEqualTo(2L);
         assertThat(fact.prbUsageDlSum()).isCloseTo(1.20, within(0.00001));
         assertThat(fact.throughputDlMbpsSum()).isEqualTo(220.0);
+        assertThat(fact.activeUsersSum()).isEqualTo(84L);
         assertThat(fact.dropCount()).isEqualTo(3L);
         assertThat(fact.handoverSuccess()).isEqualTo(17L);
         assertThat(fact.handoverFailure()).isEqualTo(3L);

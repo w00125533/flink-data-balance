@@ -15,7 +15,8 @@ class ObservabilitySnapshotServiceTest {
   void returnsCoreStages() {
     assertThat(service.stageStatuses())
         .extracting("stageId")
-        .contains("chr-source", "pm-source", "cfg-source", "kafka", "enrichment", "iceberg-kpi-1m")
+        .contains("chr-source", "pm-source", "cfg-source", "kafka", "enrichment",
+            "kpi-1m", "kpi-5m", "iceberg-kpi-1m")
         .doesNotContain("assigner", "load-coordinator", "hive-sink", "iceberg-sink");
   }
 
