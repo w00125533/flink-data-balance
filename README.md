@@ -133,6 +133,10 @@ simulator processes with `FDB_SITES_COUNT` and `FDB_RATE_EPS`, observes Flink
 REST plus the observability API, and stops higher pressure levels for a sink
 after the first unstable or failed run.
 
+`cellLevel` 表示本轮目标生成小区数，不再乘站点数或每站小区估算。
+`Target CHR EPS = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`，表示整轮压测的全局
+CHR 每秒目标值，不是每小区 EPS。
+
 Each `submit` generates `FDB_RUN_ID=run-<UTC timestamp>` when it is not already
 set, passes that value into the Flink runtime, and writes the current run state
 to `logs/local-current.env` or `logs/external-yarn-current.env`. You can also set
@@ -147,8 +151,11 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
 ```
 
 Open `index.html` for the batch summary and follow per-run links to
-`runs/<runId>/report.html`. The same directory also contains
-`benchmark-config.json`, `benchmark-results.json` and `benchmark-summary.csv`.
+`runs/<runId>/report.html`. 报告交付为 HTML-only：单轮页直接展示 Run Summary、
+Source Density、Latency、Source Backlog 和 Checkpoint 信息；没有 latency 样本时显示
+`N/A`。The same directory also contains `benchmark-config.json`,
+`benchmark-results.json` and `benchmark-summary.csv` for machine-readable
+analysis.
 
 When `FDB_METRICS_HISTORY_ENABLED=true`, observability-api appends sampled
 runtime metrics to `metrics.jsonl` under the same run directory. The report is
@@ -166,7 +173,8 @@ Benchmark-specific environment variables:
 |---|---:|---|
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | Space- or comma-separated sink list: `starrocks`, `iceberg`, `hive`, `kafka`, `none` |
 | `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | Space- or comma-separated cell-count pressure levels |
-| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | Target CHR EPS multiplier per cell |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | CHR EPS multiplier per generated cell; global Target CHR EPS = `cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL` |
+| `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | Ratio of generated cells/users assigned to deterministic anomaly cohorts |
 | `FDB_BENCHMARK_WARMUP_SEC` | `60` | Warmup time after submit and before measurement |
 | `FDB_BENCHMARK_DURATION_SEC` | `300` | Measurement time before stop/report |
 | `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | Intended observation poll interval for benchmark sampling |
@@ -177,6 +185,8 @@ Benchmark-specific environment variables:
 | `FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS` | `180000` | Marks a run unstable when KPI 1m/5m p95 exceeds this value |
 | `FDB_BENCHMARK_MAX_SINK_P95_MS` | `180000` | Marks a run unstable when sink write p95 exceeds this value |
 | `FDB_BENCHMARK_MAX_WATERMARK_LAG_MS` | `180000` | Marks a run unstable when watermark lag exceeds this value |
+| `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` | `0.98` | Marks a run unstable when source throughput attainment falls below this ratio |
+| `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS` | `0` | Marks a run unstable when source backlog exceeds this record threshold |
 
 ## 实时观测控制台
 

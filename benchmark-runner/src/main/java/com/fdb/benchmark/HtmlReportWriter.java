@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -38,8 +39,8 @@ public final class HtmlReportWriter {
           .append("<td><span class=\"status ").append(statusClass(result.status())).append("\">")
           .append(result.status()).append("</span></td>")
           .append("<td>").append(result.flink().recordsOutPerSec()).append("</td>")
-          .append("<td>").append(result.fdb().kpi1mP95Ms()).append("</td>")
-          .append("<td>").append(result.fdb().sinkP95Ms()).append("</td>")
+          .append("<td>").append(formatMs(result.fdb().kpi1mP95Ms())).append("</td>")
+          .append("<td>").append(formatMs(result.fdb().sinkP95Ms())).append("</td>")
           .append("<td>").append(escape(result.bottleneckReason())).append("</td>")
           .append("<td><a href=\"runs/").append(escape(plan.runId()))
           .append("/report.html\">report</a></td>")
@@ -112,6 +113,9 @@ public final class HtmlReportWriter {
             main { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
             h1 { font-size: 24px; margin: 0 0 8px; }
             h2 { font-size: 18px; margin: 24px 0 10px; }
+            table { width: 100%%; border-collapse: collapse; background: #fff; border: 1px solid #d9dee7; margin-bottom: 18px; }
+            th, td { padding: 9px 11px; border-bottom: 1px solid #e6eaf0; text-align: left; font-size: 14px; }
+            th { background: #eef2f6; font-weight: 600; }
             pre { background: #fff; border: 1px solid #d9dee7; padding: 14px; overflow: auto; }
             .status { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
             .stable { background: #dff5e5; color: #186238; }
@@ -125,6 +129,12 @@ public final class HtmlReportWriter {
             <h1>%s</h1>
             <p>Benchmark %s, sink %s, cells %s, CHR EPS %s, target %s.</p>
             <p><span class="status %s">%s</span> %s</p>
+            <h2>Run Summary</h2>
+            %s
+            <h2>Source Density</h2>
+            %s
+            <h2>Latency</h2>
+            %s
             <h2>Flink Snapshot</h2>
             <pre>%s</pre>
             <h2>FDB Metrics Snapshot</h2>
@@ -145,9 +155,91 @@ public final class HtmlReportWriter {
             statusClass(result.status()),
             result.status(),
             escape(result.bottleneckReason()),
+            runSummary(result),
+            sourceDensity(result.source(), plan.cellLevel()),
+            latencyTable(result),
             escape(result.flink().toString()),
             escape(result.fdb().toString()),
             escape(result.storage().toString()));
+  }
+
+  private static String runSummary(BenchmarkRunResult result) {
+    BenchmarkRunPlan plan = result.plan();
+    SourceMetricsSnapshot source = result.source();
+    FlinkSnapshot flink = result.flink();
+    return """
+        <table>
+          <tbody>
+            <tr><th>Sink</th><td>%s</td></tr>
+            <tr><th>Cells</th><td>%s</td></tr>
+            <tr><th>Target CHR EPS</th><td>%s</td></tr>
+            <tr><th>Status</th><td>%s</td></tr>
+            <tr><th>Reason</th><td>%s</td></tr>
+            <tr><th>Source Throughput Attainment</th><td>%s</td></tr>
+            <tr><th>Source Backlog</th><td>%s</td></tr>
+            <tr><th>Checkpoint Interval</th><td>%s</td></tr>
+          </tbody>
+        </table>
+        """.formatted(
+            escape(plan.sink().value()),
+            plan.cellLevel(),
+            plan.targetChrEps(),
+            result.status(),
+            escape(result.bottleneckReason()),
+            formatRatio(source.producerDeliveryRatio()),
+            flink.sourceBacklogRecords() + " records",
+            formatMs(flink.checkpointDurationMs()));
+  }
+
+  private static String sourceDensity(SourceMetricsSnapshot source, int cellLevel) {
+    return """
+        <table>
+          <thead>
+            <tr><th>Source</th><th>Total</th><th>Records/s</th><th>Total/cell</th><th>Records/s/cell</th></tr>
+          </thead>
+          <tbody>
+            %s
+            %s
+            %s
+          </tbody>
+        </table>
+        """.formatted(
+            densityRow("CHR total", source.chrPublished(), source.chrObservedEps(),
+                source.chrTotalPerCell(cellLevel), source.chrPerSecondPerCell(cellLevel)),
+            densityRow("PM total", source.pmPublished(), source.pmObservedEps(),
+                source.pmTotalPerCell(cellLevel), source.pmPerSecondPerCell(cellLevel)),
+            densityRow("CFG total", source.cfgPublished(), source.cfgObservedEps(),
+                source.cfgTotalPerCell(cellLevel), source.cfgPerSecondPerCell(cellLevel)));
+  }
+
+  private static String densityRow(String label, long total, double recordsPerSecond, double totalPerCell,
+      double recordsPerSecondPerCell) {
+    return "<tr><th>" + escape(label) + "</th><td>" + total + "</td><td>" + formatDouble(recordsPerSecond)
+        + "</td><td>" + formatDouble(totalPerCell) + "</td><td>" + formatDouble(recordsPerSecondPerCell)
+        + "</td></tr>";
+  }
+
+  private static String latencyTable(BenchmarkRunResult result) {
+    FdbMetricsSnapshot fdb = result.fdb();
+    FlinkSnapshot flink = result.flink();
+    return """
+        <table>
+          <tbody>
+            <tr><th>Source delay p95</th><td>%s</td></tr>
+            <tr><th>KPI 1m availability p95</th><td>%s</td></tr>
+            <tr><th>KPI 5m availability p95</th><td>%s</td></tr>
+            <tr><th>Sink p95</th><td>%s</td></tr>
+            <tr><th>Watermark lag</th><td>%s</td></tr>
+            <tr><th>Checkpoint duration</th><td>%s</td></tr>
+          </tbody>
+        </table>
+        """.formatted(
+            formatMs(fdb.sourceDelayP95Ms()),
+            formatMs(fdb.kpi1mP95Ms()),
+            formatMs(fdb.kpi5mP95Ms()),
+            formatMs(fdb.sinkP95Ms()),
+            formatMs(fdb.watermarkLagMs()),
+            formatMs(flink.checkpointDurationMs()));
   }
 
   private static String stableBounds(List<BenchmarkRunResult> results) {
@@ -177,6 +269,18 @@ public final class HtmlReportWriter {
 
   private static String statusClass(BenchmarkStatus status) {
     return status.name().toLowerCase();
+  }
+
+  private static String formatMs(long value) {
+    return value < 0 ? "N/A" : value + " ms";
+  }
+
+  private static String formatRatio(double value) {
+    return String.format(Locale.ROOT, "%.2f%%", value * 100.0d);
+  }
+
+  private static String formatDouble(double value) {
+    return String.format(Locale.ROOT, "%.2f", value);
   }
 
   private static String escape(String value) {

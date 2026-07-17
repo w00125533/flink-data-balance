@@ -62,6 +62,26 @@ class BenchmarkDecisionEngineTest {
   }
 
   @Test
+  void unavailable_kpi_latency_samples_do_not_mark_run_unstable() {
+    RunObservation observation = healthy().withFdb(new FdbMetricsSnapshot(2_000, -1, -1, 5_000, 0, 20_000));
+
+    BenchmarkRunResult result = engine.decide(plan(), observation);
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.STABLE);
+    assertThat(result.bottleneckReason()).isEqualTo("all thresholds healthy");
+  }
+
+  @Test
+  void unavailable_sink_latency_sample_does_not_mark_run_unstable() {
+    RunObservation observation = healthy().withFdb(healthy().fdb().withSinkP95Ms(-1));
+
+    BenchmarkRunResult result = engine.decide(plan(), observation);
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.STABLE);
+    assertThat(result.bottleneckReason()).isEqualTo("all thresholds healthy");
+  }
+
+  @Test
   void healthy_observation_is_stable() {
     BenchmarkRunResult result = engine.decide(plan(), healthy());
 

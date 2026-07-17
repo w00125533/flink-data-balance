@@ -31,6 +31,18 @@ class HtmlReportWriterTest {
     assertThat(html).contains("Stable upper bounds");
     assertThat(html).contains("runs/" + result.plan().runId() + "/report.html");
     assertThat(html).contains("Recommendations");
-    assertThat(Files.readString(report)).contains("Flink Snapshot").contains("Storage Snapshot");
+    assertThat(Files.readString(report))
+        .contains("Run Summary")
+        .contains("Source Density")
+        .contains("CHR total")
+        .contains("PM total")
+        .contains("CFG total")
+        .contains("Source Throughput Attainment")
+        .contains("Source Backlog")
+        .contains("Checkpoint Interval")
+        .contains("Latency")
+        .contains("N/A")
+        .contains("Flink Snapshot")
+        .contains("Storage Snapshot");
   }
 }

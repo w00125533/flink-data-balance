@@ -797,6 +797,8 @@ The Java `benchmark-runner` owns sink upper-bound benchmarking:
 - use generated cell count as the primary pressure multiplier;
 - treat `cellLevel` as the target generated cell count, not site count;
 - calculate `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`;
+- `Target CHR EPS` 表示整轮压测的全局 CHR EPS，不是每小区 EPS；`cellLevel`
+  表示目标生成小区数，不再乘站点数或每站小区估算;
 - call `deploy.sh <target> prepare` before each run to reset benchmark data;
 - start topology-service plus CFG/PM/CHR simulators on the runner host;
 - submit and stop Flink through the existing `deploy.sh <target> submit/stop`
@@ -871,6 +873,13 @@ FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO=0.98
 FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS=0
 ```
 
+关键压测变量语义：
+
+- `FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3`：用于计算全局 Target CHR EPS。
+- `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05`：5% cell 和 5% user 进入确定性异常 cohort。
+- `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO=0.98`：source 实际交付率低于目标 98% 时判定 unstable。
+- `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS=0`：source backlog 超过 0 条即判定 unstable。
+
 Benchmark artifacts are fixed under the runner module and are not Docker-volume
 paths:
 
@@ -893,6 +902,10 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
 configuration, stable upper-bound cards per sink, the `sink x cellLevel` matrix,
 failure points, cross-sink metric comparisons, global recommendations, per-sink
 recommendations, and links to every single-run `report.html`.
+
+报告交付为 HTML-only；单轮 `report.html` 必须直观展示 Run Summary、Source Density、
+Latency、Source Backlog 和 Checkpoint 信息。无 latency 样本时显示 `N/A`，不能裸露
+`-1` 或误显示 `0 ms`。
 
 Per-run `prepare` resets the Kafka benchmark topics, StarRocks result tables,
 and Hive/Iceberg HDFS output paths before topology generation and simulator

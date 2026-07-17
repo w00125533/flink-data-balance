@@ -54,7 +54,7 @@ final class LatencyStats implements Serializable {
 
     private static long percentile(long[] sorted, int percentile) {
         if (sorted.length == 0) {
-            return 0L;
+            return -1L;
         }
         int index = (int) Math.ceil((percentile / 100.0d) * sorted.length) - 1;
         return sorted[Math.max(0, Math.min(sorted.length - 1, index))];
@@ -62,7 +62,7 @@ final class LatencyStats implements Serializable {
 
     record Snapshot(long p50Ms, long p95Ms, long p99Ms, long maxMs) {
         static Snapshot empty() {
-            return new Snapshot(0L, 0L, 0L, 0L);
+            return new Snapshot(-1L, -1L, -1L, -1L);
         }
     }
 }

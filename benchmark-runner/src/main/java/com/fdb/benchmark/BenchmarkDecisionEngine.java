@@ -36,10 +36,10 @@ public final class BenchmarkDecisionEngine {
       return result(plan, BenchmarkStatus.UNSTABLE, "checkpoint duration " + flink.checkpointDurationMs() + " ms",
           observation);
     }
-    if (Math.max(fdb.kpi1mP95Ms(), fdb.kpi5mP95Ms()) > thresholds.maxKpiAvailabilityP95Ms()) {
+    if (maxAvailableLatency(fdb.kpi1mP95Ms(), fdb.kpi5mP95Ms()) > thresholds.maxKpiAvailabilityP95Ms()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "KPI availability p95 over threshold", observation);
     }
-    if (fdb.sinkP95Ms() > thresholds.maxSinkP95Ms()) {
+    if (fdb.sinkP95Ms() >= 0 && fdb.sinkP95Ms() > thresholds.maxSinkP95Ms()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "sink p95 over threshold", observation);
     }
     if (fdb.sinkFailures() > 0) {
@@ -58,5 +58,16 @@ public final class BenchmarkDecisionEngine {
     RunObservation observation) {
     return new BenchmarkRunResult(plan, status, reason, observation.flink(), observation.fdb(), observation.storage(),
         observation.source());
+  }
+
+  private static long maxAvailableLatency(long left, long right) {
+    long max = -1L;
+    if (left >= 0) {
+      max = left;
+    }
+    if (right >= 0) {
+      max = Math.max(max, right);
+    }
+    return max;
   }
 }

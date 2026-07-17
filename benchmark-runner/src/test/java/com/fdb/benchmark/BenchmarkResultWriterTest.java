@@ -44,7 +44,7 @@ class BenchmarkResultWriterTest {
     BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
     return new BenchmarkRunResult(plan, BenchmarkStatus.STABLE, "all thresholds healthy",
         new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1, 4),
-        new FdbMetricsSnapshot(1, 2, 3, 4, 0, 5),
+        new FdbMetricsSnapshot(1, 2, 3, -1, 0, 5),
         new StorageSnapshot(true, "healthy", 10, 0, 0),
         new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
             100, 1000, 100.0, 10_000, 0, 0,
