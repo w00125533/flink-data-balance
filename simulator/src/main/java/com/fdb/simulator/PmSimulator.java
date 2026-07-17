@@ -40,8 +40,8 @@ public class PmSimulator {
         }
 
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_PM_METRICS_FILE");
+        long targetEps = targetEpsForWindow(cells.size());
         try (KafkaPublisher<PmStat> publisher = new KafkaPublisher<>(bootstrap, topic, PmStat.class)) {
-            long totalPublished = 0L;
             long metricsStartMs = System.currentTimeMillis();
             while (!Thread.currentThread().isInterrupted()) {
                 long wallNow = System.currentTimeMillis();
@@ -62,11 +62,10 @@ public class PmSimulator {
                 }
 
                 publisher.flush();
-                totalPublished += published;
                 long durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
                 long delivered = publisher.deliveredRecords();
                 double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
-                sourceMetrics.write("pm", 0L, delivered, observedEps, durationMs, 0L,
+                sourceMetrics.write("pm", targetEps, delivered, observedEps, durationMs, 0L,
                     publisher.undeliveredRecords());
                 if (summaryEnabled && published > 0) {
                     log.info(SummarySwitch.format("sim-pm", "records_published_last_window", published));
@@ -131,6 +130,10 @@ public class PmSimulator {
 
     private static long alignTo10s(long ts) {
         return (ts / 10_000) * 10_000;
+    }
+
+    static long targetEpsForWindow(int cellCount) {
+        return cellCount <= 0 ? 0L : Math.max(1L, Math.round(cellCount / 10.0d));
     }
 
     private static double haversine(double lat1, double lon1, double lat2, double lon2) {

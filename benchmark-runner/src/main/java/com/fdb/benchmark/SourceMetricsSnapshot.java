@@ -17,11 +17,13 @@ public record SourceMetricsSnapshot(
     long chrDurationMs,
     long chrBacklogRecords,
     long chrUndeliveredRecords,
+    long pmTargetEps,
     long pmPublished,
     double pmObservedEps,
     long pmDurationMs,
     long pmBacklogRecords,
     long pmUndeliveredRecords,
+    long cfgTargetEps,
     long cfgPublished,
     double cfgObservedEps,
     long cfgDurationMs,
@@ -31,7 +33,7 @@ public record SourceMetricsSnapshot(
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public static SourceMetricsSnapshot empty() {
-    return new SourceMetricsSnapshot(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    return new SourceMetricsSnapshot(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   }
 
   public static Path runDir(Path outputRoot, BenchmarkRunPlan plan) {
@@ -52,11 +54,13 @@ public record SourceMetricsSnapshot(
         chr == null ? 0L : chr.durationMs,
         chr == null ? 0L : chr.backlogRecords,
         chr == null ? 0L : chr.undeliveredRecords,
+        pm == null ? 0L : pm.targetEps,
         pm == null ? 0L : pm.published,
         pm == null ? 0.0d : pm.observedEps,
         pm == null ? 0L : pm.durationMs,
         pm == null ? 0L : pm.backlogRecords,
         pm == null ? 0L : pm.undeliveredRecords,
+        cfg == null ? 0L : cfg.targetEps,
         cfg == null ? 0L : cfg.published,
         cfg == null ? 0.0d : cfg.observedEps,
         cfg == null ? 0L : cfg.durationMs,

@@ -41,19 +41,20 @@ public class CfgSimulator {
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CFG_METRICS_FILE");
         try (KafkaPublisher<CfgConfig> publisher = new KafkaPublisher<>(bootstrap, topic, CfgConfig.class)) {
             long version = 1;
-            long totalPublished = 0L;
             long metricsStartMs = System.currentTimeMillis();
 
             log.info("Publishing baseline CFG config for {} cells", cells.size());
+            long batchStartMs = System.currentTimeMillis();
             for (TopologyRecord cell : cells) {
                 CfgConfig config = baselineConfig(cell, version);
                 publisher.publish(cell.getCellId().toString(), config);
             }
             publisher.flush();
-            totalPublished += cells.size();
             long durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
+            long batchDurationMs = Math.max(0L, System.currentTimeMillis() - batchStartMs);
+            long targetEps = targetEpsForBatch(cells.size(), batchDurationMs);
             double observedEps = publisher.deliveredRecords() / Math.max(durationMs / 1000.0d, 0.001d);
-            sourceMetrics.write("cfg", 0L, publisher.deliveredRecords(), observedEps, durationMs, 0L,
+            sourceMetrics.write("cfg", targetEps, publisher.deliveredRecords(), observedEps, durationMs, 0L,
                 publisher.undeliveredRecords());
             log.info("Baseline CFG config published");
             if (summaryEnabled) {
@@ -70,15 +71,17 @@ public class CfgSimulator {
                 int numChanges = Math.max(1, (int) (cells.size() * simConfig.getDouble("updates.changeRate", 0.005)));
                 Collections.shuffle(cells.subList(0, Math.min(cells.size(), numChanges * 10)), rng);
 
+                batchStartMs = System.currentTimeMillis();
+                int batchPublished = 0;
                 int changed = 0;
                 for (int i = 0; i < numChanges && i < cells.size(); i++) {
                     TopologyRecord cell = cells.get(i);
                     CfgConfig config = updatedConfig(cell, version);
                     publisher.publish(cell.getCellId().toString(), config);
+                    batchPublished++;
                     changed++;
                 }
                 publisher.flush();
-                totalPublished += changed;
                 version++;
 
                 if (rng.nextDouble() < simConfig.getDouble("updates.tombstoneProb", 0.05) && changed > 0) {
@@ -109,7 +112,7 @@ public class CfgSimulator {
                         .build();
                     publisher.publish(cell.getCellId().toString(), tombstone);
                     publisher.flush();
-                    totalPublished++;
+                    batchPublished++;
                     log.info("Published tombstone for {}", cell.getCellId());
                     if (summaryEnabled) {
                         log.info(SummarySwitch.format("sim-cfg", "tombstone_published", cell.getCellId()));
@@ -117,8 +120,10 @@ public class CfgSimulator {
                 }
 
                 durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
+                batchDurationMs = Math.max(0L, System.currentTimeMillis() - batchStartMs);
+                targetEps = targetEpsForBatch(batchPublished, batchDurationMs);
                 observedEps = publisher.deliveredRecords() / Math.max(durationMs / 1000.0d, 0.001d);
-                sourceMetrics.write("cfg", 0L, publisher.deliveredRecords(), observedEps, durationMs, 0L,
+                sourceMetrics.write("cfg", targetEps, publisher.deliveredRecords(), observedEps, durationMs, 0L,
                     publisher.undeliveredRecords());
                 log.info("Published {} CFG config updates (version {})", changed, version - 1);
                 if (summaryEnabled) {
@@ -165,5 +170,13 @@ public class CfgSimulator {
                 .build();
         }
         return base;
+    }
+
+    static long targetEpsForBatch(long batchCount, long batchDurationMs) {
+        if (batchCount <= 0) {
+            return 0L;
+        }
+        double seconds = Math.max(batchDurationMs / 1000.0d, 1.0d);
+        return Math.max(1L, Math.round(batchCount / seconds));
     }
 }

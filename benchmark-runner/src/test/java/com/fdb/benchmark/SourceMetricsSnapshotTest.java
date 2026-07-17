@@ -21,10 +21,10 @@ class SourceMetricsSnapshotTest {
         "{\"source\":\"chr\",\"targetEps\":300,\"published\":600,\"observedEps\":294.0,"
             + "\"durationMs\":2000,\"backlogRecords\":12,\"undeliveredRecords\":12}");
     Files.writeString(runDir.resolve("pm-source-metrics.json"),
-        "{\"source\":\"pm\",\"published\":1000,\"observedEps\":100.0,"
+        "{\"source\":\"pm\",\"targetEps\":100,\"published\":1000,\"observedEps\":100.0,"
             + "\"durationMs\":10000,\"backlogRecords\":0,\"undeliveredRecords\":0}");
     Files.writeString(runDir.resolve("cfg-source-metrics.json"),
-        "{\"source\":\"cfg\",\"published\":1000,\"observedEps\":1000.0}");
+        "{\"source\":\"cfg\",\"targetEps\":250,\"published\":1000,\"observedEps\":1000.0}");
 
     SourceMetricsSnapshot snapshot = SourceMetricsSnapshot.read(tempDir, plan);
 
@@ -36,8 +36,10 @@ class SourceMetricsSnapshotTest {
     assertThat(snapshot.chrBacklogRecords()).isEqualTo(12);
     assertThat(snapshot.chrUndeliveredRecords()).isEqualTo(12);
     assertThat(snapshot.pmDurationMs()).isEqualTo(10000);
+    assertThat(snapshot.pmTargetEps()).isEqualTo(100);
     assertThat(snapshot.pmBacklogRecords()).isZero();
     assertThat(snapshot.pmUndeliveredRecords()).isZero();
+    assertThat(snapshot.cfgTargetEps()).isEqualTo(250);
     assertThat(snapshot.cfgDurationMs()).isZero();
     assertThat(snapshot.cfgBacklogRecords()).isZero();
     assertThat(snapshot.cfgUndeliveredRecords()).isZero();
@@ -60,6 +62,7 @@ class SourceMetricsSnapshotTest {
 
     assertThat(snapshot.present()).isTrue();
     assertThat(snapshot.chrPublished()).isZero();
+    assertThat(snapshot.pmTargetEps()).isZero();
     assertThat(snapshot.pmPublished()).isEqualTo(1000);
     assertThat(snapshot.pmDurationMs()).isEqualTo(10000);
   }
