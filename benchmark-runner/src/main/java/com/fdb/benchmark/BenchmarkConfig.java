@@ -21,6 +21,7 @@ public record BenchmarkConfig(
     long warmupSec,
     long durationSec,
     long pollIntervalSec,
+    long checkpointIntervalMs,
     URI flinkRestUrl,
     URI observabilityApiUrl,
     Path outputRoot,
@@ -53,6 +54,7 @@ public record BenchmarkConfig(
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_WARMUP_SEC", 60),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DURATION_SEC", 300),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_POLL_INTERVAL_SEC", 10),
+        positiveLong(env, "FDB_FLINK_CHECKPOINT_INTERVAL_MS", 30_000),
         URI.create(valueOrDefault(env, "FDB_FLINK_REST_URL", "http://localhost:8081")),
         URI.create(valueOrDefault(env, "FDB_OBSERVABILITY_API_URL", "http://localhost:18080")),
         Path.of("benchmark-runner/output/benchmark-runs"),
@@ -112,6 +114,11 @@ public record BenchmarkConfig(
       throw new IllegalArgumentException(key + " must be between 0 and 1");
     }
     return ratio;
+  }
+
+  private static long positiveLong(Map<String, String> env, String key, long defaultValue) {
+    long value = BenchmarkThresholds.longValue(env, key, defaultValue);
+    return value > 0 ? value : defaultValue;
   }
 
 }

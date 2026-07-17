@@ -12,7 +12,7 @@ class FlinkRestClientTest {
   void reads_running_job_checkpoint_and_metrics_summary() throws Exception {
     FakeHttpGateway http = new FakeHttpGateway(Map.of(
         "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
-        "/jobs/job-a/checkpoints", "{\"latest\":{\"completed\":{\"duration\":42000}},\"counts\":{\"failed\":1}}",
+        "/jobs/job-a/checkpoints", "{\"latest\":{\"completed\":{\"end_to_end_duration\":42000}},\"counts\":{\"failed\":1}}",
         "/taskmanagers", "{\"taskmanagers\":[{\"id\":\"tm-1\",\"slotsNumber\":4},{\"id\":\"tm-2\",\"slotsNumber\":4}]}",
         "/jobs/job-a",
             """
@@ -42,7 +42,13 @@ class FlinkRestClientTest {
                     "idleTimeMsPerSecond":475,
                     "backPressuredTimeMsPerSecond":25
                   }
-                }]}
+                }],
+                "plan":{"nodes":[{
+                  "id":"v1"
+                },{
+                  "id":"v2",
+                  "inputs":[{"id":"v1"}]
+                }]}}
                 """,
         "/jobs/job-a/vertices/v1/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords",
             """
@@ -84,6 +90,7 @@ class FlinkRestClientTest {
     assertThat(snapshot.slots()).isEqualTo(8);
     assertThat(snapshot.backpressureRatio()).isCloseTo(0.025, within(0.0001));
     assertThat(snapshot.operators()).hasSize(2);
+    assertThat(snapshot.operatorEdges()).containsExactly(new FlinkOperatorEdge("v1", "v2"));
     assertThat(snapshot.operators().get(0)).satisfies(operator -> {
       assertThat(operator.id()).isEqualTo("v1");
       assertThat(operator.name()).isEqualTo("source");

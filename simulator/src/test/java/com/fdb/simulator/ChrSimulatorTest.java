@@ -1,6 +1,7 @@
 package com.fdb.simulator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fdb.common.avro.ChrEvent;
 import com.fdb.common.avro.ChrEventType;
@@ -66,6 +67,17 @@ class ChrSimulatorTest {
         assertThat(event.getMcs()).isEqualTo(1);
         assertThat(event.getDurationMs()).isEqualTo(60_000L);
         assertThat(event.getLatencyMs()).isEqualTo(2_500.0f);
+    }
+
+    @Test
+    void normal_events_allow_nullable_optional_measurement_fields() {
+        ChrSimulator simulator = new ChrSimulator("unused");
+
+        assertThatCode(() -> {
+            for (int i = 0; i < 50; i++) {
+                simulator.generateEvent(cell("cell-a"), "imsi-a", 123_456L + i, 0.0d, 5_000L, 0.0d);
+            }
+        }).doesNotThrowAnyException();
     }
 
     @Test

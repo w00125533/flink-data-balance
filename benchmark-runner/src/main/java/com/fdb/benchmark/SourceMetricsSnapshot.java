@@ -31,6 +31,8 @@ public record SourceMetricsSnapshot(
     long cfgUndeliveredRecords) {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final int READ_RETRY_ATTEMPTS = 20;
+  private static final long READ_RETRY_DELAY_MS = 50L;
 
   public static SourceMetricsSnapshot empty() {
     return new SourceMetricsSnapshot(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -105,23 +107,52 @@ public record SourceMetricsSnapshot(
   }
 
   private static RawSourceMetrics readRaw(Path path) throws IOException {
-    if (!Files.exists(path)) {
-      return null;
-    }
-    if (!Files.isRegularFile(path)) {
-      throw new IOException("source metrics path is not a file: " + path);
-    }
-    try {
-      return MAPPER.readValue(path.toFile(), RawSourceMetrics.class);
-    } catch (FileNotFoundException e) {
+    IOException notFileFailure = null;
+    for (int attempt = 1; attempt <= READ_RETRY_ATTEMPTS; attempt++) {
       if (!Files.exists(path)) {
+        if (attempt == READ_RETRY_ATTEMPTS) {
+          return null;
+        }
+        sleepBeforeRetry(null);
+        continue;
+      }
+      if (!Files.isRegularFile(path)) {
+        notFileFailure = new IOException("source metrics path is not a file: " + path);
+        if (attempt == READ_RETRY_ATTEMPTS) {
+          throw notFileFailure;
+        }
+        sleepBeforeRetry(notFileFailure);
+        continue;
+      }
+      try {
+        return MAPPER.readValue(path.toFile(), RawSourceMetrics.class);
+      } catch (FileNotFoundException e) {
+        if (attempt == READ_RETRY_ATTEMPTS || !Files.exists(path)) {
+          return null;
+        }
+        sleepBeforeRetry(e);
+      } catch (NoSuchFileException e) {
+        if (attempt == READ_RETRY_ATTEMPTS) {
+          return null;
+        }
+        sleepBeforeRetry(e);
+      } catch (JsonProcessingException e) {
         return null;
       }
-      throw e;
-    } catch (NoSuchFileException e) {
-      return null;
-    } catch (JsonProcessingException e) {
-      return null;
+    }
+    throw notFileFailure;
+  }
+
+  private static void sleepBeforeRetry(IOException failure) throws IOException {
+    try {
+      Thread.sleep(READ_RETRY_DELAY_MS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      IOException interrupted = new IOException("interrupted while retrying source metrics read", e);
+      if (failure != null) {
+        interrupted.addSuppressed(failure);
+      }
+      throw interrupted;
     }
   }
 

@@ -70,6 +70,41 @@ class SourceMetricsSnapshotTest {
   }
 
   @Test
+  void retries_when_metrics_path_is_temporarily_not_a_file() throws Exception {
+    BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
+        "bench-starrocks-cells1000-eps300", "starrocks");
+    Path runDir = SourceMetricsSnapshot.runDir(tempDir, plan);
+    Path chrMetrics = runDir.resolve("chr-source-metrics.json");
+    Files.createDirectories(chrMetrics);
+    Files.writeString(runDir.resolve("pm-source-metrics.json"),
+        "{\"source\":\"pm\",\"published\":1000,\"observedEps\":100.0,\"durationMs\":10000}");
+
+    Thread replacer = new Thread(() -> {
+      try {
+        Thread.sleep(150L);
+        Files.delete(chrMetrics);
+        Files.writeString(chrMetrics,
+            "{\"source\":\"chr\",\"targetEps\":300,\"published\":600,\"observedEps\":294.0}");
+      } catch (Exception e) {
+        throw new IllegalStateException(e);
+      }
+    });
+    replacer.start();
+
+    SourceMetricsSnapshot snapshot;
+    try {
+      snapshot = SourceMetricsSnapshot.read(tempDir, plan);
+    } finally {
+      replacer.join();
+    }
+
+    assertThat(snapshot.present()).isTrue();
+    assertThat(snapshot.chrTargetEps()).isEqualTo(300);
+    assertThat(snapshot.chrPublished()).isEqualTo(600);
+    assertThat(snapshot.pmPublished()).isEqualTo(1000);
+  }
+
+  @Test
   void throws_when_metrics_path_is_directory() throws Exception {
     BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
         "bench-starrocks-cells1000-eps300", "starrocks");

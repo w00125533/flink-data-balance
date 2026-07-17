@@ -17,7 +17,8 @@ class HtmlReportWriterTest {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-a",
         "FDB_BENCHMARK_SINKS", "none",
-        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_FLINK_CHECKPOINT_INTERVAL_MS", "60000"));
     BenchmarkRunResult result = BenchmarkResultWriterTest.sampleResult(config);
 
     new HtmlReportWriter(tempDir).write(config, List.of(result));
@@ -40,9 +41,24 @@ class HtmlReportWriterTest {
         .contains("Source Throughput Attainment")
         .contains("Source Backlog")
         .contains("Checkpoint Interval")
+        .contains("<tr><th>Checkpoint Interval</th><td>60000 ms</td></tr>")
+        .contains("<tr><th>Checkpoint Duration</th><td>10000 ms</td></tr>")
         .contains("Latency")
         .contains("N/A")
-        .contains("Flink Snapshot")
-        .contains("Storage Snapshot");
+        .contains("Flink Resources")
+        .contains("Operator Flow")
+        .contains("operator-flow")
+        .contains("flow-node")
+        .contains("flow-edge")
+        .contains("data-operator-id=\"source-1\"")
+        .contains("operator-row-source-1")
+        .contains("Operator Throughput")
+        .contains("Sink &amp; Storage")
+        .contains("Raw Artifacts")
+        .contains("run.json")
+        .contains("flink-snapshot.json")
+        .contains("fdb-metrics-snapshot.json")
+        .contains("source-metrics.json")
+        .contains("topology-metrics.json");
   }
 }

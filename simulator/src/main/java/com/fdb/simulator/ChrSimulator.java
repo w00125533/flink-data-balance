@@ -224,6 +224,12 @@ public class ChrSimulator {
             ? rng.nextInt((int) Math.max(1, maxOutOfOrderLagMs)) + 100 : 0;
         int resultCode = anomalous || eventType == ChrEventType.RRC_SETUP_FAIL || eventType == ChrEventType.DETACH
             ? 1 : 0;
+        boolean dataSession = eventType == ChrEventType.DATA_SESSION;
+        Long durationMs = anomalous ? Long.valueOf(60_000L)
+            : dataSession ? Long.valueOf((long) (1000 + rng.nextDouble() * 30000)) : null;
+        Long bytesUp = dataSession ? Long.valueOf((long) (1024 + rng.nextDouble() * 1024 * 1024)) : null;
+        Long bytesDown = dataSession ? Long.valueOf((long) (2048 + rng.nextDouble() * 10 * 1024 * 1024)) : null;
+        Float latencyMs = anomalous ? Float.valueOf(2_500.0f) : null;
 
         return ChrEvent.newBuilder()
             .setChrId(UUID.randomUUID().toString())
@@ -248,11 +254,10 @@ public class ChrSimulator {
             .setSinr(sinr)
             .setCqi(cqi)
             .setMcs(mcs)
-            .setDurationMs(anomalous ? 60_000L
-                : (eventType == ChrEventType.DATA_SESSION ? (long) (1000 + rng.nextDouble() * 30000) : null))
-            .setBytesUp(eventType == ChrEventType.DATA_SESSION ? (long) (1024 + rng.nextDouble() * 1024 * 1024) : null)
-            .setBytesDown(eventType == ChrEventType.DATA_SESSION ? (long) (2048 + rng.nextDouble() * 10 * 1024 * 1024) : null)
-            .setLatencyMs(anomalous ? 2_500.0f : null)
+            .setDurationMs(durationMs)
+            .setBytesUp(bytesUp)
+            .setBytesDown(bytesDown)
+            .setLatencyMs(latencyMs)
             .build();
     }
 

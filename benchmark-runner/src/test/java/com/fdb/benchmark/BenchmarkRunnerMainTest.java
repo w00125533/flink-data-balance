@@ -33,7 +33,9 @@ class BenchmarkRunnerMainTest {
       assertThat(Files.readString(report))
           .contains("<tr><th>Target CHR EPS</th><td>100</td></tr>")
           .contains("<tr><th>Source Throughput Attainment</th><td>98.00%</td></tr>")
-          .contains("<tr><th>CHR total</th><td>200</td><td>98.00</td>");
+          .contains("<tr><th>CHR total</th><td>200</td><td>98.00</td>")
+          .contains("Operator Flow")
+          .contains("flow-edge");
     } finally {
       deleteRecursively(runDir);
     }

@@ -43,7 +43,16 @@ class BenchmarkResultWriterTest {
   static BenchmarkRunResult sampleResult(BenchmarkConfig config) {
     BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
     return new BenchmarkRunResult(plan, BenchmarkStatus.STABLE, "all thresholds healthy",
-        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1, 4),
+        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1_200, 1_100, 1, 4, List.of(
+            new FlinkOperatorSnapshot("source-1", "Source: chr-source -> chr-source-metrics", 4,
+                300, 300, 600, 600, 8_192, 8_192, 0.2, 0.8, 0.0),
+            new FlinkOperatorSnapshot("kpi-1m", "kpi-1m-full-join -> kpi-1m-metrics", 4,
+                300, 100, 600, 200, 8_192, 2_048, 0.4, 0.6, 0.0),
+            new FlinkOperatorSnapshot("sink-1", "starrocks-kpi-1m -> Sink: cell-kpi-starrocks-connector-sink", 4,
+                100, 100, 200, 200, 2_048, 2_048, 0.3, 0.7, 0.0)),
+            List.of(
+                new FlinkOperatorEdge("source-1", "kpi-1m"),
+                new FlinkOperatorEdge("kpi-1m", "sink-1"))),
         new FdbMetricsSnapshot(1, 2, 3, -1, 0, 5),
         new StorageSnapshot(true, "healthy", 10, 0, 0),
         TopologyMetricsSnapshot.empty(),
