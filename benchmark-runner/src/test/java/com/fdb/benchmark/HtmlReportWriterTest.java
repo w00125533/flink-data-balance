@@ -44,8 +44,16 @@ class HtmlReportWriterTest {
         .contains("30s default, file sinks capped at 180s")
         .contains("Latency")
         .contains("N/A")
-        .contains("Flink Snapshot")
-        .contains("Storage Snapshot");
+        .contains("Artifacts")
+        .contains("run.json")
+        .contains("flink-snapshot.json")
+        .contains("fdb-metrics-snapshot.json")
+        .contains("storage-snapshot.json")
+        .contains("source-metrics.json");
     assertThat(Files.readString(report)).doesNotContain("Checkpoint Interval");
+    assertThat(Files.readString(report))
+        .doesNotContain("sinkP95Ms=-1")
+        .doesNotContain("kpi1mP95Ms=-1")
+        .doesNotContain("sourceDelayP95Ms=-1");
   }
 }

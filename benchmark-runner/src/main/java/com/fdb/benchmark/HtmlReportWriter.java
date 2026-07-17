@@ -135,12 +135,8 @@ public final class HtmlReportWriter {
             %s
             <h2>Latency</h2>
             %s
-            <h2>Flink Snapshot</h2>
-            <pre>%s</pre>
-            <h2>FDB Metrics Snapshot</h2>
-            <pre>%s</pre>
-            <h2>Storage Snapshot</h2>
-            <pre>%s</pre>
+            <h2>Artifacts</h2>
+            %s
           </main>
         </body>
         </html>
@@ -158,9 +154,21 @@ public final class HtmlReportWriter {
             runSummary(result),
             sourceDensity(result.source(), plan.cellLevel()),
             latencyTable(result),
-            escape(result.flink().toString()),
-            escape(result.fdb().toString()),
-            escape(result.storage().toString()));
+            artifactsTable());
+  }
+
+  private static String artifactsTable() {
+    return """
+        <table>
+          <tbody>
+            <tr><th>Run result</th><td><a href="run.json">run.json</a></td></tr>
+            <tr><th>Flink snapshot</th><td><a href="flink-snapshot.json">flink-snapshot.json</a></td></tr>
+            <tr><th>FDB metrics snapshot</th><td><a href="fdb-metrics-snapshot.json">fdb-metrics-snapshot.json</a></td></tr>
+            <tr><th>Storage snapshot</th><td><a href="storage-snapshot.json">storage-snapshot.json</a></td></tr>
+            <tr><th>Source metrics</th><td><a href="source-metrics.json">source-metrics.json</a></td></tr>
+          </tbody>
+        </table>
+        """;
   }
 
   private static String runSummary(BenchmarkRunResult result) {
