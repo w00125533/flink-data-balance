@@ -43,7 +43,6 @@ public final class FlinkRestClient {
     int taskManagers = 0;
     int slots = 0;
     List<FlinkOperatorSnapshot> operators = new ArrayList<>();
-    List<FlinkOperatorEdge> operatorEdges = List.of();
 
     JsonNode taskManagersNode = readOrEmpty("/taskmanagers").path("taskmanagers");
     if (taskManagersNode.isArray()) {
@@ -82,12 +81,11 @@ public final class FlinkRestClient {
           backpressureRatio = Math.max(backpressureRatio, operator.backpressureRatio());
         }
       }
-      operatorEdges = operatorEdges(readOrEmpty("/jobs/" + jobId + "/plan"));
     }
 
     return new FlinkSnapshot(status, backpressureRatio, checkpointDurationMs, consecutiveCheckpointFailures,
         recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal, taskManagers, slots, operators,
-        operatorEdges, sourceBacklogRecords);
+        sourceBacklogRecords);
   }
 
   private JsonNode selectJob(JsonNode jobs) {
@@ -207,31 +205,6 @@ public final class FlinkRestClient {
 
   private static boolean isSourceOperator(FlinkOperatorSnapshot operator) {
     return operator.name().toLowerCase().contains("source");
-  }
-
-  private static List<FlinkOperatorEdge> operatorEdges(JsonNode planResponse) {
-    JsonNode nodes = planResponse.path("plan").path("nodes");
-    if (!nodes.isArray()) {
-      nodes = planResponse.path("nodes");
-    }
-    if (!nodes.isArray()) {
-      return List.of();
-    }
-    List<FlinkOperatorEdge> edges = new ArrayList<>();
-    for (JsonNode node : nodes) {
-      String targetId = text(node, "id", "");
-      JsonNode inputs = node.path("inputs");
-      if (targetId.isBlank() || !inputs.isArray()) {
-        continue;
-      }
-      for (JsonNode input : inputs) {
-        String sourceId = text(input, "id", "");
-        if (!sourceId.isBlank()) {
-          edges.add(new FlinkOperatorEdge(sourceId, targetId));
-        }
-      }
-    }
-    return List.copyOf(edges);
   }
 
   private static double ratioFromMillisPerSecond(double value) {

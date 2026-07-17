@@ -69,13 +69,6 @@ class FlinkRestClientTest {
                   {"id":"backPressuredTimeMsPerSecond","value":"25"},
                   {"id":"pendingRecords","value":"7"}
                 ]
-                """,
-        "/jobs/job-a/plan",
-            """
-                {"plan":{"nodes":[
-                  {"id":"v1","operator":"source"},
-                  {"id":"v2","operator":"sink-starrocks","inputs":[{"id":"v1"}]}
-                ]}}
                 """));
 
     FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
@@ -106,7 +99,5 @@ class FlinkRestClientTest {
       assertThat(operator.idleRatio()).isCloseTo(0.175, within(0.0001));
       assertThat(operator.backpressureRatio()).isCloseTo(0.025, within(0.0001));
     });
-    assertThat(snapshot.operatorEdges())
-        .containsExactly(new FlinkOperatorEdge("v1", "v2"));
   }
 }
