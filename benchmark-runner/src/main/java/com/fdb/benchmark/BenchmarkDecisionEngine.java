@@ -11,14 +11,20 @@ public final class BenchmarkDecisionEngine {
     FlinkSnapshot flink = observation.flink();
     FdbMetricsSnapshot fdb = observation.fdb();
     StorageSnapshot storage = observation.storage();
+    SourceMetricsSnapshot source = observation.source();
 
     if (!"RUNNING".equalsIgnoreCase(flink.jobStatus())) {
       return result(plan, BenchmarkStatus.FAILED, "Flink job status " + flink.jobStatus(), observation);
     }
-    if (observation.source().present()
-        && observation.source().producerDeliveryRatio() < thresholds.minProducerDeliveryRatio()) {
+    if (!source.present()) {
+      return result(plan, BenchmarkStatus.UNSTABLE, "source metrics missing", observation);
+    }
+    if (!source.hasChrMetrics()) {
+      return result(plan, BenchmarkStatus.UNSTABLE, "CHR source metrics missing", observation);
+    }
+    if (source.producerDeliveryRatio() < thresholds.minProducerDeliveryRatio()) {
       return result(plan, BenchmarkStatus.UNSTABLE,
-          "source throughput attainment " + observation.source().producerDeliveryRatio(), observation);
+          "source throughput attainment " + source.producerDeliveryRatio(), observation);
     }
     if (flink.sourceBacklogRecords() > thresholds.maxSourceBacklogRecords()) {
       return result(plan, BenchmarkStatus.UNSTABLE,

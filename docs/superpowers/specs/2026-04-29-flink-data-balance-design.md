@@ -767,7 +767,7 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
     flink-snapshot.json
     fdb-metrics-snapshot.json
     storage-snapshot.json
-    topology-metrics.json
+    source-metrics.json
     report.html
 ```
 
@@ -894,7 +894,7 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
     flink-snapshot.json
     fdb-metrics-snapshot.json
     storage-snapshot.json
-    topology-metrics.json
+    source-metrics.json
     report.html
 ```
 
@@ -912,10 +912,10 @@ and Hive/Iceberg HDFS output paths before topology generation and simulator
 startup. This makes sink comparisons less sensitive to old Kafka offsets,
 historic compact-topic replays, or stale storage rows/files.
 
-`topology-service` writes `topology-metrics.json` when
-`FDB_TOPOLOGY_METRICS_FILE` is set by benchmark-runner. The single-run report
-shows generated records, site count, frequency-band count, generation duration,
-Kafka publish duration, publish failures, and latitude/longitude ranges.
+The simulator writes CHR/PM/CFG source metrics into per-run source metrics
+files. Benchmark-runner folds those into `source-metrics.json`, and the
+single-run report shows source totals, observed rates, per-cell density,
+backlog, and producer delivery attainment.
 
 Flink operator `Records In/s`, `Records Out/s`, `Bytes In/s`, and `Bytes Out/s`
 must come from per-vertex Flink metrics API values such as

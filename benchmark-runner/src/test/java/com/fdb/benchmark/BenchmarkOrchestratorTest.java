@@ -67,7 +67,13 @@ class BenchmarkOrchestratorTest {
     return new RunObservation(
         new FlinkSnapshot("RUNNING", 0.0, 20_000, 0, 1000, 1000, 1, 4),
         new FdbMetricsSnapshot(1000, 2000, 3000, 4000, 0, 1000),
-        new StorageSnapshot(true, "healthy", 100, 0, 0));
+        new StorageSnapshot(true, "healthy", 100, 0, 0)).withSource(healthySource());
+  }
+
+  private static SourceMetricsSnapshot healthySource() {
+    return new SourceMetricsSnapshot(true, 600, 1200, 588.0, 2_000, 0, 0,
+        200, 2000, 200.0, 10_000, 0, 0,
+        500, 2000, 500.0, 4_000, 0, 0);
   }
 
   static final class RecordingDeploy implements DeployCommandClient {

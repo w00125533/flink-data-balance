@@ -72,6 +72,10 @@ public record SourceMetricsSnapshot(
     return chrTargetEps <= 0 ? 1.0d : chrObservedEps / chrTargetEps;
   }
 
+  public boolean hasChrMetrics() {
+    return chrTargetEps > 0 || chrPublished > 0 || chrObservedEps > 0 || chrDurationMs > 0;
+  }
+
   public double chrTotalPerCell(int cellLevel) {
     return perCell(chrPublished, cellLevel);
   }

@@ -35,6 +35,7 @@ class SourceMetricsSnapshotTest {
     assertThat(snapshot.chrDurationMs()).isEqualTo(2000);
     assertThat(snapshot.chrBacklogRecords()).isEqualTo(12);
     assertThat(snapshot.chrUndeliveredRecords()).isEqualTo(12);
+    assertThat(snapshot.hasChrMetrics()).isTrue();
     assertThat(snapshot.pmDurationMs()).isEqualTo(10000);
     assertThat(snapshot.pmTargetEps()).isEqualTo(100);
     assertThat(snapshot.pmBacklogRecords()).isZero();
@@ -61,6 +62,7 @@ class SourceMetricsSnapshotTest {
     SourceMetricsSnapshot snapshot = SourceMetricsSnapshot.read(tempDir, plan);
 
     assertThat(snapshot.present()).isTrue();
+    assertThat(snapshot.hasChrMetrics()).isFalse();
     assertThat(snapshot.chrPublished()).isZero();
     assertThat(snapshot.pmTargetEps()).isZero();
     assertThat(snapshot.pmPublished()).isEqualTo(1000);

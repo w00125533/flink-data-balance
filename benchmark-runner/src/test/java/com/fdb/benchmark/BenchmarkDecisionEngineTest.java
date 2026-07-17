@@ -42,6 +42,26 @@ class BenchmarkDecisionEngineTest {
   }
 
   @Test
+  void missing_source_metrics_marks_unstable() {
+    BenchmarkRunResult result = engine.decide(plan(), healthy().withSource(SourceMetricsSnapshot.empty()));
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason()).contains("source metrics missing");
+  }
+
+  @Test
+  void pm_and_cfg_only_source_metrics_mark_unstable() {
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 0, 0, 0.0, 0, 0, 0,
+        100, 1000, 100.0, 10_000, 0, 0,
+        250, 1000, 250.0, 4_000, 0, 0);
+
+    BenchmarkRunResult result = engine.decide(plan(), healthy().withSource(source));
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason()).contains("CHR source metrics missing");
+  }
+
+  @Test
   void source_backlog_over_threshold_marks_unstable() {
     BenchmarkDecisionEngine backlogEngine = new BenchmarkDecisionEngine(new BenchmarkThresholds(
         0.2, 120_000, 2, 180_000, 180_000, 180_000, 0.98, 10));
@@ -113,6 +133,12 @@ class BenchmarkDecisionEngineTest {
     return new RunObservation(
         new FlinkSnapshot("RUNNING", 0.05, 30_000, 0, 10_000, 9_900, 4, 4),
         new FdbMetricsSnapshot(2_000, 40_000, 45_000, 5_000, 0, 20_000),
-        new StorageSnapshot(true, "healthy", 100, 0, 0));
+        new StorageSnapshot(true, "healthy", 100, 0, 0)).withSource(healthySource());
+  }
+
+  private static SourceMetricsSnapshot healthySource() {
+    return new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 0, 0,
+        100, 1000, 100.0, 10_000, 0, 0,
+        250, 1000, 250.0, 4_000, 0, 0);
   }
 }

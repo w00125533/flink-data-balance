@@ -54,7 +54,13 @@ public final class BenchmarkRunnerMain {
     return new RunObservation(
         new FlinkSnapshot("RUNNING", 0.0, 10_000, 0, 1000, 1000, 1, 4),
         new FdbMetricsSnapshot(0, 1000, 1000, 1000, 0, 1000),
-        new StorageSnapshot(true, "dry-run", 0, 0, 0));
+        new StorageSnapshot(true, "dry-run", 0, 0, 0)).withSource(dryRunSource());
+  }
+
+  private static SourceMetricsSnapshot dryRunSource() {
+    return new SourceMetricsSnapshot(true, 600, 1200, 588.0, 2_000, 0, 0,
+        200, 2000, 200.0, 10_000, 0, 0,
+        500, 2000, 500.0, 4_000, 0, 0);
   }
 
   private static void usage() {
