@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 
 public final class JavaSimulatorProcessManager implements SimulatorProcessManager {
+  private static final String ANOMALY_RATIO_ENV = "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO";
+  private static final String DEFAULT_ANOMALY_RATIO = "0.05";
+
   private final Map<String, String> baseEnv;
   private final Path outputRoot;
   private final List<Process> processes = new ArrayList<>();
@@ -76,6 +79,7 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
     env.put("FDB_E2E_SUMMARY", "1");
     env.put("FDB_SIM_SUMMARY", "1");
     env.put("FDB_TOPOLOGY_SUMMARY", "1");
+    env.put(ANOMALY_RATIO_ENV, valueOrDefault(baseEnv.get(ANOMALY_RATIO_ENV), DEFAULT_ANOMALY_RATIO));
     Path runDir = SourceMetricsSnapshot.runDir(outputRoot, plan);
     env.put("FDB_CHR_METRICS_FILE", portablePath(runDir.resolve("chr-source-metrics.json")));
     env.put("FDB_PM_METRICS_FILE", portablePath(runDir.resolve("pm-source-metrics.json")));
@@ -85,5 +89,9 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
 
   private static String portablePath(Path path) {
     return path.toString().replace('\\', '/');
+  }
+
+  private static String valueOrDefault(String value, String defaultValue) {
+    return value == null || value.isBlank() ? defaultValue : value.trim();
   }
 }

@@ -17,6 +17,7 @@ public record BenchmarkConfig(
     List<BenchmarkSink> sinks,
     List<Integer> cellLevels,
     double chrEpsPerCell,
+    double anomalyInjectionRatio,
     long warmupSec,
     long durationSec,
     long pollIntervalSec,
@@ -48,6 +49,7 @@ public record BenchmarkConfig(
         List.copyOf(sinks),
         List.copyOf(cellLevels),
         BenchmarkThresholds.doubleValue(env, "FDB_BENCHMARK_CHR_EPS_PER_CELL", 0.3),
+        boundedRatio(env, "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", 0.05),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_WARMUP_SEC", 60),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DURATION_SEC", 300),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_POLL_INTERVAL_SEC", 10),
@@ -102,6 +104,14 @@ public record BenchmarkConfig(
       throw new IllegalArgumentException("cell levels must not be empty");
     }
     return levels;
+  }
+
+  private static double boundedRatio(Map<String, String> env, String key, double defaultValue) {
+    double ratio = BenchmarkThresholds.doubleValue(env, key, defaultValue);
+    if (ratio < 0.0d || ratio > 1.0d) {
+      throw new IllegalArgumentException(key + " must be between 0 and 1");
+    }
+    return ratio;
   }
 
 }

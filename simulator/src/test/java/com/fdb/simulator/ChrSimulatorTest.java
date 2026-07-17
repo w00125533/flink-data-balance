@@ -19,4 +19,22 @@ class ChrSimulatorTest {
         assertThat(ChrSimulator.undeliveredRecords(1_000L, 960L)).isEqualTo(40L);
         assertThat(ChrSimulator.undeliveredRecords(960L, 1_000L)).isZero();
     }
+
+    @Test
+    void selects_stable_anomaly_cohort_by_ratio() {
+        long selected = java.util.stream.IntStream.range(0, 10_000)
+            .mapToObj(i -> "id-" + i)
+            .filter(id -> ChrSimulator.inAnomalyCohort(id, 0.05d))
+            .count();
+
+        assertThat(selected).isBetween(350L, 650L);
+        assertThat(ChrSimulator.inAnomalyCohort("stable-id", 0.05d))
+            .isEqualTo(ChrSimulator.inAnomalyCohort("stable-id", 0.05d));
+        assertThat(ChrSimulator.inAnomalyCohort("stable-id", 0.0d)).isFalse();
+        assertThat(ChrSimulator.inAnomalyCohort("stable-id", -0.1d)).isFalse();
+        assertThat(ChrSimulator.inAnomalyCohort(null, 0.05d)).isFalse();
+        assertThat(ChrSimulator.inAnomalyCohort(" ", 0.05d)).isFalse();
+        assertThat(ChrSimulator.inAnomalyCohort("stable-id", 1.0d)).isTrue();
+        assertThat(ChrSimulator.inAnomalyCohort("stable-id", 1.5d)).isTrue();
+    }
 }

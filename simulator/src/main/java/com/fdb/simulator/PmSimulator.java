@@ -41,6 +41,7 @@ public class PmSimulator {
 
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_PM_METRICS_FILE");
         long targetEps = targetEpsForWindow(cells.size());
+        double anomalyInjectionRatio = anomalyInjectionRatio(config);
         try (KafkaPublisher<PmStat> publisher = new KafkaPublisher<>(bootstrap, topic, PmStat.class)) {
             long metricsStartMs = System.currentTimeMillis();
             while (!Thread.currentThread().isInterrupted()) {
@@ -52,7 +53,7 @@ public class PmSimulator {
                 double prbUsageDl = 0.0;
 
                 for (TopologyRecord cell : cells) {
-                    PmStat stat = generatePmStat(cell, windowStart, windowEnd);
+                    PmStat stat = generatePmStat(cell, windowStart, windowEnd, anomalyInjectionRatio);
                     publisher.publish(cell.getSiteId().toString(), stat);
                     published++;
                     if (summaryEnabled) {
@@ -82,7 +83,8 @@ public class PmSimulator {
         }
     }
 
-    private PmStat generatePmStat(TopologyRecord cell, long windowStart, long windowEnd) {
+    private PmStat generatePmStat(TopologyRecord cell, long windowStart, long windowEnd,
+                                  double anomalyInjectionRatio) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
             cell.getSiteLat() + rng.nextGaussian() * 0.001,
             cell.getSiteLon() + rng.nextGaussian() * 0.001);
@@ -99,6 +101,16 @@ public class PmSimulator {
         int rrcAttempt = rng.nextInt(60);
         int rrcSuccess = rrcAttempt - rng.nextInt(Math.max(1, rrcAttempt / 10 + 1));
         float latency = (float) (5 + load * 40 + rng.nextFloat() * 10);
+        boolean anomalous = AnomalyInjection.inAnomalyCohort(cell.getCellId().toString(), anomalyInjectionRatio);
+        AnomalyValues anomalyValues = anomalous ? anomalousValues() : null;
+        if (anomalous) {
+            activeUsers = 180;
+            totalConnections = 200;
+            dropped = Math.round(anomalyValues.dropRate() * totalConnections);
+            rrcAttempt = 100;
+            rrcSuccess = Math.round(anomalyValues.attachSuccessRate() * rrcAttempt);
+            latency = 250.0f;
+        }
 
         return PmStat.newBuilder()
             .setSiteId(cell.getSiteId().toString())
@@ -108,14 +120,14 @@ public class PmSimulator {
             .setPrbUsageDl((float) Math.min(1.0, load + rng.nextFloat() * 0.1))
             .setPrbUsageUl((float) Math.min(1.0, load * 0.6 + rng.nextFloat() * 0.1))
             .setActiveUsers(activeUsers)
-            .setAvgRsrp((float) (-80 - (1 - (float) load) * 40 + rng.nextFloat() * 5))
-            .setAvgRsrq((float) (-5 - (1 - (float) load) * 12 + rng.nextFloat() * 3))
-            .setAvgSinr((float) (load * 20 + rng.nextFloat() * 5))
-            .setAvgCqi((float) (load * 12 + rng.nextFloat() * 3))
-            .setAvgMcs((float) (load * 22 + rng.nextFloat() * 5))
-            .setAvgBler(rng.nextFloat() * 0.1f)
-            .setThroughputDlMbps((float) (load * 200 + rng.nextFloat() * 50))
-            .setThroughputUlMbps((float) (load * 50 + rng.nextFloat() * 20))
+            .setAvgRsrp(anomalous ? anomalyValues.avgRsrp() : (float) (-80 - (1 - (float) load) * 40 + rng.nextFloat() * 5))
+            .setAvgRsrq(anomalous ? -18.0f : (float) (-5 - (1 - (float) load) * 12 + rng.nextFloat() * 3))
+            .setAvgSinr(anomalous ? anomalyValues.avgSinr() : (float) (load * 20 + rng.nextFloat() * 5))
+            .setAvgCqi(anomalous ? 1.0f : (float) (load * 12 + rng.nextFloat() * 3))
+            .setAvgMcs(anomalous ? 1.0f : (float) (load * 22 + rng.nextFloat() * 5))
+            .setAvgBler(anomalous ? 0.35f : rng.nextFloat() * 0.1f)
+            .setThroughputDlMbps(anomalous ? 5.0f : (float) (load * 200 + rng.nextFloat() * 50))
+            .setThroughputUlMbps(anomalous ? 1.0f : (float) (load * 50 + rng.nextFloat() * 20))
             .setDroppedConnections(dropped)
             .setHandoverSuccess(hoAttempt - hoFail)
             .setHandoverFailure(hoFail)
@@ -136,6 +148,14 @@ public class PmSimulator {
         return cellCount <= 0 ? 0L : Math.max(1L, Math.round(cellCount / 10.0d));
     }
 
+    static AnomalyValues anomalousValues() {
+        return new AnomalyValues(-125.0f, -8.0f, 0.40f, 0.125f);
+    }
+
+    static double anomalyInjectionRatio(SimulatorConfig config) {
+        return config.getDouble("benchmark.anomaly.injection.ratio", 0.05d);
+    }
+
     private static double haversine(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
@@ -144,4 +164,7 @@ public class PmSimulator {
                 Math.sin(dLon / 2) * Math.sin(dLon / 2);
         return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
+}
+
+record AnomalyValues(float avgRsrp, float avgSinr, float attachSuccessRate, float dropRate) {
 }

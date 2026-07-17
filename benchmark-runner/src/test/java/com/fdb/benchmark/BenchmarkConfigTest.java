@@ -21,6 +21,7 @@ class BenchmarkConfigTest {
     assertThat(config.sinks()).containsExactly(BenchmarkSink.NONE, BenchmarkSink.STARROCKS, BenchmarkSink.KAFKA);
     assertThat(config.cellLevels()).containsExactly(1000, 3000);
     assertThat(config.chrEpsPerCell()).isEqualTo(0.25);
+    assertThat(config.anomalyInjectionRatio()).isEqualTo(0.05);
     assertThat(config.targetChrEps(3000)).isEqualTo(750);
     assertThat(config.warmupSec()).isEqualTo(30);
     assertThat(config.durationSec()).isEqualTo(120);
@@ -28,6 +29,14 @@ class BenchmarkConfigTest {
     assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.98);
     assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(0L);
     assertThat(config.outputRoot()).isEqualTo(Path.of("benchmark-runner/output/benchmark-runs"));
+  }
+
+  @Test
+  void parses_anomaly_injection_ratio_from_env() {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.05"));
+
+    assertThat(config.anomalyInjectionRatio()).isEqualTo(0.05);
   }
 
   @Test

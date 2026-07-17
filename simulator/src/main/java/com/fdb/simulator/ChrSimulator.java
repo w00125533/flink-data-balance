@@ -53,9 +53,12 @@ public class ChrSimulator {
         long totalCells = cells.size();
         double lambdaPerCell = (double) baseEps / totalCells;
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CHR_METRICS_FILE");
+        double anomalyInjectionRatio = anomalyInjectionRatio(config);
         if (summaryEnabled) {
             log.info(SummarySwitch.format("sim-chr", "configured_base_eps", baseEps));
             log.info(SummarySwitch.format("sim-chr", "lambda_per_cell", String.format("%.3f", lambdaPerCell)));
+            log.info(SummarySwitch.format("sim-chr", "anomaly_injection_ratio",
+                String.format("%.3f", anomalyInjectionRatio)));
         }
 
         try (KafkaPublisher<ChrEvent> publisher = new KafkaPublisher<>(bootstrap, topic, ChrEvent.class)) {
@@ -75,7 +78,8 @@ public class ChrSimulator {
                     String imsi = users.get(rng.nextInt(users.size()));
                     ChrEvent event = generateEvent(cell, imsi, now,
                         config.getDouble("rate.outOfOrderProb", 0.05),
-                        config.getLong("rate.maxOutOfOrderLagMs", 5000));
+                        config.getLong("rate.maxOutOfOrderLagMs", 5000),
+                        anomalyInjectionRatio);
                     publisher.publish(cell.getSiteId().toString(), event);
                     counter++;
 
@@ -124,6 +128,14 @@ public class ChrSimulator {
         return Math.max(0L, submitted - delivered);
     }
 
+    static boolean inAnomalyCohort(String id, double ratio) {
+        return AnomalyInjection.inAnomalyCohort(id, ratio);
+    }
+
+    static double anomalyInjectionRatio(SimulatorConfig config) {
+        return config.getDouble("benchmark.anomaly.injection.ratio", 0.05d);
+    }
+
     private Map<String, List<String>> assignUsers(List<TopologyRecord> cells) {
         Map<String, List<String>> result = new HashMap<>();
         int userCounter = 0;
@@ -166,7 +178,8 @@ public class ChrSimulator {
     }
 
     private ChrEvent generateEvent(TopologyRecord cell, String imsi, long now,
-                                   double outOfOrderProbability, long maxOutOfOrderLagMs) {
+                                   double outOfOrderProbability, long maxOutOfOrderLagMs,
+                                   double anomalyInjectionRatio) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
             cell.getSiteLat() + rng.nextGaussian() * 0.001,
             cell.getSiteLon() + rng.nextGaussian() * 0.001);
@@ -182,9 +195,21 @@ public class ChrSimulator {
 
         ChrEventType[] eventTypes = ChrEventType.values();
         ChrEventType eventType = eventTypes[rng.nextInt(eventTypes.length)];
+        boolean anomalous = inAnomalyCohort(imsi, anomalyInjectionRatio)
+            || inAnomalyCohort(cell.getCellId().toString(), anomalyInjectionRatio);
+        if (anomalous) {
+            eventType = ChrEventType.RRC_SETUP_FAIL;
+            rsrp = -125.0f;
+            sinr = -8.0f;
+            rsrq = -18.0f;
+            cqi = 1;
+            mcs = 1;
+        }
 
         int outOfOrderLag = rng.nextDouble() < outOfOrderProbability
             ? rng.nextInt((int) Math.max(1, maxOutOfOrderLagMs)) + 100 : 0;
+        int resultCode = anomalous || eventType == ChrEventType.RRC_SETUP_FAIL || eventType == ChrEventType.DETACH
+            ? 1 : 0;
 
         return ChrEvent.newBuilder()
             .setChrId(UUID.randomUUID().toString())
@@ -201,7 +226,7 @@ public class ChrSimulator {
             .setMcc(cell.getMcc().toString())
             .setMnc(cell.getMnc().toString())
             .setArfcn(cell.getArfcn())
-            .setResultCode(eventType == ChrEventType.RRC_SETUP_FAIL || eventType == ChrEventType.DETACH ? 1 : 0)
+            .setResultCode(resultCode)
             .setLatitude(cell.getSiteLat() + rng.nextGaussian() * 0.002)
             .setLongitude(cell.getSiteLon() + rng.nextGaussian() * 0.002)
             .setRsrp(rsrp)
@@ -209,9 +234,11 @@ public class ChrSimulator {
             .setSinr(sinr)
             .setCqi(cqi)
             .setMcs(mcs)
-            .setDurationMs(eventType == ChrEventType.DATA_SESSION ? (long) (1000 + rng.nextDouble() * 30000) : null)
+            .setDurationMs(anomalous ? 60_000L
+                : (eventType == ChrEventType.DATA_SESSION ? (long) (1000 + rng.nextDouble() * 30000) : null))
             .setBytesUp(eventType == ChrEventType.DATA_SESSION ? (long) (1024 + rng.nextDouble() * 1024 * 1024) : null)
             .setBytesDown(eventType == ChrEventType.DATA_SESSION ? (long) (2048 + rng.nextDouble() * 10 * 1024 * 1024) : null)
+            .setLatencyMs(anomalous ? 2_500.0f : null)
             .build();
     }
 

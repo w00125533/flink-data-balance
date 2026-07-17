@@ -16,6 +16,7 @@ class JavaSimulatorProcessManagerTest {
 
     assertThat(env).containsEntry("FDB_TOPOLOGY_TARGET_CELLS", "1000");
     assertThat(env).containsEntry("FDB_SITES_COUNT", "1000");
+    assertThat(env).containsEntry("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.05");
   }
 
   @SuppressWarnings("unchecked")
