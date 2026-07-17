@@ -24,6 +24,7 @@ class BenchmarkResultWriterTest {
 
     assertThat(tempDir.resolve("bench-a/benchmark-config.json")).exists();
     assertThat(tempDir.resolve("bench-a/benchmark-results.json")).exists();
+    assertThat(tempDir.resolve("bench-a/runs/bench-a-none-cells1000-eps300/source-metrics.json")).exists();
     String csv = Files.readString(tempDir.resolve("bench-a/benchmark-summary.csv"));
     assertThat(csv).contains("sink,cellLevel,targetChrEps,status");
     assertThat(csv).contains("none,1000,300,STABLE");

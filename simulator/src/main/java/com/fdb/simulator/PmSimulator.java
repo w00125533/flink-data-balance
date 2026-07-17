@@ -39,7 +39,10 @@ public class PmSimulator {
             log.info(SummarySwitch.format("sim-pm", "loaded_cells", cells.size()));
         }
 
+        SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_PM_METRICS_FILE");
         try (KafkaPublisher<PmStat> publisher = new KafkaPublisher<>(bootstrap, topic, PmStat.class)) {
+            long totalPublished = 0L;
+            long metricsStartMs = System.currentTimeMillis();
             while (!Thread.currentThread().isInterrupted()) {
                 long wallNow = System.currentTimeMillis();
                 long windowEnd = alignTo10s(wallNow);
@@ -51,14 +54,17 @@ public class PmSimulator {
                 for (TopologyRecord cell : cells) {
                     PmStat stat = generatePmStat(cell, windowStart, windowEnd);
                     publisher.publish(cell.getSiteId().toString(), stat);
+                    published++;
                     if (summaryEnabled) {
-                        published++;
                         activeUsers += stat.getActiveUsers();
                         prbUsageDl += stat.getPrbUsageDl();
                     }
                 }
 
                 publisher.flush();
+                totalPublished += published;
+                double observedEps = totalPublished / Math.max((System.currentTimeMillis() - metricsStartMs) / 1000.0d, 0.001d);
+                sourceMetrics.write("pm", 0L, totalPublished, observedEps);
                 if (summaryEnabled && published > 0) {
                     log.info(SummarySwitch.format("sim-pm", "records_published_last_window", published));
                     log.info(SummarySwitch.format("sim-pm", "avg_active_users_last_window", activeUsers / published));

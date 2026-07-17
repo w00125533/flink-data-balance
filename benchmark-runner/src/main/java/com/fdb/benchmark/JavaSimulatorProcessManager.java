@@ -10,10 +10,16 @@ import java.util.Map;
 
 public final class JavaSimulatorProcessManager implements SimulatorProcessManager {
   private final Map<String, String> baseEnv;
+  private final Path outputRoot;
   private final List<Process> processes = new ArrayList<>();
 
   public JavaSimulatorProcessManager(Map<String, String> baseEnv) {
+    this(baseEnv, Path.of("benchmark-runner/output/benchmark-runs"));
+  }
+
+  public JavaSimulatorProcessManager(Map<String, String> baseEnv, Path outputRoot) {
     this.baseEnv = Map.copyOf(baseEnv);
+    this.outputRoot = outputRoot;
   }
 
   @Override
@@ -70,6 +76,14 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
     env.put("FDB_E2E_SUMMARY", "1");
     env.put("FDB_SIM_SUMMARY", "1");
     env.put("FDB_TOPOLOGY_SUMMARY", "1");
+    Path runDir = SourceMetricsSnapshot.runDir(outputRoot, plan);
+    env.put("FDB_CHR_METRICS_FILE", portablePath(runDir.resolve("chr-source-metrics.json")));
+    env.put("FDB_PM_METRICS_FILE", portablePath(runDir.resolve("pm-source-metrics.json")));
+    env.put("FDB_CFG_METRICS_FILE", portablePath(runDir.resolve("cfg-source-metrics.json")));
     return env;
+  }
+
+  private static String portablePath(Path path) {
+    return path.toString().replace('\\', '/');
   }
 }

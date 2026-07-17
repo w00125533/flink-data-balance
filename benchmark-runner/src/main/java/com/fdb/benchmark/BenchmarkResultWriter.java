@@ -30,6 +30,7 @@ public final class BenchmarkResultWriter {
       MAPPER.writeValue(runDir.resolve("flink-snapshot.json").toFile(), result.flink());
       MAPPER.writeValue(runDir.resolve("fdb-metrics-snapshot.json").toFile(), result.fdb());
       MAPPER.writeValue(runDir.resolve("storage-snapshot.json").toFile(), result.storage());
+      MAPPER.writeValue(runDir.resolve("source-metrics.json").toFile(), result.source());
     }
     return benchmarkDir;
   }

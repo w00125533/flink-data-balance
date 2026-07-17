@@ -14,6 +14,7 @@ import java.util.stream.IntStream;
 public class ChrSimulator {
 
     private static final Logger log = LoggerFactory.getLogger(ChrSimulator.class);
+    private static final long DEFAULT_LOOP_INTERVAL_MS = 100L;
 
     private static final List<String> IMSI_PREFIXES = List.of("46000", "46001", "46002", "46003", "46004");
     private static final List<String> IMEI_POOL = IntStream.range(0, 500)
@@ -51,6 +52,7 @@ public class ChrSimulator {
         long baseEps = config.getLong("rate.eps", 5000);
         long totalCells = cells.size();
         double lambdaPerCell = (double) baseEps / totalCells;
+        SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CHR_METRICS_FILE");
         if (summaryEnabled) {
             log.info(SummarySwitch.format("sim-chr", "configured_base_eps", baseEps));
             log.info(SummarySwitch.format("sim-chr", "lambda_per_cell", String.format("%.3f", lambdaPerCell)));
@@ -62,39 +64,46 @@ public class ChrSimulator {
 
             while (!Thread.currentThread().isInterrupted()) {
                 long now = System.currentTimeMillis();
-                long elapsedMs = now - startTime;
+                long due = dueEvents(baseEps, startTime, now, counter);
+                for (long i = 0; i < due; i++) {
+                    TopologyRecord cell = cells.get(rng.nextInt(cells.size()));
+                    List<String> users = cellUsers.get(cell.getCellId().toString());
+                    if (users == null || users.isEmpty()) {
+                        continue;
+                    }
 
-                for (TopologyRecord cell : cells) {
-                    double skewMultiplier = computeSkew(cell, elapsedMs);
-                    double adjustedLambda = lambdaPerCell * skewMultiplier;
+                    String imsi = users.get(rng.nextInt(users.size()));
+                    ChrEvent event = generateEvent(cell, imsi, now,
+                        config.getDouble("rate.outOfOrderProb", 0.05),
+                        config.getLong("rate.maxOutOfOrderLagMs", 5000));
+                    publisher.publish(cell.getSiteId().toString(), event);
+                    counter++;
 
-                    if (rng.nextDouble() < adjustedLambda * 0.001) {
-                        List<String> users = cellUsers.get(cell.getCellId().toString());
-                        if (users == null || users.isEmpty()) continue;
-
-                        String imsi = users.get(rng.nextInt(users.size()));
-                        ChrEvent event = generateEvent(cell, imsi, now,
-                            config.getDouble("rate.outOfOrderProb", 0.05),
-                            config.getLong("rate.maxOutOfOrderLagMs", 5000));
-                        publisher.publish(cell.getSiteId().toString(), event);
-                        counter++;
-
-                        if (counter % 10000 == 0) {
-                            publisher.flush();
-                            double eps = counter / ((System.currentTimeMillis() - startTime) / 1000.0 + 1);
-                            log.info("Published {} CHR events (EPS: {})", counter, eps);
-                            if (summaryEnabled) {
-                                log.info(SummarySwitch.format("sim-chr", "events_published", counter));
-                                log.info(SummarySwitch.format("sim-chr", "observed_eps", String.format("%.1f", eps)));
-                            }
+                    if (counter % 10000 == 0) {
+                        publisher.flush();
+                        double eps = counter / ((System.currentTimeMillis() - startTime) / 1000.0 + 1);
+                        log.info("Published {} CHR events (EPS: {})", counter, eps);
+                        if (summaryEnabled) {
+                            log.info(SummarySwitch.format("sim-chr", "events_published", counter));
+                            log.info(SummarySwitch.format("sim-chr", "observed_eps", String.format("%.1f", eps)));
                         }
                     }
                 }
+                double observedEps = counter / Math.max((System.currentTimeMillis() - startTime) / 1000.0d, 0.001d);
+                sourceMetrics.write("chr", baseEps, counter, observedEps);
 
                 long elapsed = System.currentTimeMillis() - now;
-                if (elapsed < 100) Thread.sleep(100 - elapsed);
+                if (elapsed < DEFAULT_LOOP_INTERVAL_MS) Thread.sleep(DEFAULT_LOOP_INTERVAL_MS - elapsed);
             }
         }
+    }
+
+    static long dueEvents(long targetEps, long startMs, long nowMs, long alreadyPublished) {
+        if (targetEps <= 0 || nowMs <= startMs) {
+            return 0L;
+        }
+        long expected = Math.floorDiv((nowMs - startMs) * targetEps, 1000L);
+        return Math.max(0L, expected - alreadyPublished);
     }
 
     private Map<String, List<String>> assignUsers(List<TopologyRecord> cells) {

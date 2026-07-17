@@ -38,8 +38,11 @@ public class CfgSimulator {
             log.info(SummarySwitch.format("sim-cfg", "loaded_cells", cells.size()));
         }
 
+        SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CFG_METRICS_FILE");
         try (KafkaPublisher<CfgConfig> publisher = new KafkaPublisher<>(bootstrap, topic, CfgConfig.class)) {
             long version = 1;
+            long totalPublished = 0L;
+            long metricsStartMs = System.currentTimeMillis();
 
             log.info("Publishing baseline CFG config for {} cells", cells.size());
             for (TopologyRecord cell : cells) {
@@ -47,6 +50,9 @@ public class CfgSimulator {
                 publisher.publish(cell.getCellId().toString(), config);
             }
             publisher.flush();
+            totalPublished += cells.size();
+            double observedEps = totalPublished / Math.max((System.currentTimeMillis() - metricsStartMs) / 1000.0d, 0.001d);
+            sourceMetrics.write("cfg", 0L, totalPublished, observedEps);
             log.info("Baseline CFG config published");
             if (summaryEnabled) {
                 log.info(SummarySwitch.format("sim-cfg", "baseline_records_published", cells.size()));
@@ -70,6 +76,7 @@ public class CfgSimulator {
                     changed++;
                 }
                 publisher.flush();
+                totalPublished += changed;
                 version++;
 
                 if (rng.nextDouble() < simConfig.getDouble("updates.tombstoneProb", 0.05) && changed > 0) {
@@ -99,12 +106,16 @@ public class CfgSimulator {
                         .setTombstone(true)
                         .build();
                     publisher.publish(cell.getCellId().toString(), tombstone);
+                    publisher.flush();
+                    totalPublished++;
                     log.info("Published tombstone for {}", cell.getCellId());
                     if (summaryEnabled) {
                         log.info(SummarySwitch.format("sim-cfg", "tombstone_published", cell.getCellId()));
                     }
                 }
 
+                observedEps = totalPublished / Math.max((System.currentTimeMillis() - metricsStartMs) / 1000.0d, 0.001d);
+                sourceMetrics.write("cfg", 0L, totalPublished, observedEps);
                 log.info("Published {} CFG config updates (version {})", changed, version - 1);
                 if (summaryEnabled) {
                     log.info(SummarySwitch.format("sim-cfg", "updates_published_last_batch", changed));
