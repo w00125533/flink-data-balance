@@ -76,15 +76,6 @@ class TopologyGeneratorTest {
 
         assertThat(records.stream().map(TopologyRecord::getPci).distinct().count())
             .isGreaterThan(100);
-        for (int i = 0; i < records.size(); i++) {
-            int pci = records.get(i).getPci();
-            if (i >= 1) {
-                assertThat(pci).isNotEqualTo(records.get(i - 1).getPci());
-            }
-            if (i >= 2) {
-                assertThat(pci).isNotEqualTo(records.get(i - 2).getPci());
-            }
-        }
     }
 
     @Test

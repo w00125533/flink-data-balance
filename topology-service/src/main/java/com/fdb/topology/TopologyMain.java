@@ -3,13 +3,9 @@ package com.fdb.topology;
 import com.fdb.common.avro.TopologyRecord;
 import com.fdb.common.config.ConfigLoader;
 import com.fdb.common.summary.SummarySwitch;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,11 +14,8 @@ import java.util.Map;
 public class TopologyMain {
 
     private static final Logger log = LoggerFactory.getLogger(TopologyMain.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-        .enable(SerializationFeature.INDENT_OUTPUT);
 
     public static void main(String[] args) throws Exception {
-        long totalStartNanos = System.nanoTime();
         String configPath = System.getProperty("config", "topology-default.yaml");
 
         var configFile = Path.of(configPath);
@@ -40,9 +33,7 @@ public class TopologyMain {
         TopologyConfig topologyConfig = parseConfig(rawConfig);
 
         TopologyGenerator generator = new TopologyGenerator(topologyConfig);
-        long generationStartNanos = System.nanoTime();
         List<TopologyRecord> records = generator.generate();
-        long generationDurationMs = elapsedMs(generationStartNanos);
 
         log.info("Generated {} topology records from {} sites", records.size(), topologyConfig.getSites().getCount());
         logTopologySummary(records, topologyConfig);
@@ -56,44 +47,14 @@ public class TopologyMain {
         if (topic == null) topic = "topology";
 
         KafkaTopologyPublisher publisher = new KafkaTopologyPublisher(bootstrap, topic);
-        KafkaTopologyPublisher.PublishResult publishResult;
-        long publishStartNanos = System.nanoTime();
         try {
-            publishResult = publisher.publishAll(records);
+            publisher.publishAll(records);
         } finally {
             publisher.close();
         }
-        long publishDurationMs = elapsedMs(publishStartNanos);
-        TopologyMetrics metrics = TopologyMetrics.from(
-            records,
-            generationDurationMs,
-            publishResult,
-            publishDurationMs,
-            elapsedMs(totalStartNanos));
-        writeMetricsIfConfigured(metrics);
 
         log.info("Topology service completed successfully");
         System.exit(0);
-    }
-
-    private static void writeMetricsIfConfigured(TopologyMetrics metrics) throws IOException {
-        String metricsFile = System.getenv("FDB_TOPOLOGY_METRICS_FILE");
-        if (metricsFile == null || metricsFile.isBlank()) {
-            return;
-        }
-        writeMetrics(Path.of(metricsFile), metrics);
-    }
-
-    static void writeMetrics(Path metricsFile, TopologyMetrics metrics) throws IOException {
-        Path parent = metricsFile.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        MAPPER.writeValue(metricsFile.toFile(), metrics);
-    }
-
-    private static long elapsedMs(long startNanos) {
-        return Math.max(0, (System.nanoTime() - startNanos) / 1_000_000L);
     }
 
     private static void logTopologySummary(List<TopologyRecord> records, TopologyConfig topologyConfig) {
