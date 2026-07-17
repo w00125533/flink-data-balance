@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -20,6 +21,11 @@ final class SourceMetricsWriter {
     }
 
     void write(String source, long targetEps, long published, double observedEps) {
+        write(source, targetEps, published, observedEps, 0L, 0L, 0L);
+    }
+
+    void write(String source, long targetEps, long published, double observedEps,
+               long durationMs, long backlogRecords, long undeliveredRecords) {
         if (path == null) {
             return;
         }
@@ -28,15 +34,38 @@ final class SourceMetricsWriter {
         payload.put("targetEps", targetEps);
         payload.put("published", published);
         payload.put("observedEps", observedEps);
+        payload.put("durationMs", durationMs);
+        payload.put("backlogRecords", backlogRecords);
+        payload.put("undeliveredRecords", undeliveredRecords);
         payload.put("updatedAtEpochMs", System.currentTimeMillis());
+        Path tmp = null;
         try {
-            Path parent = path.getParent();
+            Path target = path.toAbsolutePath();
+            Path parent = target.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            JSON.writeValue(path.toFile(), payload);
+            tmp = Files.createTempFile(parent, path.getFileName().toString(), ".tmp");
+            JSON.writeValue(tmp.toFile(), payload);
+            moveIntoPlace(tmp, target);
         } catch (IOException e) {
             throw new IllegalStateException("failed to write source metrics " + path, e);
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // Best effort cleanup for abandoned temp files.
+                }
+            }
+        }
+    }
+
+    private static void moveIntoPlace(Path tmp, Path target) throws IOException {
+        try {
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

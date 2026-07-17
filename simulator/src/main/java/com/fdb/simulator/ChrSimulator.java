@@ -89,8 +89,12 @@ public class ChrSimulator {
                         }
                     }
                 }
-                double observedEps = counter / Math.max((System.currentTimeMillis() - startTime) / 1000.0d, 0.001d);
-                sourceMetrics.write("chr", baseEps, counter, observedEps);
+                long metricsNow = System.currentTimeMillis();
+                long durationMs = Math.max(0L, metricsNow - startTime);
+                double observedEps = counter / Math.max(durationMs / 1000.0d, 0.001d);
+                long expected = expectedEvents(baseEps, startTime, metricsNow);
+                long pending = Math.max(0L, expected - counter);
+                sourceMetrics.write("chr", baseEps, counter, observedEps, durationMs, pending, pending);
 
                 long elapsed = System.currentTimeMillis() - now;
                 if (elapsed < DEFAULT_LOOP_INTERVAL_MS) Thread.sleep(DEFAULT_LOOP_INTERVAL_MS - elapsed);
@@ -99,11 +103,15 @@ public class ChrSimulator {
     }
 
     static long dueEvents(long targetEps, long startMs, long nowMs, long alreadyPublished) {
+        long expected = expectedEvents(targetEps, startMs, nowMs);
+        return Math.max(0L, expected - alreadyPublished);
+    }
+
+    static long expectedEvents(long targetEps, long startMs, long nowMs) {
         if (targetEps <= 0 || nowMs <= startMs) {
             return 0L;
         }
-        long expected = Math.floorDiv((nowMs - startMs) * targetEps, 1000L);
-        return Math.max(0L, expected - alreadyPublished);
+        return Math.floorDiv((nowMs - startMs) * targetEps, 1000L);
     }
 
     private Map<String, List<String>> assignUsers(List<TopologyRecord> cells) {

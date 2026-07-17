@@ -47,7 +47,9 @@ class BenchmarkDecisionEngineTest {
 
   @Test
   void preserves_source_metrics_in_decision_result() {
-    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300, 600, 294.0, 1000, 100.0, 1000, 1000.0);
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
+        1000, 100.0, 10_000, 0, 0,
+        1000, 1000.0, 0, 0, 0);
     BenchmarkRunResult result = engine.decide(plan(), healthy().withSource(source));
 
     assertThat(result.source().present()).isTrue();

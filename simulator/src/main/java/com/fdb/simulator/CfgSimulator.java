@@ -51,8 +51,9 @@ public class CfgSimulator {
             }
             publisher.flush();
             totalPublished += cells.size();
-            double observedEps = totalPublished / Math.max((System.currentTimeMillis() - metricsStartMs) / 1000.0d, 0.001d);
-            sourceMetrics.write("cfg", 0L, totalPublished, observedEps);
+            long durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
+            double observedEps = totalPublished / Math.max(durationMs / 1000.0d, 0.001d);
+            sourceMetrics.write("cfg", 0L, totalPublished, observedEps, durationMs, 0L, 0L);
             log.info("Baseline CFG config published");
             if (summaryEnabled) {
                 log.info(SummarySwitch.format("sim-cfg", "baseline_records_published", cells.size()));
@@ -114,8 +115,9 @@ public class CfgSimulator {
                     }
                 }
 
-                observedEps = totalPublished / Math.max((System.currentTimeMillis() - metricsStartMs) / 1000.0d, 0.001d);
-                sourceMetrics.write("cfg", 0L, totalPublished, observedEps);
+                durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
+                observedEps = totalPublished / Math.max(durationMs / 1000.0d, 0.001d);
+                sourceMetrics.write("cfg", 0L, totalPublished, observedEps, durationMs, 0L, 0L);
                 log.info("Published {} CFG config updates (version {})", changed, version - 1);
                 if (summaryEnabled) {
                     log.info(SummarySwitch.format("sim-cfg", "updates_published_last_batch", changed));

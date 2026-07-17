@@ -11,15 +11,24 @@ public record SourceMetricsSnapshot(
     long chrTargetEps,
     long chrPublished,
     double chrObservedEps,
+    long chrDurationMs,
+    long chrBacklogRecords,
+    long chrUndeliveredRecords,
     long pmPublished,
     double pmObservedEps,
+    long pmDurationMs,
+    long pmBacklogRecords,
+    long pmUndeliveredRecords,
     long cfgPublished,
-    double cfgObservedEps) {
+    double cfgObservedEps,
+    long cfgDurationMs,
+    long cfgBacklogRecords,
+    long cfgUndeliveredRecords) {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public static SourceMetricsSnapshot empty() {
-    return new SourceMetricsSnapshot(false, 0, 0, 0, 0, 0, 0, 0);
+    return new SourceMetricsSnapshot(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   }
 
   public static Path runDir(Path outputRoot, BenchmarkRunPlan plan) {
@@ -37,10 +46,19 @@ public record SourceMetricsSnapshot(
         chr == null ? 0L : chr.targetEps,
         chr == null ? 0L : chr.published,
         chr == null ? 0.0d : chr.observedEps,
+        chr == null ? 0L : chr.durationMs,
+        chr == null ? 0L : chr.backlogRecords,
+        chr == null ? 0L : chr.undeliveredRecords,
         pm == null ? 0L : pm.published,
         pm == null ? 0.0d : pm.observedEps,
+        pm == null ? 0L : pm.durationMs,
+        pm == null ? 0L : pm.backlogRecords,
+        pm == null ? 0L : pm.undeliveredRecords,
         cfg == null ? 0L : cfg.published,
-        cfg == null ? 0.0d : cfg.observedEps);
+        cfg == null ? 0.0d : cfg.observedEps,
+        cfg == null ? 0L : cfg.durationMs,
+        cfg == null ? 0L : cfg.backlogRecords,
+        cfg == null ? 0L : cfg.undeliveredRecords);
   }
 
   public double producerDeliveryRatio() {
@@ -75,11 +93,15 @@ public record SourceMetricsSnapshot(
     return cellLevel <= 0 ? 0.0d : value / cellLevel;
   }
 
-  private static RawSourceMetrics readRaw(Path path) throws IOException {
+  private static RawSourceMetrics readRaw(Path path) {
     if (!Files.exists(path)) {
       return null;
     }
-    return MAPPER.readValue(path.toFile(), RawSourceMetrics.class);
+    try {
+      return MAPPER.readValue(path.toFile(), RawSourceMetrics.class);
+    } catch (IOException e) {
+      return null;
+    }
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -87,5 +109,8 @@ public record SourceMetricsSnapshot(
     public long targetEps;
     public long published;
     public double observedEps;
+    public long durationMs;
+    public long backlogRecords;
+    public long undeliveredRecords;
   }
 }

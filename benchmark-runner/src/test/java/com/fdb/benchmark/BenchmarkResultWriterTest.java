@@ -29,7 +29,10 @@ class BenchmarkResultWriterTest {
     assertThat(Files.readString(sourceMetrics))
         .contains("\"present\" : true")
         .contains("\"chrTargetEps\" : 300")
-        .contains("\"chrPublished\" : 600");
+        .contains("\"chrPublished\" : 600")
+        .contains("\"chrDurationMs\" : 2000")
+        .contains("\"chrBacklogRecords\" : 12")
+        .contains("\"chrUndeliveredRecords\" : 12");
     String csv = Files.readString(tempDir.resolve("bench-a/benchmark-summary.csv"));
     assertThat(csv).contains("sink,cellLevel,targetChrEps,status");
     assertThat(csv).contains("none,1000,300,STABLE");
@@ -41,6 +44,8 @@ class BenchmarkResultWriterTest {
         new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1, 4),
         new FdbMetricsSnapshot(1, 2, 3, 4, 0, 5),
         new StorageSnapshot(true, "healthy", 10, 0, 0),
-        new SourceMetricsSnapshot(true, 300, 600, 294.0, 1000, 100.0, 1000, 1000.0));
+        new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
+            1000, 100.0, 10_000, 0, 0,
+            1000, 1000.0, 0, 0, 0));
   }
 }
