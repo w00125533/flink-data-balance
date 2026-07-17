@@ -40,6 +40,8 @@ class HtmlReportWriterTest {
         .contains("Source Throughput Attainment")
         .contains("Source Backlog")
         .contains("Checkpoint Interval")
+        .contains("Checkpoint Duration")
+        .contains("30s default, file sinks capped at 180s")
         .contains("Latency")
         .contains("N/A")
         .contains("Flink Snapshot")

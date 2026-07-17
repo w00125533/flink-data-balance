@@ -178,6 +178,7 @@ public final class HtmlReportWriter {
             <tr><th>Source Throughput Attainment</th><td>%s</td></tr>
             <tr><th>Source Backlog</th><td>%s</td></tr>
             <tr><th>Checkpoint Interval</th><td>%s</td></tr>
+            <tr><th>Checkpoint Duration</th><td>%s</td></tr>
           </tbody>
         </table>
         """.formatted(
@@ -188,6 +189,7 @@ public final class HtmlReportWriter {
             escape(result.bottleneckReason()),
             formatRatio(source.producerDeliveryRatio()),
             flink.sourceBacklogRecords() + " records",
+            "30s default, file sinks capped at 180s",
             formatMs(flink.checkpointDurationMs()));
   }
 

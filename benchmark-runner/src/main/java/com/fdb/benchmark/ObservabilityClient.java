@@ -18,30 +18,30 @@ public final class ObservabilityClient {
 
   public FdbMetricsSnapshot snapshot() throws IOException, InterruptedException {
     JsonNode stages = readStages();
-    long kpi1mP95Ms = 0;
-    long kpi5mP95Ms = 0;
+    long kpi1mP95Ms = -1;
+    long kpi5mP95Ms = -1;
     long watermarkLagMs = 0;
     if (stages.isArray()) {
       for (JsonNode stage : stages) {
         String stageId = stage.path("stageId").asText("");
-        long latencyP95Ms = stage.path("latencyP95Ms").asLong(0);
+        long latencyP95Ms = stage.path("latencyP95Ms").asLong(-1);
         watermarkLagMs = Math.max(watermarkLagMs, stage.path("watermarkLagMs").asLong(0));
         if (stageId.contains("1m") || stageId.contains("kpi-1")) {
-          kpi1mP95Ms = Math.max(kpi1mP95Ms, latencyP95Ms);
+          kpi1mP95Ms = maxAvailableLatency(kpi1mP95Ms, latencyP95Ms);
         }
         if (stageId.contains("5m") || stageId.contains("kpi-5")) {
-          kpi5mP95Ms = Math.max(kpi5mP95Ms, latencyP95Ms);
+          kpi5mP95Ms = maxAvailableLatency(kpi5mP95Ms, latencyP95Ms);
         }
       }
     }
 
     JsonNode sinks = readOrEmpty("/api/results/sink-latency");
-    long sinkP95Ms = 0;
+    long sinkP95Ms = -1;
     long sinkFailures = 0;
     if (sinks.isArray()) {
       for (JsonNode sink : sinks) {
-        sinkP95Ms = Math.max(sinkP95Ms, firstLong(sink, "latencyP95Ms", "p95Ms"));
-        sinkFailures += firstLong(sink, "failureCount", "failures");
+        sinkP95Ms = maxAvailableLatency(sinkP95Ms, firstLong(sink, "latencyP95Ms", "p95Ms", -1));
+        sinkFailures += firstLong(sink, "failureCount", "failures", 0);
       }
     }
     return new FdbMetricsSnapshot(0, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures, watermarkLagMs);
@@ -70,10 +70,14 @@ public final class ObservabilityClient {
     }
   }
 
-  private static long firstLong(JsonNode node, String first, String second) {
+  private static long maxAvailableLatency(long current, long candidate) {
+    return candidate < 0 ? current : Math.max(current, candidate);
+  }
+
+  private static long firstLong(JsonNode node, String first, String second, long defaultValue) {
     if (node.has(first)) {
-      return node.path(first).asLong(0);
+      return node.path(first).asLong(defaultValue);
     }
-    return node.path(second).asLong(0);
+    return node.path(second).asLong(defaultValue);
   }
 }
