@@ -46,6 +46,7 @@ class BenchmarkResultWriterTest {
         new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1, 4),
         new FdbMetricsSnapshot(1, 2, 3, -1, 0, 5),
         new StorageSnapshot(true, "healthy", 10, 0, 0),
+        TopologyMetricsSnapshot.empty(),
         new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
             100, 1000, 100.0, 10_000, 0, 0,
             250, 1000, 1000.0, 0, 0, 0));

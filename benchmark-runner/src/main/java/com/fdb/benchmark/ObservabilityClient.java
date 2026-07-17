@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class ObservabilityClient {
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -16,48 +18,67 @@ public final class ObservabilityClient {
     this.http = http;
   }
 
-  public FdbMetricsSnapshot snapshot() throws IOException, InterruptedException {
-    JsonNode stages = readStages();
-    long sourceDelayP95Ms = -1;
-    long kpi1mP95Ms = -1;
-    long kpi5mP95Ms = -1;
+  public FdbMetricsSnapshot snapshot() {
+    JsonNode stages = stageArray(readStages());
+    List<StageLatencySnapshot> stageLatencies = new ArrayList<>();
+    long sourceDelayP95Ms = 0;
+    long kpi1mP95Ms = 0;
+    long kpi5mP95Ms = 0;
     long watermarkLagMs = 0;
     if (stages.isArray()) {
       for (JsonNode stage : stages) {
         String stageId = stage.path("stageId").asText("");
-        long latencyP95Ms = stage.path("latencyP95Ms").asLong(-1);
-        watermarkLagMs = Math.max(watermarkLagMs, stage.path("watermarkLagMs").asLong(0));
-        if (isSourceDelayStage(stageId)) {
-          sourceDelayP95Ms = maxAvailableLatency(sourceDelayP95Ms, latencyP95Ms);
+        long latencyP50Ms = firstLong(stage, "latencyP50Ms", "p50Ms");
+        long latencyP95Ms = firstLong(stage, "latencyP95Ms", "p95Ms");
+        long latencyP99Ms = firstLong(stage, "latencyP99Ms", "p99Ms");
+        long stageWatermarkLagMs = stage.path("watermarkLagMs").asLong(0);
+        stageLatencies.add(new StageLatencySnapshot(stageId, latencyP50Ms, latencyP95Ms, latencyP99Ms,
+            stageWatermarkLagMs));
+        watermarkLagMs = Math.max(watermarkLagMs, stageWatermarkLagMs);
+        if (stageId.contains("source")) {
+          sourceDelayP95Ms = Math.max(sourceDelayP95Ms, latencyP95Ms);
         }
         if (stageId.contains("1m") || stageId.contains("kpi-1")) {
-          kpi1mP95Ms = maxAvailableLatency(kpi1mP95Ms, latencyP95Ms);
+          kpi1mP95Ms = Math.max(kpi1mP95Ms, latencyP95Ms);
         }
         if (stageId.contains("5m") || stageId.contains("kpi-5")) {
-          kpi5mP95Ms = maxAvailableLatency(kpi5mP95Ms, latencyP95Ms);
+          kpi5mP95Ms = Math.max(kpi5mP95Ms, latencyP95Ms);
         }
       }
     }
 
     JsonNode sinks = readOrEmpty("/api/results/sink-latency");
-    long sinkP95Ms = -1;
+    List<SinkLatencySnapshot> sinkLatencies = new ArrayList<>();
+    long sinkP95Ms = 0;
     long sinkFailures = 0;
     if (sinks.isArray()) {
       for (JsonNode sink : sinks) {
-        sinkP95Ms = maxAvailableLatency(sinkP95Ms, firstLong(sink, "latencyP95Ms", "p95Ms", -1));
-        sinkFailures += firstLong(sink, "failureCount", "failures", 0);
+        long latencyP50Ms = firstLong(sink, "latencyP50Ms", "p50Ms");
+        long latencyP95Ms = firstLong(sink, "latencyP95Ms", "p95Ms");
+        long latencyP99Ms = firstLong(sink, "latencyP99Ms", "p99Ms");
+        long failures = firstLong(sink, "failureCount", "failures");
+        sinkLatencies.add(new SinkLatencySnapshot(
+            sink.path("sinkName").asText(sink.path("sink").asText("")),
+            firstLong(sink, "records", "recordCount"),
+            firstLong(sink, "bytes", "byteCount"),
+            latencyP50Ms,
+            latencyP95Ms,
+            latencyP99Ms,
+            failures));
+        sinkP95Ms = Math.max(sinkP95Ms, latencyP95Ms);
+        sinkFailures += failures;
       }
     }
     return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures,
-        watermarkLagMs);
+        watermarkLagMs, stageLatencies, sinkLatencies);
   }
 
-  private JsonNode readStages() throws IOException, InterruptedException {
-    try {
-      return read("/api/flow/status");
-    } catch (IOException e) {
-      return read("/api/flow/stages");
+  private JsonNode readStages() {
+    JsonNode status = readOrEmpty("/api/flow/status");
+    if (!stageArray(status).isEmpty()) {
+      return status;
     }
+    return readOrEmpty("/api/flow/stages");
   }
 
   private JsonNode read(String path) throws IOException, InterruptedException {
@@ -75,21 +96,22 @@ public final class ObservabilityClient {
     }
   }
 
-  private static long maxAvailableLatency(long current, long candidate) {
-    return candidate < 0 ? current : Math.max(current, candidate);
-  }
-
-  private static boolean isSourceDelayStage(String stageId) {
-    String normalized = stageId.toLowerCase();
-    return normalized.contains("source")
-        && !normalized.contains("sink")
-        && !normalized.contains("kpi");
-  }
-
-  private static long firstLong(JsonNode node, String first, String second, long defaultValue) {
-    if (node.has(first)) {
-      return node.path(first).asLong(defaultValue);
+  private static JsonNode stageArray(JsonNode node) {
+    if (node.isArray()) {
+      return node;
     }
-    return node.path(second).asLong(defaultValue);
+    if (node.path("stages").isArray()) {
+      return node.path("stages");
+    }
+    return MAPPER.createArrayNode();
+  }
+
+  private static long firstLong(JsonNode node, String... fields) {
+    for (String field : fields) {
+      if (node.has(field)) {
+        return node.path(field).asLong(0);
+      }
+    }
+    return 0;
   }
 }

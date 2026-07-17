@@ -37,6 +37,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+if [[ -z "${FDB_BENCHMARK_BASH:-}" ]] && command -v cygpath >/dev/null 2>&1; then
+  BASH_BIN="$(command -v bash || true)"
+  if [[ -n "$BASH_BIN" ]]; then
+    FDB_BENCHMARK_BASH="$(cygpath -w "$BASH_BIN")"
+    export FDB_BENCHMARK_BASH
+  fi
+fi
+
 env_file_lookup() {
   local key="$1"
   local line value

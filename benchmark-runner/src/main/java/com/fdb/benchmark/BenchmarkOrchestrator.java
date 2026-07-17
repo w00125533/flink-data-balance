@@ -38,6 +38,7 @@ public final class BenchmarkOrchestrator {
       }
       BenchmarkRunResult result = null;
       try {
+        deploy.prepare(plan);
         simulators.start(plan);
         deploy.submit(plan);
         sleepSeconds(config.warmupSec());

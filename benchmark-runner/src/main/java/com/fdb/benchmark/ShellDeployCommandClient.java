@@ -17,6 +17,11 @@ public final class ShellDeployCommandClient implements DeployCommandClient {
   }
 
   @Override
+  public void prepare(BenchmarkRunPlan plan) throws Exception {
+    runDeploy(plan, "prepare");
+  }
+
+  @Override
   public void submit(BenchmarkRunPlan plan) throws Exception {
     runDeploy(plan, "submit");
   }
@@ -27,10 +32,18 @@ public final class ShellDeployCommandClient implements DeployCommandClient {
   }
 
   private void runDeploy(BenchmarkRunPlan plan, String command) throws IOException, InterruptedException {
-    CommandResult result = commandRunner.run(List.of("bash", "scripts/deploy.sh", target, command), envFor(plan));
+    CommandResult result = commandRunner.run(deployCommand(command), envFor(plan));
     if (!result.success()) {
       throw new IOException("deploy " + command + " failed: " + result.stderr() + result.stdout());
     }
+  }
+
+  List<String> deployCommand(String command) {
+    String bash = baseEnv.get("FDB_BENCHMARK_BASH");
+    if (bash == null || bash.isBlank()) {
+      bash = "bash";
+    }
+    return List.of(bash, "scripts/deploy.sh", target, command);
   }
 
   private Map<String, String> envFor(BenchmarkRunPlan plan) {

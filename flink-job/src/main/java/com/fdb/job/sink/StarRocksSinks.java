@@ -30,6 +30,8 @@ public final class StarRocksSinks {
     private static final String DEFAULT_SEMANTIC = "exactly-once";
     private static final String DEFAULT_LABEL_PREFIX = "fdb-starrocks";
     private static final String DEFAULT_SINK_VERSION = "AUTO";
+    private static final long MEGABYTE = 1024L * 1024L;
+    private static final long GIGABYTE = 1024L * MEGABYTE;
 
     public static final int UPSERT_OP = StarRocksSinkOP.UPSERT.ordinal();
 
@@ -42,7 +44,10 @@ public final class StarRocksSinks {
         String password,
         String database,
         String semantic,
-        String labelPrefix) {}
+        String labelPrefix,
+        String bufferFlushMaxBytes,
+        String bufferFlushMaxRows,
+        String bufferFlushIntervalMs) {}
 
     public static SinkFunction<CellKpi> cellKpiSink(String labelSuffix) {
         return StarRocksSink.sink(
@@ -88,6 +93,27 @@ public final class StarRocksSinks {
             "fdb.starrocks.sink.semantic",
             DEFAULT_SEMANTIC);
         validateSemantic(semantic);
+        String bufferFlushMaxBytes = resolveOptional(env, properties, "FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES",
+            "fdb.starrocks.sink.buffer-flush.max-bytes");
+        String bufferFlushMaxRows = resolveOptional(env, properties, "FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS",
+            "fdb.starrocks.sink.buffer-flush.max-rows");
+        String bufferFlushIntervalMs = resolveOptional(env, properties, "FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS",
+            "fdb.starrocks.sink.buffer-flush.interval-ms");
+        validateOptionalLong(
+            "FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES",
+            bufferFlushMaxBytes,
+            64L * MEGABYTE,
+            10L * GIGABYTE);
+        validateOptionalLong(
+            "FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS",
+            bufferFlushMaxRows,
+            64_000L,
+            5_000_000L);
+        validateOptionalLong(
+            "FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS",
+            bufferFlushIntervalMs,
+            1L,
+            3_600_000L);
 
         return new StarRocksConnectorConfig(
             resolve(env, properties, "FDB_STARROCKS_CONNECTOR_JDBC_URL",
@@ -97,7 +123,10 @@ public final class StarRocksSinks {
             resolve(env, properties, "FDB_STARROCKS_PASSWORD", "fdb.starrocks.password", DEFAULT_PASSWORD),
             resolve(env, properties, "FDB_STARROCKS_DATABASE", "fdb.starrocks.database", DEFAULT_DATABASE),
             semantic,
-            labelPrefix);
+            labelPrefix,
+            bufferFlushMaxBytes,
+            bufferFlushMaxRows,
+            bufferFlushIntervalMs);
     }
 
     static Map<String, String> connectorProperties(
@@ -115,6 +144,9 @@ public final class StarRocksSinks {
         properties.put("sink.semantic", config.semantic());
         properties.put("sink.label-prefix", config.labelPrefix() + "-" + labelSuffix);
         properties.put("sink.sanitize-error-log", "true");
+        putIfConfigured(properties, "sink.buffer-flush.max-bytes", config.bufferFlushMaxBytes());
+        putIfConfigured(properties, "sink.buffer-flush.max-rows", config.bufferFlushMaxRows());
+        putIfConfigured(properties, "sink.buffer-flush.interval-ms", config.bufferFlushIntervalMs());
         return properties;
     }
 
@@ -280,6 +312,36 @@ public final class StarRocksSinks {
             return defaultValue;
         }
         return configured.trim();
+    }
+
+    private static String resolveOptional(
+        Map<String, String> env,
+        Properties properties,
+        String envName,
+        String propertyName) {
+        return resolve(env, properties, envName, propertyName, "");
+    }
+
+    private static void putIfConfigured(Map<String, String> properties, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            properties.put(key, value);
+        }
+    }
+
+    private static void validateOptionalLong(String envName, String value, long minInclusive, long maxInclusive) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        long parsed;
+        try {
+            parsed = Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(envName + " must be a long value: " + value, e);
+        }
+        if (parsed < minInclusive || parsed > maxInclusive) {
+            throw new IllegalArgumentException(envName + " must be in range [" + minInclusive + ", "
+                + maxInclusive + "]: " + value);
+        }
     }
 
     private static void validateSemantic(String semantic) {

@@ -5,13 +5,14 @@ SHARED_INFRA_DIR=${SHARED_INFRA_DIR:-../shared-data-infra}
 INTERNAL_BOOTSTRAP=${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092}
 
 shared_kafka() {
-  if docker compose -f "$SHARED_INFRA_DIR/compose.yaml" -f "$SHARED_INFRA_DIR/compose.streaming.yaml" --profile streaming \
-    exec -T kafka "$@" >/tmp/fdb-shared-kafka-exec.out 2>/tmp/fdb-shared-kafka-exec.err; then
+  local timeout_sec="${FDB_SHARED_KAFKA_EXEC_TIMEOUT_SEC:-10}"
+  if timeout "${timeout_sec}s" docker exec shared-data-infra-kafka-1 "$@" >/tmp/fdb-shared-kafka-exec.out 2>/tmp/fdb-shared-kafka-exec.err; then
     cat /tmp/fdb-shared-kafka-exec.out
     return 0
   fi
 
-  docker exec shared-data-infra-kafka-1 "$@"
+  timeout "${timeout_sec}s" docker compose -f "$SHARED_INFRA_DIR/compose.yaml" -f "$SHARED_INFRA_DIR/compose.streaming.yaml" --profile streaming \
+    exec -T kafka "$@"
 }
 
 create_topic() {

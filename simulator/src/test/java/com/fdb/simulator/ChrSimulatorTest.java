@@ -25,6 +25,16 @@ class ChrSimulatorTest {
     }
 
     @Test
+    void converts_per_second_lambda_to_tick_probability() {
+        assertThat(ChrSimulator.eventProbability(0.05, 100)).isEqualTo(0.005);
+    }
+
+    @Test
+    void caps_tick_probability_at_one() {
+        assertThat(ChrSimulator.eventProbability(20.0, 100)).isEqualTo(1.0);
+    }
+
+    @Test
     void selects_stable_anomaly_cohort_by_ratio() {
         long selected = java.util.stream.IntStream.range(0, 10_000)
             .mapToObj(i -> "id-" + i)

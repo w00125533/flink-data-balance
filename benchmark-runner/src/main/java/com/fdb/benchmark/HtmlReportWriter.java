@@ -135,8 +135,12 @@ public final class HtmlReportWriter {
             %s
             <h2>Latency</h2>
             %s
-            <h2>Artifacts</h2>
-            %s
+            <h2>Flink Snapshot</h2>
+            <pre>%s</pre>
+            <h2>FDB Metrics Snapshot</h2>
+            <pre>%s</pre>
+            <h2>Storage Snapshot</h2>
+            <pre>%s</pre>
           </main>
         </body>
         </html>
@@ -154,21 +158,9 @@ public final class HtmlReportWriter {
             runSummary(result),
             sourceDensity(result.source(), plan.cellLevel()),
             latencyTable(result),
-            artifactsTable());
-  }
-
-  private static String artifactsTable() {
-    return """
-        <table>
-          <tbody>
-            <tr><th>Run result</th><td><a href="run.json">run.json</a></td></tr>
-            <tr><th>Flink snapshot</th><td><a href="flink-snapshot.json">flink-snapshot.json</a></td></tr>
-            <tr><th>FDB metrics snapshot</th><td><a href="fdb-metrics-snapshot.json">fdb-metrics-snapshot.json</a></td></tr>
-            <tr><th>Storage snapshot</th><td><a href="storage-snapshot.json">storage-snapshot.json</a></td></tr>
-            <tr><th>Source metrics</th><td><a href="source-metrics.json">source-metrics.json</a></td></tr>
-          </tbody>
-        </table>
-        """;
+            escape(result.flink().toString()),
+            escape(result.fdb().toString()),
+            escape(result.storage().toString()));
   }
 
   private static String runSummary(BenchmarkRunResult result) {
@@ -185,8 +177,7 @@ public final class HtmlReportWriter {
             <tr><th>Reason</th><td>%s</td></tr>
             <tr><th>Source Throughput Attainment</th><td>%s</td></tr>
             <tr><th>Source Backlog</th><td>%s</td></tr>
-            <tr><th>Checkpoint Policy</th><td>%s</td></tr>
-            <tr><th>Checkpoint Duration</th><td>%s</td></tr>
+            <tr><th>Checkpoint Interval</th><td>%s</td></tr>
           </tbody>
         </table>
         """.formatted(
@@ -197,7 +188,6 @@ public final class HtmlReportWriter {
             escape(result.bottleneckReason()),
             formatRatio(source.producerDeliveryRatio()),
             flink.sourceBacklogRecords() + " records",
-            "30s default, file sinks capped at 180s",
             formatMs(flink.checkpointDurationMs()));
   }
 

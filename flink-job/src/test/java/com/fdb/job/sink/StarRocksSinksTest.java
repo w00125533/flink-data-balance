@@ -31,6 +31,9 @@ class StarRocksSinksTest {
         assertThat(config.database()).isEqualTo("fdb");
         assertThat(config.semantic()).isEqualTo("exactly-once");
         assertThat(config.labelPrefix()).isEqualTo("fdb-run-a");
+        assertThat(config.bufferFlushMaxBytes()).isEmpty();
+        assertThat(config.bufferFlushMaxRows()).isEmpty();
+        assertThat(config.bufferFlushIntervalMs()).isEmpty();
     }
 
     @Test
@@ -61,9 +64,52 @@ class StarRocksSinksTest {
     }
 
     @Test
+    void connector_config_passes_optional_buffer_flush_limits() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.starrocks.sink.buffer-flush.max-rows", " 64000 ");
+
+        StarRocksSinks.StarRocksConnectorConfig config = StarRocksSinks.resolveConnectorConfig(
+            Map.of(
+                "FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES", " 67108864 ",
+                "FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS", " 5000 "
+            ),
+            properties);
+
+        assertThat(config.bufferFlushMaxBytes()).isEqualTo("67108864");
+        assertThat(config.bufferFlushMaxRows()).isEqualTo("64000");
+        assertThat(config.bufferFlushIntervalMs()).isEqualTo("5000");
+        assertThat(StarRocksSinks.connectorProperties(config, "cell_kpi", "kpi-1m"))
+            .containsEntry("sink.buffer-flush.max-bytes", "67108864")
+            .containsEntry("sink.buffer-flush.max-rows", "64000")
+            .containsEntry("sink.buffer-flush.interval-ms", "5000");
+    }
+
+    @Test
+    void connector_config_rejects_unsupported_buffer_flush_limits() {
+        assertThatThrownBy(() -> StarRocksSinks.resolveConnectorConfig(
+            Map.of("FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES", "16777216"),
+            new Properties()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES");
+
+        assertThatThrownBy(() -> StarRocksSinks.resolveConnectorConfig(
+            Map.of("FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS", "30000"),
+            new Properties()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS");
+
+        assertThatThrownBy(() -> StarRocksSinks.resolveConnectorConfig(
+            Map.of("FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS", "0"),
+            new Properties()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS");
+    }
+
+    @Test
     void connector_properties_include_table_and_unique_label_suffix() {
         StarRocksSinks.StarRocksConnectorConfig config = new StarRocksSinks.StarRocksConnectorConfig(
-            "jdbc:mysql://fe:9030", "fe:8030", "root", "", "fdb", "exactly-once", "fdb-run-a");
+            "jdbc:mysql://fe:9030", "fe:8030", "root", "", "fdb", "exactly-once", "fdb-run-a",
+            "", "", "");
 
         assertThat(StarRocksSinks.connectorProperties(config, "cell_kpi", "kpi-1m"))
             .containsEntry("jdbc-url", "jdbc:mysql://fe:9030")

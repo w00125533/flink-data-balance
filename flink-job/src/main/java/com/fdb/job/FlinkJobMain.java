@@ -70,6 +70,7 @@ public class FlinkJobMain {
         String bootstrap = envVars.getOrDefault("FDB_KAFKA_BOOTSTRAP", "localhost:9092");
         String groupId = "fdb-flink-job";
         IcebergConfig icebergConfig = resolveIcebergConfig(envVars, systemProperties);
+        Properties kafkaConsumerProperties = resolveKafkaConsumerProperties(envVars, systemProperties);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(effectiveCheckpointIntervalMs(
@@ -89,6 +90,7 @@ public class FlinkJobMain {
             .setGroupId(groupId + "-chr")
             .setStartingOffsets(OffsetsInitializer.latest())
             .setDeserializer(new FlinkAvroDeserializer<>(ChrEvent.class))
+            .setProperties(kafkaConsumerProperties)
             .build();
 
         KafkaSource<PmStat> pmSource = KafkaSource.<PmStat>builder()
@@ -97,6 +99,7 @@ public class FlinkJobMain {
             .setGroupId(groupId + "-pm")
             .setStartingOffsets(OffsetsInitializer.latest())
             .setDeserializer(new FlinkAvroDeserializer<>(PmStat.class))
+            .setProperties(kafkaConsumerProperties)
             .build();
 
         KafkaSource<CfgConfig> cfgSource = KafkaSource.<CfgConfig>builder()
@@ -105,6 +108,7 @@ public class FlinkJobMain {
             .setGroupId(groupId + "-cfg")
             .setStartingOffsets(OffsetsInitializer.earliest())
             .setDeserializer(new FlinkAvroDeserializer<>(CfgConfig.class))
+            .setProperties(kafkaConsumerProperties)
             .build();
 
         DataStream<ChrEvent> chrStream = env.fromSource(chrSource,
@@ -277,7 +281,9 @@ public class FlinkJobMain {
         KafkaSource<String> routingSource = KafkaSource.<String>builder()
             .setBootstrapServers(bootstrap).setTopics("lb-routing")
             .setGroupId(groupId + "-routing").setStartingOffsets(OffsetsInitializer.earliest())
-            .setValueOnlyDeserializer(new SimpleStringSchema()).build();
+            .setValueOnlyDeserializer(new SimpleStringSchema())
+            .setProperties(resolveKafkaConsumerProperties(System.getenv(), System.getProperties()))
+            .build();
         BroadcastStream<String> routingBroadcast = env.fromSource(routingSource,
             WatermarkStrategy.noWatermarks(), "lb-routing-source")
             .broadcast(RoutingAssigner.ROUTING_STATE);
@@ -306,6 +312,7 @@ public class FlinkJobMain {
             .setGroupId(groupId + "-coordinator")
             .setStartingOffsets(OffsetsInitializer.latest())
             .setValueOnlyDeserializer(new SimpleStringSchema())
+            .setProperties(resolveKafkaConsumerProperties(System.getenv(), System.getProperties()))
             .build();
 
         DataStream<RoutingEntry> routingStream = env
@@ -363,6 +370,43 @@ public class FlinkJobMain {
             configured = properties.getProperty("fdb.dynamic.balancing.enabled");
         }
         return configured != null && "true".equalsIgnoreCase(configured.trim());
+    }
+
+    static Properties resolveKafkaConsumerProperties(Map<String, String> env, Properties properties) {
+        Properties consumerProperties = new Properties();
+        putPositiveIntegerKafkaProperty(consumerProperties, "fetch.max.bytes",
+            configuredValue(env, properties, "FDB_KAFKA_FETCH_MAX_BYTES", "fdb.kafka.fetch.max.bytes"));
+        putPositiveIntegerKafkaProperty(consumerProperties, "max.partition.fetch.bytes",
+            configuredValue(env, properties, "FDB_KAFKA_MAX_PARTITION_FETCH_BYTES",
+                "fdb.kafka.max.partition.fetch.bytes"));
+        putPositiveIntegerKafkaProperty(consumerProperties, "max.poll.records",
+            configuredValue(env, properties, "FDB_KAFKA_MAX_POLL_RECORDS", "fdb.kafka.max.poll.records"));
+        return consumerProperties;
+    }
+
+    private static String configuredValue(Map<String, String> env, Properties properties,
+                                          String envKey, String propertyKey) {
+        String configured = env.get(envKey);
+        if (configured == null || configured.isBlank()) {
+            configured = properties.getProperty(propertyKey);
+        }
+        return configured;
+    }
+
+    private static void putPositiveIntegerKafkaProperty(Properties target, String kafkaKey, String configured) {
+        if (configured == null || configured.isBlank()) {
+            return;
+        }
+        try {
+            int value = Integer.parseInt(configured.trim());
+            if (value > 0) {
+                target.setProperty(kafkaKey, Integer.toString(value));
+            } else {
+                log.warn("Invalid Kafka consumer property {}='{}', ignoring", kafkaKey, configured);
+            }
+        } catch (NumberFormatException e) {
+            log.warn("Invalid Kafka consumer property {}='{}', ignoring", kafkaKey, configured);
+        }
     }
 
     static int resolveParallelism(Map<String, String> env, Properties properties) {

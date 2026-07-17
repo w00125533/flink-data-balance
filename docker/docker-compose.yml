@@ -57,8 +57,11 @@ services:
     command: jobmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - "FLINK_PROPERTIES=jobmanager.memory.process.size: ${FDB_FLINK_JOBMANAGER_MEMORY:-1600m}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}"
+      - "FLINK_PROPERTIES=jobmanager.memory.process.size: ${FDB_FLINK_JOBMANAGER_MEMORY:-1600m}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}\nheartbeat.timeout: ${FDB_FLINK_HEARTBEAT_TIMEOUT_MS:-50000}\nheartbeat.interval: ${FDB_FLINK_HEARTBEAT_INTERVAL_MS:-10000}\npekko.ask.timeout: ${FDB_FLINK_PEKKO_ASK_TIMEOUT:-60s}"
       - FDB_KAFKA_BOOTSTRAP=${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
+      - FDB_KAFKA_FETCH_MAX_BYTES=${FDB_KAFKA_FETCH_MAX_BYTES:-}
+      - FDB_KAFKA_MAX_PARTITION_FETCH_BYTES=${FDB_KAFKA_MAX_PARTITION_FETCH_BYTES:-}
+      - FDB_KAFKA_MAX_POLL_RECORDS=${FDB_KAFKA_MAX_POLL_RECORDS:-}
       - FDB_STARROCKS_FE_ENDPOINT=${FDB_STARROCKS_FE_ENDPOINT:-starrocks-fe:9030}
       - FDB_STARROCKS_JDBC_URL=${FDB_STARROCKS_JDBC_URL:-jdbc:mysql://starrocks-fe:9030/fdb?rewriteBatchedStatements=true&useServerPrepStmts=false}
       - FDB_STARROCKS_CONNECTOR_JDBC_URL=${FDB_STARROCKS_CONNECTOR_JDBC_URL:-jdbc:mysql://starrocks-fe:9030}
@@ -68,6 +71,9 @@ services:
       - FDB_STARROCKS_DATABASE=${FDB_STARROCKS_DATABASE:-fdb}
       - FDB_STARROCKS_SINK_SEMANTIC=${FDB_STARROCKS_SINK_SEMANTIC:-exactly-once}
       - FDB_STARROCKS_SINK_LABEL_PREFIX=${FDB_STARROCKS_SINK_LABEL_PREFIX:-}
+      - FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES=${FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES:-}
+      - FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS=${FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS:-}
+      - FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS=${FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS:-}
       - FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
       - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg
@@ -102,8 +108,11 @@ services:
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - "FLINK_PROPERTIES=taskmanager.memory.process.size: ${FDB_FLINK_TASKMANAGER_MEMORY:-4096m}\ntaskmanager.numberOfTaskSlots: ${FDB_FLINK_TASKMANAGER_SLOTS:-4}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}"
+      - "FLINK_PROPERTIES=taskmanager.memory.process.size: ${FDB_FLINK_TASKMANAGER_MEMORY:-4096m}\ntaskmanager.numberOfTaskSlots: ${FDB_FLINK_TASKMANAGER_SLOTS:-4}\ntaskmanager.memory.managed.fraction: ${FDB_FLINK_TASKMANAGER_MANAGED_FRACTION:-0.25}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}\nheartbeat.timeout: ${FDB_FLINK_HEARTBEAT_TIMEOUT_MS:-50000}\nheartbeat.interval: ${FDB_FLINK_HEARTBEAT_INTERVAL_MS:-10000}\npekko.ask.timeout: ${FDB_FLINK_PEKKO_ASK_TIMEOUT:-60s}"
       - FDB_KAFKA_BOOTSTRAP=${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
+      - FDB_KAFKA_FETCH_MAX_BYTES=${FDB_KAFKA_FETCH_MAX_BYTES:-}
+      - FDB_KAFKA_MAX_PARTITION_FETCH_BYTES=${FDB_KAFKA_MAX_PARTITION_FETCH_BYTES:-}
+      - FDB_KAFKA_MAX_POLL_RECORDS=${FDB_KAFKA_MAX_POLL_RECORDS:-}
       - FDB_STARROCKS_FE_ENDPOINT=${FDB_STARROCKS_FE_ENDPOINT:-starrocks-fe:9030}
       - FDB_STARROCKS_JDBC_URL=${FDB_STARROCKS_JDBC_URL:-jdbc:mysql://starrocks-fe:9030/fdb?rewriteBatchedStatements=true&useServerPrepStmts=false}
       - FDB_STARROCKS_CONNECTOR_JDBC_URL=${FDB_STARROCKS_CONNECTOR_JDBC_URL:-jdbc:mysql://starrocks-fe:9030}
@@ -113,6 +122,9 @@ services:
       - FDB_STARROCKS_DATABASE=${FDB_STARROCKS_DATABASE:-fdb}
       - FDB_STARROCKS_SINK_SEMANTIC=${FDB_STARROCKS_SINK_SEMANTIC:-exactly-once}
       - FDB_STARROCKS_SINK_LABEL_PREFIX=${FDB_STARROCKS_SINK_LABEL_PREFIX:-}
+      - FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES=${FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES:-}
+      - FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS=${FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS:-}
+      - FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS=${FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS:-}
       - FDB_HIVE_WAREHOUSE=hdfs://namenode:8020/warehouse/fdb
       - FDB_ICEBERG_ENABLED=${FDB_ICEBERG_ENABLED:-true}
       - FDB_ICEBERG_WAREHOUSE=hdfs://namenode:8020/warehouse/iceberg

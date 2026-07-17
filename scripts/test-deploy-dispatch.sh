@@ -13,11 +13,17 @@ trap 'rm -rf "$TEST_TMP_DIR"' EXIT
 mkdir -p "$FAKE_BIN_DIR"
 FAKE_RM_LOG="$TEST_TMP_DIR/hdfs-rm.log"
 export FAKE_RM_LOG
+FAKE_DOCKER_LOG="$TEST_TMP_DIR/docker.log"
+export FAKE_DOCKER_LOG
 FAKE_CURL_LOG="$TEST_TMP_DIR/curl.log"
 export FAKE_CURL_LOG
+FAKE_JAVA_LOG="$TEST_TMP_DIR/java.log"
+export FAKE_JAVA_LOG
 cat > "$FAKE_BIN_DIR/docker" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+
+printf '%s\n' "$*" >> "${FAKE_DOCKER_LOG:?}"
 
 if [[ "${1:-}" == "compose" ]]; then
   shift
@@ -32,6 +38,20 @@ if [[ "${1:-}" == "compose" ]]; then
   if [[ "$*" == *" exec -T starrocks-fe mysql "* ]]; then
     cat >/dev/null
     exit 0
+  fi
+  if [[ "$*" == *" exec -T kafka "* ]]; then
+    if [[ "$*" == *" kafka-topics "*" --list"* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-topics "*" --delete"* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-topics "*" --create"* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-configs "* ]]; then
+      exit 0
+    fi
   fi
   if [[ "$*" == *" exec -T namenode "* ]]; then
     if [[ "$*" == *" -ls -R "* ]]; then
@@ -53,8 +73,11 @@ OUT
     if [[ "$*" == *" -find "* ]]; then
       exit 0
     fi
-    if [[ "$*" == *" -rm -f "* ]]; then
+    if [[ "$*" == *" -rm -f "* || "$*" == *" -rm -r "* ]]; then
       printf '%s\n' "$*" >> "${FAKE_RM_LOG:?}"
+      exit 0
+    fi
+    if [[ "$*" == *" -mkdir -p "* || "$*" == *" -chmod -R "* ]]; then
       exit 0
     fi
   fi
@@ -76,6 +99,20 @@ if [[ "${1:-}" == "exec" ]]; then
     cat >/dev/null
     exit 0
   fi
+  if [[ "$container" == "shared-data-infra-kafka-1" ]]; then
+    if [[ "$*" == *" kafka-topics "*" --list"* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-topics "*" --delete"* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-topics "*" --create"* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-configs "* ]]; then
+      exit 0
+    fi
+  fi
   if [[ "$container" == "shared-data-infra-namenode-1" ]]; then
     if [[ "$*" == *" -ls -R "* ]]; then
       if [[ "$*" == *" /warehouse/iceberg/iceberg_db/cell_kpi"* ]]; then
@@ -96,8 +133,11 @@ OUT
     if [[ "$*" == *" -find "* ]]; then
       exit 0
     fi
-    if [[ "$*" == *" -rm -f "* ]]; then
+    if [[ "$*" == *" -rm -f "* || "$*" == *" -rm -r "* ]]; then
       printf '%s\n' "$*" >> "${FAKE_RM_LOG:?}"
+      exit 0
+    fi
+    if [[ "$*" == *" -mkdir -p "* || "$*" == *" -chmod -R "* ]]; then
       exit 0
     fi
   fi
@@ -114,6 +154,18 @@ printf '%s\n' "$*" >> "${FAKE_CURL_LOG:?}"
 echo '{"ok":true}'
 SH
 chmod +x "$FAKE_BIN_DIR/curl"
+cat > "$FAKE_BIN_DIR/java" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_JAVA_LOG:?}"
+if [[ "$*" == *" com.fdb.benchmark.KafkaTopicResetTool"* ]]; then
+  echo "[OK] fake Kafka AdminClient reset"
+  exit 0
+fi
+echo "unexpected java invocation: java $*" >&2
+exit 1
+SH
+chmod +x "$FAKE_BIN_DIR/java"
 export PATH="$FAKE_BIN_DIR:$PATH"
 
 fail() {
@@ -230,6 +282,22 @@ FDB_ENV_FILE="$missing_local_env" run_expect_success "local check missing explic
 grep -F "[WARN] optional env file not found: $missing_local_env" "$ERR_FILE" \
   || fail "local check should warn when explicit env file is missing"
 
+fake_benchmark_jar="$TEST_TMP_DIR/benchmark-runner.jar"
+touch "$fake_benchmark_jar"
+: > "$FAKE_DOCKER_LOG"
+: > "$FAKE_JAVA_LOG"
+FDB_ENV_FILE="$missing_local_env" FDB_BENCHMARK_RUNNER_JAR="$fake_benchmark_jar" \
+  run_expect_success "local prepare resets benchmark data" bash scripts/deploy.sh local prepare
+grep -F "[OK] local benchmark data prepared" "$OUT_FILE" \
+  || fail "local prepare should complete data reset"
+grep -F "com.fdb.benchmark.KafkaTopicResetTool" "$FAKE_JAVA_LOG" >/dev/null \
+  || fail "local prepare should prefer Kafka AdminClient reset"
+if grep -F "exec shared-data-infra-kafka-1 kafka-topics" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "local prepare should not use Kafka docker exec when AdminClient reset is available"
+fi
+grep -F "/warehouse/fdb/cell_kpi" "$FAKE_RM_LOG" \
+  || fail "local prepare should reset HDFS KPI output"
+
 run_expect_success "local check missing default env file" \
   env -u FDB_ENV_FILE bash -c 'cd "$1" && bash scripts/deploy.sh local check' bash "$tmp_repo"
 grep -F "[WARN] optional env file not found: .env" "$ERR_FILE" \
@@ -290,6 +358,7 @@ cat > "$report_env" <<'ENV'
 FDB_DEPLOY_TARGET=local
 FDB_REPORT_ON_STOP=false
 FDB_OBSERVABILITY_API_URL=http://env-file-api
+FDB_FLINK_REST_URL=http://env-file-flink
 ENV
 report_state="$TEST_TMP_DIR/report-on-stop-current.env"
 cat > "$report_state" <<'ENV'
@@ -297,9 +366,15 @@ FDB_LOCAL_FLINK_JOB_ID=local-stop-job
 FDB_RUN_ID=stop-run
 ENV
 : > "$FAKE_CURL_LOG"
+FDB_ENV_FILE="$report_env" FDB_LOCAL_STATE_FILE="$report_state" \
+  run_expect_success "local stop uses REST cancel first" bash scripts/deploy.sh local stop
+grep -F -- "-X PATCH http://env-file-flink/jobs/local-stop-job?mode=cancel" "$FAKE_CURL_LOG" >/dev/null \
+  || fail "local stop should cancel through Flink REST before Docker CLI"
+
+: > "$FAKE_CURL_LOG"
 FDB_ENV_FILE="$report_env" FDB_LOCAL_STATE_FILE="$report_state" FDB_REPORT_ON_STOP=true \
   run_expect_success "local stop preserves command-line report-on-stop" bash scripts/deploy.sh local stop
-grep -F "http://env-file-api/api/runs/report?runId=stop-run" "$FAKE_CURL_LOG" \
+grep -F "http://env-file-api/api/runs/report?runId=stop-run" "$FAKE_CURL_LOG" >/dev/null \
   || fail "local stop should call report when FDB_REPORT_ON_STOP=true is provided by the caller"
 
 echo "[test-ok] deploy dispatch"

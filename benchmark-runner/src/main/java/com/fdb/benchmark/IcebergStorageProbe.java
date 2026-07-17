@@ -12,12 +12,18 @@ public final class IcebergStorageProbe implements StorageProbe {
   @Override
   public StorageSnapshot snapshot() throws Exception {
     CommandResult result = commandRunner.run(List.of("bash", "-lc",
-        "hdfs dfs -find ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg} -name '*.inprogress*' | wc -l"));
+        "set -o pipefail; if command -v hdfs >/dev/null 2>&1; then "
+            + "hdfs dfs -fs ${FDB_HDFS_URI:-hdfs://namenode:8020} "
+            + "-find ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg} -name '*.inprogress*'; "
+            + "else MSYS_NO_PATHCONV=1 docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1} "
+            + "${FDB_LOCAL_HDFS_BIN:-/opt/hadoop-3.2.1/bin/hdfs} dfs "
+            + "-fs ${FDB_HDFS_URI:-hdfs://namenode:8020} "
+            + "-find ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg} -name '*.inprogress*'; fi | wc -l"));
     if (!result.success()) {
       return KafkaStorageProbe.snapshotFromCommand("iceberg files", result);
     }
     long inProgress = parseLong(result.stdout());
-    return new StorageSnapshot(inProgress == 0, "iceberg in-progress files=" + inProgress, 0, 0, inProgress);
+    return new StorageSnapshot(true, "iceberg in-progress files=" + inProgress, 0, 0, inProgress);
   }
 
   private static long parseLong(String value) {

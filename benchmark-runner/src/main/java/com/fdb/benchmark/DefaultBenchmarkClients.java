@@ -26,7 +26,9 @@ public final class DefaultBenchmarkClients implements BenchmarkClients {
   @Override
   public RunObservation observe(BenchmarkRunPlan plan) throws Exception {
     StorageProbe storageProbe = StorageProbe.forSink(plan.sink(), commandRunner);
+    TopologyMetricsSnapshot topology =
+        TopologyMetricsSnapshot.read(TopologyMetricsSnapshot.metricsFile(config.outputRoot(), plan));
     SourceMetricsSnapshot source = SourceMetricsSnapshot.read(config.outputRoot(), plan);
-    return new RunObservation(flink.snapshot(), observability.snapshot(), storageProbe.snapshot(), source);
+    return new RunObservation(flink.snapshot(), observability.snapshot(), storageProbe.snapshot(), topology, source);
   }
 }

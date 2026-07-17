@@ -35,9 +35,36 @@ class BenchmarkOrchestratorTest {
     assertThat(results).extracting(BenchmarkRunResult::status)
         .containsExactly(BenchmarkStatus.STABLE, BenchmarkStatus.UNSTABLE);
     assertThat(deploy.actions).containsExactly(
-        "submit:bench-a-none-cells1000-eps100", "stop:bench-a-none-cells1000-eps100",
-        "submit:bench-a-none-cells3000-eps300", "stop:bench-a-none-cells3000-eps300");
+        "prepare:bench-a-none-cells1000-eps100", "submit:bench-a-none-cells1000-eps100",
+        "stop:bench-a-none-cells1000-eps100",
+        "prepare:bench-a-none-cells3000-eps300", "submit:bench-a-none-cells3000-eps300",
+        "stop:bench-a-none-cells3000-eps300");
     assertThat(simulators.actions).contains("start:1000:100", "start:3000:300", "stop", "stop");
+  }
+
+  @Test
+  void prepares_data_before_starting_simulators_and_submitting_job() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_DURATION_SEC", "0"));
+    List<String> events = new ArrayList<>();
+    RecordingDeploy deploy = new RecordingDeploy(events);
+    RecordingSimulators simulators = new RecordingSimulators(events);
+
+    new BenchmarkOrchestrator(
+        config,
+        deploy,
+        simulators,
+        plan -> healthy(),
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(events).containsSubsequence(
+        "prepare:bench-a-none-cells1000-eps300",
+        "start:1000:300",
+        "submit:bench-a-none-cells1000-eps300");
   }
 
   @Test
@@ -78,11 +105,27 @@ class BenchmarkOrchestratorTest {
 
   static final class RecordingDeploy implements DeployCommandClient {
     final List<String> actions = new ArrayList<>();
+    final List<String> events;
     boolean failSubmit;
+
+    RecordingDeploy() {
+      this(new ArrayList<>());
+    }
+
+    RecordingDeploy(List<String> events) {
+      this.events = events;
+    }
+
+    @Override
+    public void prepare(BenchmarkRunPlan plan) {
+      actions.add("prepare:" + plan.runId());
+      events.add("prepare:" + plan.runId());
+    }
 
     @Override
     public void submit(BenchmarkRunPlan plan) throws Exception {
       actions.add("submit:" + plan.runId());
+      events.add("submit:" + plan.runId());
       if (failSubmit) {
         throw new Exception("submit failed");
       }
@@ -91,20 +134,32 @@ class BenchmarkOrchestratorTest {
     @Override
     public void stop(BenchmarkRunPlan plan) {
       actions.add("stop:" + plan.runId());
+      events.add("stop:" + plan.runId());
     }
   }
 
   static final class RecordingSimulators implements SimulatorProcessManager {
     final List<String> actions = new ArrayList<>();
+    final List<String> events;
+
+    RecordingSimulators() {
+      this(new ArrayList<>());
+    }
+
+    RecordingSimulators(List<String> events) {
+      this.events = events;
+    }
 
     @Override
     public void start(BenchmarkRunPlan plan) {
       actions.add("start:" + plan.cellLevel() + ":" + plan.targetChrEps());
+      events.add("start:" + plan.cellLevel() + ":" + plan.targetChrEps());
     }
 
     @Override
     public void stop() {
       actions.add("stop");
+      events.add("stop");
     }
   }
 

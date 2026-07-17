@@ -30,6 +30,7 @@ public final class BenchmarkResultWriter {
       MAPPER.writeValue(runDir.resolve("flink-snapshot.json").toFile(), result.flink());
       MAPPER.writeValue(runDir.resolve("fdb-metrics-snapshot.json").toFile(), result.fdb());
       MAPPER.writeValue(runDir.resolve("storage-snapshot.json").toFile(), result.storage());
+      MAPPER.writeValue(runDir.resolve("topology-metrics.json").toFile(), result.topology());
       MAPPER.writeValue(runDir.resolve("source-metrics.json").toFile(), result.source());
     }
     return benchmarkDir;
@@ -37,7 +38,7 @@ public final class BenchmarkResultWriter {
 
   private static String csv(List<BenchmarkRunResult> results) {
     StringBuilder out = new StringBuilder();
-    out.append("sink,cellLevel,targetChrEps,status,recordsInPerSec,recordsOutPerSec,kpi1mP95Ms,kpi5mP95Ms,")
+    out.append("sink,cellLevel,targetChrEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,")
         .append("sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId\n");
     for (BenchmarkRunResult result : results) {
       BenchmarkRunPlan plan = result.plan();
@@ -47,6 +48,8 @@ public final class BenchmarkResultWriter {
           .append(result.status()).append(',')
           .append(result.flink().recordsInPerSec()).append(',')
           .append(result.flink().recordsOutPerSec()).append(',')
+          .append(result.flink().recordsInTotal()).append(',')
+          .append(result.flink().recordsOutTotal()).append(',')
           .append(result.fdb().kpi1mP95Ms()).append(',')
           .append(result.fdb().kpi5mP95Ms()).append(',')
           .append(result.fdb().sinkP95Ms()).append(',')

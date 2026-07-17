@@ -21,7 +21,7 @@ public class TopologyGenerator {
         TopologyConfig.CellDefaultsConfig cd = config.getCellDefaults();
 
         List<TopologyRecord> records = new ArrayList<>();
-        List<int[]> usedPcis = new ArrayList<>();
+        List<Integer> recentPcis = new ArrayList<>(2);
         List<Integer> usedTacs = new ArrayList<>();
 
         double latLo = sc.getRegion().getLatRange().get(0);
@@ -55,7 +55,7 @@ public class TopologyGenerator {
                 if (targetCells > 0 && records.size() >= targetCells) {
                     break;
                 }
-                int pci = allocatePci(rng, usedPcis);
+                int pci = allocatePci(rng, recentPcis);
 
                 long eci = (long) (siteIdx - 1) * 100 + cellIdx;
 
@@ -143,26 +143,24 @@ public class TopologyGenerator {
         return new double[]{lat, lon};
     }
 
-    private int allocatePci(Random rng, List<int[]> usedPcis) {
+    private int allocatePci(Random rng, List<Integer> recentPcis) {
         for (int attempt = 0; attempt < 100; attempt++) {
             int pci = rng.nextInt(1008);
-            boolean collides = false;
-            for (int[] used : usedPcis) {
-                int usedPci = used[0];
-                int usedSite = used[1];
-                if (usedPci == pci && Math.abs(usedSite - usedPcis.size()) < 3) {
-                    collides = true;
-                    break;
-                }
-            }
-            if (!collides) {
-                usedPcis.add(new int[]{pci, usedPcis.size()});
+            if (!recentPcis.contains(pci)) {
+                rememberRecentPci(recentPcis, pci);
                 return pci;
             }
         }
         int pci = rng.nextInt(1008);
-        usedPcis.add(new int[]{pci, usedPcis.size()});
+        rememberRecentPci(recentPcis, pci);
         return pci;
+    }
+
+    private void rememberRecentPci(List<Integer> recentPcis, int pci) {
+        recentPcis.add(pci);
+        if (recentPcis.size() > 2) {
+            recentPcis.remove(0);
+        }
     }
 
     private int freqToArfcn(String freqBand, Random rng) {

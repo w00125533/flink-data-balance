@@ -128,7 +128,7 @@ FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local --dry-run
 
 The runner expands a `sink x cellLevel` matrix. For each run it sets a distinct
 `FDB_RUN_ID`, `FDB_RUN_LABEL` and `FDB_RESULT_SINK`, calls the target-specific
-`scripts/deploy.sh <target> submit/stop`, starts the local topology and
+`scripts/deploy.sh <target> prepare/submit/stop`, starts the local topology and
 simulator processes with `FDB_SITES_COUNT` and `FDB_RATE_EPS`, observes Flink
 REST plus the observability API, and stops higher pressure levels for a sink
 after the first unstable or failed run.
@@ -136,6 +136,11 @@ after the first unstable or failed run.
 `cellLevel` 表示本轮目标生成小区数，不再乘站点数或每站小区估算。
 `Target CHR EPS = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`，表示整轮压测的全局
 CHR 每秒目标值，不是每小区 EPS。
+
+`prepare` resets benchmark data before each run. For local runs it recreates the
+benchmark Kafka topics, truncates StarRocks result tables, and clears/recreates
+the Hive/Iceberg HDFS output paths. The external-yarn target exposes the same
+hook through external Kafka/HDFS/StarRocks commands.
 
 Each `submit` generates `FDB_RUN_ID=run-<UTC timestamp>` when it is not already
 set, passes that value into the Flink runtime, and writes the current run state
@@ -156,6 +161,13 @@ Source Density、Latency、Source Backlog 和 Checkpoint 信息；没有 latency
 `N/A`。The same directory also contains `benchmark-config.json`,
 `benchmark-results.json` and `benchmark-summary.csv` for machine-readable
 analysis.
+Each run directory contains `run.json`, `flink-snapshot.json`,
+`fdb-metrics-snapshot.json`, `storage-snapshot.json` and
+`topology-metrics.json`.
+
+The single-run report shows topology-service generation/publish metrics,
+operator throughput rates from Flink's per-vertex metrics API, and separate
+operator `Records In/Out Total` columns from Flink cumulative counters.
 
 When `FDB_METRICS_HISTORY_ENABLED=true`, observability-api appends sampled
 runtime metrics to `metrics.jsonl` under the same run directory. The report is
@@ -262,6 +274,12 @@ transactions, so keep `FDB_FLINK_CHECKPOINT_INTERVAL_MS` near the 30 second
 default for smoke tests unless you intentionally want slower StarRocks
 visibility. `FDB_STARROCKS_JDBC_URL` remains for StarRocks SQL queries from the
 API and maintenance scripts.
+
+本地压测可以通过 `FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES`、
+`FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS` 和
+`FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS` 下调 StarRocks connector 单
+subtask 缓冲上限，避免多个 StarRocks sink 并行写入时默认 90MB 缓冲叠加导致
+TaskManager 内存峰值过高。
 
 The local Flink containers also set explicit memory defaults:
 `FDB_FLINK_TASKMANAGER_MEMORY=4096m`, `FDB_FLINK_TASKMANAGER_SLOTS=4`,

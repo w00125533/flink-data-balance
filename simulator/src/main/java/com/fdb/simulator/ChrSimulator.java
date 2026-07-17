@@ -128,6 +128,13 @@ public class ChrSimulator {
         return Math.max(0L, submitted - delivered);
     }
 
+    static double eventProbability(double eventsPerSecond, long tickMillis) {
+        if (eventsPerSecond <= 0.0 || tickMillis <= 0L) {
+            return 0.0;
+        }
+        return Math.min(1.0, eventsPerSecond * tickMillis / 1000.0);
+    }
+
     static boolean inAnomalyCohort(String id, double ratio) {
         return AnomalyInjection.inAnomalyCohort(id, ratio);
     }

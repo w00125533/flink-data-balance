@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class KafkaTopologyPublisher {
 
@@ -29,16 +30,26 @@ public class KafkaTopologyPublisher {
             AvroSerde.serializer(TopologyRecord.class));
     }
 
-    public void publishAll(List<TopologyRecord> records) {
+    public PublishResult publishAll(List<TopologyRecord> records) {
         log.info("Publishing {} topology records to topic '{}'", records.size(), topic);
         int count = 0;
+        AtomicLong published = new AtomicLong();
+        AtomicLong failed = new AtomicLong();
         for (TopologyRecord record : records) {
-            producer.send(new ProducerRecord<>(topic, record.getCellId().toString(), record),
-                (meta, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish topology for {}", record.getCellId(), ex);
-                    }
-                });
+            try {
+                producer.send(new ProducerRecord<>(topic, record.getCellId().toString(), record),
+                    (meta, ex) -> {
+                        if (ex != null) {
+                            failed.incrementAndGet();
+                            log.error("Failed to publish topology for {}", record.getCellId(), ex);
+                        } else {
+                            published.incrementAndGet();
+                        }
+                    });
+            } catch (RuntimeException e) {
+                failed.incrementAndGet();
+                log.error("Failed to enqueue topology for {}", record.getCellId(), e);
+            }
             count++;
             if (count % 1000 == 0) {
                 producer.flush();
@@ -46,10 +57,15 @@ public class KafkaTopologyPublisher {
             }
         }
         producer.flush();
-        log.info("Published all {} topology records", records.size());
+        log.info("Published topology records attempted={} published={} failed={}",
+            records.size(), published.get(), failed.get());
+        return new PublishResult(records.size(), published.get(), failed.get());
     }
 
     public void close() {
         producer.close();
+    }
+
+    public record PublishResult(long attemptedRecords, long publishedRecords, long failedRecords) {
     }
 }

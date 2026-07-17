@@ -20,6 +20,17 @@ if [[ "$*" == *" kafka-topics "*" --list"* ]]; then
   printf 'chr-events\n'
 fi
 
+if [[ "${1:-}" == "exec" && "${2:-}" == "shared-data-infra-kafka-1" ]]; then
+  if [[ "${FAKE_DIRECT_SLEEP_ONCE:-0}" == "1" && ! -f "${FAKE_DIRECT_SLEEP_MARKER:?}" ]]; then
+    : > "$FAKE_DIRECT_SLEEP_MARKER"
+    sleep 5
+    exit 124
+  fi
+  if [[ "${FAKE_DIRECT_FAIL:-0}" == "1" ]]; then
+    exit 124
+  fi
+fi
+
 exit 0
 SH
 chmod +x "$FAKE_BIN_DIR/docker"
@@ -34,6 +45,12 @@ fail() {
 
 FDB_CHR_RETENTION_MS=3600000 FDB_KAFKA_SEGMENT_MS=600000 \
   bash scripts/init-kafka-topics.sh >/dev/null
+
+grep -F -- "exec shared-data-infra-kafka-1 kafka-topics" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should prefer direct shared Kafka container exec"
+if grep -F -- "compose " "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "init should not call compose when direct shared Kafka container exec succeeds"
+fi
 
 grep -F -- "--add-config cleanup.policy=delete,retention.ms=3600000,segment.ms=600000" "$FAKE_DOCKER_LOG" >/dev/null \
   || fail "delete topics with retention should alter segment.ms"
@@ -60,5 +77,17 @@ fi
 if grep -F -- "--topic cm-dlq" "$FAKE_DOCKER_LOG" >/dev/null; then
   fail "init should not create legacy CM DLQ topic"
 fi
+
+: > "$FAKE_DOCKER_LOG"
+direct_sleep_marker="$TEST_TMP_DIR/direct-sleep.marker"
+start_epoch="$(date +%s)"
+FAKE_DIRECT_SLEEP_ONCE=1 FAKE_DIRECT_FAIL=1 FAKE_DIRECT_SLEEP_MARKER="$direct_sleep_marker" \
+  FDB_SHARED_KAFKA_EXEC_TIMEOUT_SEC=1 \
+  bash scripts/init-kafka-topics.sh >/dev/null
+elapsed_seconds="$(( $(date +%s) - start_epoch ))"
+[[ "$elapsed_seconds" -lt 15 ]] \
+  || fail "init should timeout a hung direct shared Kafka exec before compose fallback"
+grep -F -- "compose " "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "init should fall back to compose after direct shared Kafka exec fails"
 
 echo "[test-ok] init kafka topics"

@@ -45,15 +45,22 @@ public final class BenchmarkRunnerMain {
     return new BenchmarkOrchestrator(
         config,
         new ShellDeployCommandClient(config.target(), commandRunner, env),
-        new JavaSimulatorProcessManager(env),
+        new JavaSimulatorProcessManager(env, config.outputRoot()),
         new DefaultBenchmarkClients(config, new JdkHttpGateway(), commandRunner, env),
         new BenchmarkDecisionEngine(config.thresholds()));
   }
 
   private static RunObservation dryRunObservation(BenchmarkRunPlan plan) {
     return new RunObservation(
-        new FlinkSnapshot("RUNNING", 0.0, 10_000, 0, 1000, 1000, 1, 4),
-        new FdbMetricsSnapshot(0, 1000, 1000, 1000, 0, 1000),
+        new FlinkSnapshot("RUNNING", 0.03, 10_000, 0, 1000, 1000, 1, 4, List.of(
+            new FlinkOperatorSnapshot("dry-source", "dry-source-chr", 4, 1000, 1000, 8192, 8192, 0.30, 0.67, 0.03),
+            new FlinkOperatorSnapshot("dry-kpi", "dry-kpi-1m", 4, 1000, 250, 8192, 2048, 0.45, 0.52, 0.03),
+            new FlinkOperatorSnapshot("dry-sink-op", "dry-sink", 4, 250, 250, 2048, 2048, 0.35, 0.62, 0.03))),
+        new FdbMetricsSnapshot(500, 1000, 3000, 1000, 0, 1000, List.of(
+            new StageLatencySnapshot("dry-source-chr", 250, 500, 800, 1000),
+            new StageLatencySnapshot("dry-kpi-1m", 600, 1000, 1500, 900),
+            new StageLatencySnapshot("dry-kpi-5m", 1800, 3000, 4500, 800)),
+            List.of(new SinkLatencySnapshot("dry-sink", 250, 2048, 600, 1000, 1800, 0))),
         new StorageSnapshot(true, "dry-run", 0, 0, 0)).withSource(dryRunSource(plan));
   }
 

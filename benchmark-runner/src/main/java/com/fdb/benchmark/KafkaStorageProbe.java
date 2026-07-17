@@ -12,7 +12,11 @@ public final class KafkaStorageProbe implements StorageProbe {
   @Override
   public StorageSnapshot snapshot() throws Exception {
     CommandResult result = commandRunner.run(List.of("bash", "-lc",
-        "kafka-consumer-groups --bootstrap-server ${FDB_KAFKA_BOOTSTRAP:-localhost:9092} --describe --all-groups"));
+        "if command -v kafka-consumer-groups >/dev/null 2>&1; then "
+            + "kafka-consumer-groups --bootstrap-server ${FDB_KAFKA_BOOTSTRAP:-localhost:9092} --describe --all-groups; "
+            + "else docker exec ${FDB_SHARED_KAFKA_CONTAINER:-shared-data-infra-kafka-1} "
+            + "kafka-consumer-groups --bootstrap-server ${FDB_KAFKA_INTERNAL_BOOTSTRAP:-kafka:9092} "
+            + "--describe --all-groups; fi"));
     return snapshotFromCommand("kafka offsets", result);
   }
 

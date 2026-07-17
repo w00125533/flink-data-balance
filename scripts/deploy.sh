@@ -23,8 +23,8 @@ done
 usage() {
   echo "Usage: scripts/deploy.sh <target> <command> [options]"
   echo "Targets:"
-  echo "  local commands: check, up, init, submit, stop, smoke, prune, status, report, down"
-  echo "  external-yarn commands: check, init, submit, stop, smoke, prune, status, report"
+  echo "  local commands: check, up, init, prepare, submit, stop, smoke, prune, status, report, down"
+  echo "  external-yarn commands: check, init, prepare, submit, stop, smoke, prune, status, report"
 }
 
 log() {
@@ -195,12 +195,17 @@ shared_streaming() {
 }
 
 shared_kafka_exec() {
-  if shared_streaming exec -T kafka "$@" >/tmp/fdb-shared-kafka-exec.out 2>/tmp/fdb-shared-kafka-exec.err; then
+  local timeout_sec="${FDB_SHARED_KAFKA_EXEC_TIMEOUT_SEC:-10}"
+  if timeout "${timeout_sec}s" docker exec shared-data-infra-kafka-1 "$@" >/tmp/fdb-shared-kafka-exec.out 2>/tmp/fdb-shared-kafka-exec.err; then
     cat /tmp/fdb-shared-kafka-exec.out
     return 0
   fi
 
-  docker exec shared-data-infra-kafka-1 "$@"
+  timeout "${timeout_sec}s" docker compose \
+    -f "$(shared_infra_dir)/compose.yaml" \
+    -f "$(shared_infra_dir)/compose.streaming.yaml" \
+    --profile streaming \
+    exec -T kafka "$@"
 }
 
 shared_lakehouse() {
@@ -385,6 +390,85 @@ DELETE FROM grid_anomaly_events WHERE event_ts < ${anomaly_threshold};
 SQL
 }
 
+reset_starrocks_sql() {
+  cat <<SQL
+TRUNCATE TABLE cell_kpi;
+TRUNCATE TABLE cell_anomaly_events;
+TRUNCATE TABLE user_anomaly_events;
+TRUNCATE TABLE grid_anomaly_events;
+SQL
+}
+
+benchmark_kafka_topics() {
+  local topics=(
+    "${FDB_CHR_TOPIC:-chr-events}"
+    "${FDB_PM_TOPIC:-pm-stats}"
+    "${FDB_CFG_TOPIC:-cfg-config}"
+    "${FDB_TOPOLOGY_TOPIC:-topology}"
+    "${FDB_LB_HEARTBEAT_TOPIC:-lb-heartbeat}"
+    "${FDB_LB_ROUTING_TOPIC:-lb-routing}"
+    "${FDB_METRICS_TOPIC:-fdb-stage-metrics}"
+    "${FDB_CELL_ANOMALY_TOPIC:-cell-anomaly-events}"
+    "${FDB_USER_ANOMALY_TOPIC:-user-anomaly-events}"
+    "${FDB_GRID_ANOMALY_TOPIC:-grid-anomaly-events}"
+    "${FDB_KPI_1M_TOPIC:-cell-kpi-1m}"
+    "${FDB_KPI_5M_TOPIC:-cell-kpi-5m}"
+    "${FDB_CHR_DLQ_TOPIC:-chr-dlq}"
+    "${FDB_PM_DLQ_TOPIC:-pm-dlq}"
+    "${FDB_CFG_DLQ_TOPIC:-cfg-dlq}"
+    "${FDB_ENRICHMENT_LATE_TOPIC:-enrichment-late}"
+  )
+  printf '%s\n' "${topics[@]}" | awk 'NF && !seen[$0]++'
+}
+
+reset_hdfs_path_with() {
+  local runner=$1
+  local path=$2
+
+  "$runner" -rm -r -skipTrash "$path" >/dev/null 2>&1 || true
+  "$runner" -mkdir -p "$path" >/dev/null
+  "$runner" -chmod -R 777 "$path" >/dev/null 2>&1 || true
+}
+
+reset_hdfs_benchmark_outputs_with() {
+  local runner=$1
+  local hive_cell_path=${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}
+  local hive_root=${FDB_HIVE_WAREHOUSE_ROOT:-${hive_cell_path%/cell_kpi}}
+  local iceberg_root=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/${FDB_ICEBERG_DATABASE:-iceberg_db}
+
+  if [[ "$hive_root" == "$hive_cell_path" ]]; then
+    hive_root="${hive_cell_path%/*}"
+  fi
+
+  reset_hdfs_path_with "$runner" "$hive_cell_path"
+  reset_hdfs_path_with "$runner" "$hive_root/cell_anomaly_events"
+  reset_hdfs_path_with "$runner" "$hive_root/user_anomaly_events"
+  reset_hdfs_path_with "$runner" "$hive_root/grid_anomaly_events"
+  reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_TABLE:-cell_kpi}"
+  reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_CELL_ANOMALY_TABLE:-cell_anomaly_events}"
+  reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_USER_ANOMALY_TABLE:-user_anomaly_events}"
+  reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_GRID_ANOMALY_TABLE:-grid_anomaly_events}"
+}
+
+local_reset_kafka_topics_with_admin() {
+  local jar="${FDB_BENCHMARK_RUNNER_JAR:-benchmark-runner/target/benchmark-runner-0.1.0-SNAPSHOT.jar}"
+
+  if [[ "${FDB_LOCAL_KAFKA_RESET_IMPL:-admin}" == "docker" ]]; then
+    return 1
+  fi
+  if [[ ! -f "$jar" ]] || ! command -v java >/dev/null 2>&1; then
+    return 1
+  fi
+
+  log "resetting shared Kafka benchmark topics via Kafka AdminClient"
+  if java -cp "$jar" com.fdb.benchmark.KafkaTopicResetTool; then
+    return 0
+  fi
+
+  warn "Kafka AdminClient topic reset failed"
+  return 2
+}
+
 run_hdfs_prune_with() {
   local runner=$1
   local hive_path=${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}
@@ -534,6 +618,61 @@ local_init() {
   docker compose -f docker/docker-compose.yml ps
 }
 
+local_reset_kafka_topics() {
+  local bootstrap
+  local topic
+  local current_topics
+  local all_deleted
+  bootstrap="$(local_kafka_bootstrap)"
+
+  if local_reset_kafka_topics_with_admin; then
+    return 0
+  else
+    local admin_status=$?
+    if [[ "$admin_status" == "2" && "${FDB_LOCAL_KAFKA_RESET_FALLBACK:-0}" != "1" ]]; then
+      die "Kafka AdminClient topic reset failed"
+    fi
+  fi
+
+  log "resetting shared Kafka benchmark topics"
+  while read -r topic; do
+    [[ -n "$topic" ]] || continue
+    shared_kafka_exec kafka-topics \
+      --bootstrap-server "$bootstrap" \
+      --delete --if-exists \
+      --topic "$topic" >/dev/null || true
+  done < <(benchmark_kafka_topics)
+
+  for _ in {1..30}; do
+    current_topics="$(shared_kafka_exec kafka-topics --bootstrap-server "$bootstrap" --list 2>/dev/null || true)"
+    all_deleted=1
+    while read -r topic; do
+      [[ -n "$topic" ]] || continue
+      if grep -Fxq "$topic" <<< "$current_topics"; then
+        all_deleted=0
+        break
+      fi
+    done < <(benchmark_kafka_topics)
+    [[ "$all_deleted" == "1" ]] && break
+    sleep 1
+  done
+
+  bash scripts/init-kafka-topics.sh >/dev/null
+}
+
+local_prepare() {
+  load_env_optional
+  local_reset_kafka_topics
+
+  log "resetting shared StarRocks benchmark tables"
+  reset_starrocks_sql | shared_starrocks_mysql
+
+  log "resetting shared HDFS benchmark outputs"
+  reset_hdfs_benchmark_outputs_with shared_hdfs_exec
+
+  ok "local benchmark data prepared"
+}
+
 local_submit() {
   local explicit_run_id="${FDB_RUN_ID:-}"
   local explicit_run_label="${FDB_RUN_LABEL:-}"
@@ -620,9 +759,9 @@ local_stop() {
   fi
 
   log "cancelling local Flink job: $job_id"
-  if ! docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id"; then
-    warn "Flink CLI cancel failed; falling back to REST cancel"
-    curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null || stop_status=$?
+  if ! curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null; then
+    warn "Flink REST cancel failed; falling back to CLI cancel"
+    docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id" || stop_status=$?
   fi
 
   if [[ "${FDB_REPORT_ON_STOP:-false}" == "true" ]]; then
@@ -1126,6 +1265,9 @@ build_external_flink_env_args() {
   local value
   local env_keys=(
     FDB_KAFKA_BOOTSTRAP
+    FDB_KAFKA_FETCH_MAX_BYTES
+    FDB_KAFKA_MAX_PARTITION_FETCH_BYTES
+    FDB_KAFKA_MAX_POLL_RECORDS
     FDB_STARROCKS_FE_ENDPOINT
     FDB_STARROCKS_JDBC_URL
     FDB_STARROCKS_CONNECTOR_JDBC_URL
@@ -1149,6 +1291,10 @@ build_external_flink_env_args() {
     FDB_FLINK_TASKMANAGER_MEMORY
     FDB_FLINK_TASKMANAGER_SLOTS
     FDB_FLINK_RETAINED_CHECKPOINTS
+    FDB_FLINK_HEARTBEAT_TIMEOUT_MS
+    FDB_FLINK_HEARTBEAT_INTERVAL_MS
+    FDB_FLINK_PEKKO_ASK_TIMEOUT
+    FDB_FLINK_TASKMANAGER_MANAGED_FRACTION
     FDB_METRICS_TOPIC
     FDB_METRICS_ENABLED
     FDB_METRICS_HISTORY_ENABLED
@@ -1352,6 +1498,80 @@ external_init() {
   ok "external-yarn dependencies initialized"
 }
 
+external_reset_kafka_topics() {
+  local topic
+  local current_topics
+  local all_deleted
+
+  log "resetting external Kafka benchmark topics"
+  while read -r topic; do
+    [[ -n "$topic" ]] || continue
+    kafka-topics \
+      --bootstrap-server "$FDB_KAFKA_BOOTSTRAP" \
+      --delete --if-exists \
+      --topic "$topic" >/dev/null || true
+  done < <(benchmark_kafka_topics)
+
+  for _ in {1..30}; do
+    current_topics="$(kafka-topics --bootstrap-server "$FDB_KAFKA_BOOTSTRAP" --list 2>/dev/null || true)"
+    all_deleted=1
+    while read -r topic; do
+      [[ -n "$topic" ]] || continue
+      if grep -Fxq "$topic" <<< "$current_topics"; then
+        all_deleted=0
+        break
+      fi
+    done < <(benchmark_kafka_topics)
+    [[ "$all_deleted" == "1" ]] && break
+    sleep 1
+  done
+}
+
+external_reset_hdfs_benchmark_outputs() {
+  local hive_cell_path
+  local hive_root
+  local iceberg_root
+
+  hive_cell_path="$(external_hdfs_path_from_location "$(external_hive_cell_kpi_location)")"
+  hive_root="$(external_hdfs_path_from_location "${FDB_HIVE_WAREHOUSE_ROOT:-${hive_cell_path%/*}}")"
+  iceberg_root="$(external_iceberg_warehouse_path)/${FDB_ICEBERG_DATABASE:-iceberg_db}"
+
+  reset_hdfs_path_with external_hdfs_exec "$hive_cell_path"
+  reset_hdfs_path_with external_hdfs_exec "$hive_root/cell_anomaly_events"
+  reset_hdfs_path_with external_hdfs_exec "$hive_root/user_anomaly_events"
+  reset_hdfs_path_with external_hdfs_exec "$hive_root/grid_anomaly_events"
+  reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_TABLE:-cell_kpi}"
+  reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_CELL_ANOMALY_TABLE:-cell_anomaly_events}"
+  reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_USER_ANOMALY_TABLE:-user_anomaly_events}"
+  reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_GRID_ANOMALY_TABLE:-grid_anomaly_events}"
+}
+
+external_prepare() {
+  load_env
+  [[ "${FDB_DEPLOY_TARGET:-}" == "external-yarn" ]] || die "FDB_DEPLOY_TARGET must be external-yarn"
+  require_env FDB_KAFKA_BOOTSTRAP
+  require_env FDB_HDFS_URI
+  require_env FDB_HIVE_JDBC_URL
+  require_env FDB_STARROCKS_FE_ENDPOINT
+  external_apply_runtime_defaults
+
+  external_reset_kafka_topics
+  external_init
+
+  log "resetting external StarRocks benchmark tables"
+  reset_starrocks_sql | external_mysql_run_sql \
+    "$(external_starrocks_host)" \
+    "$(external_starrocks_port)" \
+    "${FDB_STARROCKS_USER:-root}" \
+    "${FDB_STARROCKS_PASSWORD:-}" \
+    "${FDB_STARROCKS_DATABASE:-fdb}"
+
+  log "resetting external HDFS benchmark outputs"
+  external_reset_hdfs_benchmark_outputs
+
+  ok "external-yarn benchmark data prepared"
+}
+
 external_submit() {
   local explicit_run_id="${FDB_RUN_ID:-}"
   local explicit_run_label="${FDB_RUN_LABEL:-}"
@@ -1440,6 +1660,18 @@ external_submit() {
   fi
   if [[ -n "${FDB_FLINK_RETAINED_CHECKPOINTS:-}" ]]; then
     flink_args+=(-D "state.checkpoints.num-retained=${FDB_FLINK_RETAINED_CHECKPOINTS}")
+  fi
+  if [[ -n "${FDB_FLINK_HEARTBEAT_TIMEOUT_MS:-}" ]]; then
+    flink_args+=(-D "heartbeat.timeout=${FDB_FLINK_HEARTBEAT_TIMEOUT_MS}")
+  fi
+  if [[ -n "${FDB_FLINK_HEARTBEAT_INTERVAL_MS:-}" ]]; then
+    flink_args+=(-D "heartbeat.interval=${FDB_FLINK_HEARTBEAT_INTERVAL_MS}")
+  fi
+  if [[ -n "${FDB_FLINK_PEKKO_ASK_TIMEOUT:-}" ]]; then
+    flink_args+=(-D "pekko.ask.timeout=${FDB_FLINK_PEKKO_ASK_TIMEOUT}")
+  fi
+  if [[ -n "${FDB_FLINK_TASKMANAGER_MANAGED_FRACTION:-}" ]]; then
+    flink_args+=(-D "taskmanager.memory.managed.fraction=${FDB_FLINK_TASKMANAGER_MANAGED_FRACTION}")
   fi
   if [[ -n "${FDB_FLINK_EXTRA_ARGS_FILE:-}" ]]; then
     EXTERNAL_FLINK_FILE_ARGS=()
@@ -1610,6 +1842,7 @@ dispatch_local() {
     check) local_check ;;
     up) local_up ;;
     init) local_init ;;
+    prepare) local_prepare ;;
     submit) local_submit ;;
     stop) local_stop ;;
     smoke) local_smoke ;;
@@ -1625,6 +1858,7 @@ dispatch_external_yarn() {
   case "$COMMAND" in
     check) external_check ;;
     init) external_init ;;
+    prepare) external_prepare ;;
     submit) external_submit ;;
     stop) external_stop ;;
     smoke) external_smoke ;;

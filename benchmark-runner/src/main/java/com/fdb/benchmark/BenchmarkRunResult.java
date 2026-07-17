@@ -7,6 +7,7 @@ public record BenchmarkRunResult(
     FlinkSnapshot flink,
     FdbMetricsSnapshot fdb,
     StorageSnapshot storage,
+    TopologyMetricsSnapshot topology,
     SourceMetricsSnapshot source) {
 
   public BenchmarkRunResult(
@@ -16,6 +17,17 @@ public record BenchmarkRunResult(
       FlinkSnapshot flink,
       FdbMetricsSnapshot fdb,
       StorageSnapshot storage) {
-    this(plan, status, bottleneckReason, flink, fdb, storage, SourceMetricsSnapshot.empty());
+    this(plan, status, bottleneckReason, flink, fdb, storage, TopologyMetricsSnapshot.empty(), SourceMetricsSnapshot.empty());
+  }
+
+  public BenchmarkRunResult(
+      BenchmarkRunPlan plan,
+      BenchmarkStatus status,
+      String bottleneckReason,
+      FlinkSnapshot flink,
+      FdbMetricsSnapshot fdb,
+      StorageSnapshot storage,
+      TopologyMetricsSnapshot topology) {
+    this(plan, status, bottleneckReason, flink, fdb, storage, topology, SourceMetricsSnapshot.empty());
   }
 }

@@ -155,6 +155,34 @@ class FlinkJobMainTest {
     }
 
     @Test
+    void resolve_kafka_consumer_properties_prefers_environment() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.kafka.fetch.max.bytes", "8388608");
+        properties.setProperty("fdb.kafka.max.partition.fetch.bytes", "2097152");
+        properties.setProperty("fdb.kafka.max.poll.records", "1000");
+
+        Properties consumerProperties = FlinkJobMain.resolveKafkaConsumerProperties(Map.of(
+            "FDB_KAFKA_FETCH_MAX_BYTES", "4194304",
+            "FDB_KAFKA_MAX_PARTITION_FETCH_BYTES", "1048576",
+            "FDB_KAFKA_MAX_POLL_RECORDS", "500"), properties);
+
+        assertThat(consumerProperties)
+            .containsEntry("fetch.max.bytes", "4194304")
+            .containsEntry("max.partition.fetch.bytes", "1048576")
+            .containsEntry("max.poll.records", "500");
+    }
+
+    @Test
+    void resolve_kafka_consumer_properties_ignores_blank_and_invalid_values() {
+        Properties consumerProperties = FlinkJobMain.resolveKafkaConsumerProperties(Map.of(
+            "FDB_KAFKA_FETCH_MAX_BYTES", " ",
+            "FDB_KAFKA_MAX_PARTITION_FETCH_BYTES", "nope",
+            "FDB_KAFKA_MAX_POLL_RECORDS", "0"), new Properties());
+
+        assertThat(consumerProperties).isEmpty();
+    }
+
+    @Test
     void stage_metrics_probe_uses_configured_emit_interval() throws Exception {
         ResultSinkConfig resultSinkConfig = new ResultSinkConfig(
             ResultSinkType.STARROCKS, true, true, true, 7_000L, false, "run-a", "");
