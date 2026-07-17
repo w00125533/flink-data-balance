@@ -18,6 +18,7 @@ public final class ObservabilityClient {
 
   public FdbMetricsSnapshot snapshot() throws IOException, InterruptedException {
     JsonNode stages = readStages();
+    long sourceDelayP95Ms = -1;
     long kpi1mP95Ms = -1;
     long kpi5mP95Ms = -1;
     long watermarkLagMs = 0;
@@ -26,6 +27,9 @@ public final class ObservabilityClient {
         String stageId = stage.path("stageId").asText("");
         long latencyP95Ms = stage.path("latencyP95Ms").asLong(-1);
         watermarkLagMs = Math.max(watermarkLagMs, stage.path("watermarkLagMs").asLong(0));
+        if (isSourceDelayStage(stageId)) {
+          sourceDelayP95Ms = maxAvailableLatency(sourceDelayP95Ms, latencyP95Ms);
+        }
         if (stageId.contains("1m") || stageId.contains("kpi-1")) {
           kpi1mP95Ms = maxAvailableLatency(kpi1mP95Ms, latencyP95Ms);
         }
@@ -44,7 +48,8 @@ public final class ObservabilityClient {
         sinkFailures += firstLong(sink, "failureCount", "failures", 0);
       }
     }
-    return new FdbMetricsSnapshot(0, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures, watermarkLagMs);
+    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures,
+        watermarkLagMs);
   }
 
   private JsonNode readStages() throws IOException, InterruptedException {
@@ -72,6 +77,13 @@ public final class ObservabilityClient {
 
   private static long maxAvailableLatency(long current, long candidate) {
     return candidate < 0 ? current : Math.max(current, candidate);
+  }
+
+  private static boolean isSourceDelayStage(String stageId) {
+    String normalized = stageId.toLowerCase();
+    return normalized.contains("source")
+        && !normalized.contains("sink")
+        && !normalized.contains("kpi");
   }
 
   private static long firstLong(JsonNode node, String first, String second, long defaultValue) {

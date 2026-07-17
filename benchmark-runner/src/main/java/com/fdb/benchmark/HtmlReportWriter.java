@@ -177,7 +177,7 @@ public final class HtmlReportWriter {
             <tr><th>Reason</th><td>%s</td></tr>
             <tr><th>Source Throughput Attainment</th><td>%s</td></tr>
             <tr><th>Source Backlog</th><td>%s</td></tr>
-            <tr><th>Checkpoint Interval</th><td>%s</td></tr>
+            <tr><th>Checkpoint Policy</th><td>%s</td></tr>
             <tr><th>Checkpoint Duration</th><td>%s</td></tr>
           </tbody>
         </table>

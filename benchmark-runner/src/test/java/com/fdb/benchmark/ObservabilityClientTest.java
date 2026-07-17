@@ -23,6 +23,33 @@ class ObservabilityClientTest {
   }
 
   @Test
+  void reports_source_delay_as_unavailable_when_no_source_stage_latency_exists() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/stages", "[{\"stageId\":\"kpi-1m\",\"latencyP95Ms\":70000,\"watermarkLagMs\":12000}]",
+        "/api/results/sink-latency",
+            "[{\"sinkName\":\"starrocks-kpi-1m\",\"records\":100,\"latencyP95Ms\":90000,\"failureCount\":0}]"));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.sourceDelayP95Ms()).isEqualTo(-1);
+  }
+
+  @Test
+  void aggregates_source_delay_from_source_stage_latency() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/stages", "["
+            + "{\"stageId\":\"chr-source\",\"latencyP95Ms\":1200,\"watermarkLagMs\":0},"
+            + "{\"stageId\":\"pm-source\",\"latencyP95Ms\":2500,\"watermarkLagMs\":0},"
+            + "{\"stageId\":\"kpi-1m\",\"latencyP95Ms\":70000,\"watermarkLagMs\":12000}]",
+        "/api/results/sink-latency",
+            "[{\"sinkName\":\"starrocks-kpi-1m\",\"records\":100,\"latencyP95Ms\":90000,\"failureCount\":0}]"));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.sourceDelayP95Ms()).isEqualTo(2_500);
+  }
+
+  @Test
   void preserves_unavailable_latency_sentinel_from_stage_and_sink_metrics() throws Exception {
     FakeHttpGateway http = new FakeHttpGateway(Map.of(
         "/api/flow/stages", "["
