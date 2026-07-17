@@ -28,6 +28,12 @@ class BenchmarkRunnerMainTest {
 
       assertThat(exit).isZero();
       assertThat(runDir.resolve("index.html")).exists();
+      Path report = runDir.resolve("runs/bench-dry-none-cells1000-eps100/report.html");
+      assertThat(report).exists();
+      assertThat(Files.readString(report))
+          .contains("<tr><th>Target CHR EPS</th><td>100</td></tr>")
+          .contains("<tr><th>Source Throughput Attainment</th><td>98.00%</td></tr>")
+          .contains("<tr><th>CHR total</th><td>200</td><td>98.00</td>");
     } finally {
       deleteRecursively(runDir);
     }
