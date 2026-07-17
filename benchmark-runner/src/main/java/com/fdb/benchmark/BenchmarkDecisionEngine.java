@@ -55,8 +55,8 @@ public final class BenchmarkDecisionEngine {
   }
 
   private static BenchmarkRunResult result(BenchmarkRunPlan plan, BenchmarkStatus status, String reason,
-      RunObservation observation) {
+    RunObservation observation) {
     return new BenchmarkRunResult(plan, status, reason, observation.flink(), observation.fdb(), observation.storage(),
-        observation.topology(), observation.source());
+        observation.source());
   }
 }

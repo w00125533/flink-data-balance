@@ -13,9 +13,13 @@ final class FakeHttpGateway implements HttpGateway {
 
   @Override
   public String get(URI uri) throws IOException {
-    String body = responses.get(uri.getPath());
+    String key = uri.getQuery() == null ? uri.getPath() : uri.getPath() + "?" + uri.getQuery();
+    String body = responses.get(key);
     if (body == null) {
-      throw new IOException("missing fake response for " + uri.getPath());
+      body = responses.get(uri.getPath());
+    }
+    if (body == null) {
+      throw new IOException("missing fake response for " + key);
     }
     return body;
   }
