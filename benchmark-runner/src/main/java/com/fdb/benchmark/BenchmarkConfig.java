@@ -103,4 +103,5 @@ public record BenchmarkConfig(
     }
     return levels;
   }
+
 }

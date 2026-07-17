@@ -25,7 +25,23 @@ class BenchmarkConfigTest {
     assertThat(config.warmupSec()).isEqualTo(30);
     assertThat(config.durationSec()).isEqualTo(120);
     assertThat(config.thresholds().maxCheckpointDurationMs()).isEqualTo(120_000L);
+    assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.98);
+    assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(0L);
     assertThat(config.outputRoot()).isEqualTo(Path.of("benchmark-runner/output/benchmark-runs"));
+  }
+
+  @Test
+  void ignores_removed_topology_cells_per_site_for_chr_eps_estimate() {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_CHR_EPS_PER_CELL", "0.3",
+        "FDB_BENCHMARK_TOPOLOGY_CELLS_PER_SITE", "4.5",
+        "FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO", "0.97",
+        "FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS", "123"));
+
+    assertThat(config.targetChrEps(1000)).isEqualTo(300);
+    assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.97);
+    assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(123L);
   }
 
   @Test

@@ -8,7 +8,27 @@ public record BenchmarkThresholds(
     int maxConsecutiveCheckpointFailures,
     long maxKpiAvailabilityP95Ms,
     long maxSinkP95Ms,
-    long maxWatermarkLagMs) {
+    long maxWatermarkLagMs,
+    double minProducerDeliveryRatio,
+    long maxSourceBacklogRecords) {
+
+  public BenchmarkThresholds(
+      double maxBackpressureRatio,
+      long maxCheckpointDurationMs,
+      int maxConsecutiveCheckpointFailures,
+      long maxKpiAvailabilityP95Ms,
+      long maxSinkP95Ms,
+      long maxWatermarkLagMs) {
+    this(
+        maxBackpressureRatio,
+        maxCheckpointDurationMs,
+        maxConsecutiveCheckpointFailures,
+        maxKpiAvailabilityP95Ms,
+        maxSinkP95Ms,
+        maxWatermarkLagMs,
+        0.98,
+        0);
+  }
 
   public static BenchmarkThresholds from(Map<String, String> env) {
     return new BenchmarkThresholds(
@@ -17,7 +37,9 @@ public record BenchmarkThresholds(
         intValue(env, "FDB_BENCHMARK_MAX_CONSECUTIVE_CHECKPOINT_FAILURES", 2),
         longValue(env, "FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS", 180_000),
         longValue(env, "FDB_BENCHMARK_MAX_SINK_P95_MS", 180_000),
-        longValue(env, "FDB_BENCHMARK_MAX_WATERMARK_LAG_MS", 180_000));
+        longValue(env, "FDB_BENCHMARK_MAX_WATERMARK_LAG_MS", 180_000),
+        doubleValue(env, "FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO", 0.98),
+        longValue(env, "FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS", 0));
   }
 
   static double doubleValue(Map<String, String> env, String key, double defaultValue) {
