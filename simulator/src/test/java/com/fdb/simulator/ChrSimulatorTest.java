@@ -58,6 +58,15 @@ class ChrSimulatorTest {
         assertThat(event.getLatencyMs()).isEqualTo(2_500.0f);
     }
 
+    @Test
+    void rejects_non_finite_anomaly_injection_ratio() {
+        for (double ratio : java.util.List.of(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> ChrSimulator.validateAnomalyInjectionRatio(ratio))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO");
+        }
+    }
+
     private static TopologyRecord cell(String cellId) {
         return TopologyRecord.newBuilder()
             .setSiteId("site-a")

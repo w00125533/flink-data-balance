@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -58,6 +59,16 @@ class BenchmarkConfigTest {
         "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "1.01")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO");
+  }
+
+  @Test
+  void rejects_non_finite_anomaly_injection_ratio() {
+    for (String ratio : List.of("NaN", "Infinity", "-Infinity")) {
+      assertThatThrownBy(() -> BenchmarkConfig.from("local", Map.of(
+          "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", ratio)))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO");
+    }
   }
 
   @Test

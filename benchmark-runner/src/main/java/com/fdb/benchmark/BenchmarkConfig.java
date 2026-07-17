@@ -108,7 +108,7 @@ public record BenchmarkConfig(
 
   private static double boundedRatio(Map<String, String> env, String key, double defaultValue) {
     double ratio = BenchmarkThresholds.doubleValue(env, key, defaultValue);
-    if (ratio < 0.0d || ratio > 1.0d) {
+    if (!Double.isFinite(ratio) || ratio < 0.0d || ratio > 1.0d) {
       throw new IllegalArgumentException(key + " must be between 0 and 1");
     }
     return ratio;

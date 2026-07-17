@@ -133,7 +133,14 @@ public class ChrSimulator {
     }
 
     static double anomalyInjectionRatio(SimulatorConfig config) {
-        return config.getDouble("benchmark.anomaly.injection.ratio", 0.05d);
+        return validateAnomalyInjectionRatio(config.getDouble("benchmark.anomaly.injection.ratio", 0.05d));
+    }
+
+    static double validateAnomalyInjectionRatio(double ratio) {
+        if (!Double.isFinite(ratio) || ratio < 0.0d || ratio > 1.0d) {
+            throw new IllegalArgumentException("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO must be between 0 and 1");
+        }
+        return ratio;
     }
 
     private Map<String, List<String>> assignUsers(List<TopologyRecord> cells) {

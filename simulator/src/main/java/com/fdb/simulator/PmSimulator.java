@@ -153,7 +153,8 @@ public class PmSimulator {
     }
 
     static double anomalyInjectionRatio(SimulatorConfig config) {
-        return config.getDouble("benchmark.anomaly.injection.ratio", 0.05d);
+        return ChrSimulator.validateAnomalyInjectionRatio(
+            config.getDouble("benchmark.anomaly.injection.ratio", 0.05d));
     }
 
     private static double haversine(double lat1, double lon1, double lat2, double lon2) {
