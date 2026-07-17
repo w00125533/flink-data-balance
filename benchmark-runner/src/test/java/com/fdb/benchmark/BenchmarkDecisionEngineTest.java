@@ -30,6 +30,30 @@ class BenchmarkDecisionEngineTest {
   }
 
   @Test
+  void producer_under_delivery_marks_unstable() {
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300, 600, 270.0, 2_000, 0, 0,
+        100, 1000, 100.0, 10_000, 0, 0,
+        250, 1000, 1000.0, 0, 0, 0);
+
+    BenchmarkRunResult result = engine.decide(plan(), healthy().withSource(source));
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason()).contains("producer delivery").contains("0.9");
+  }
+
+  @Test
+  void source_backlog_over_threshold_marks_unstable() {
+    BenchmarkDecisionEngine backlogEngine = new BenchmarkDecisionEngine(new BenchmarkThresholds(
+        0.2, 120_000, 2, 180_000, 180_000, 180_000, 0.98, 10));
+    RunObservation observation = healthy().withFlink(healthy().flink().withSourceBacklogRecords(42));
+
+    BenchmarkRunResult result = backlogEngine.decide(plan(), observation);
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason()).contains("source backlog").contains("42");
+  }
+
+  @Test
   void high_kpi_or_sink_latency_marks_unstable() {
     assertThat(engine.decide(plan(), healthy().withFdb(healthy().fdb().withKpi1mP95Ms(181_000))).status())
         .isEqualTo(BenchmarkStatus.UNSTABLE);

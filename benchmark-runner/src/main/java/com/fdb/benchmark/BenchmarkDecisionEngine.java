@@ -15,6 +15,15 @@ public final class BenchmarkDecisionEngine {
     if (!"RUNNING".equalsIgnoreCase(flink.jobStatus())) {
       return result(plan, BenchmarkStatus.FAILED, "Flink job status " + flink.jobStatus(), observation);
     }
+    if (observation.source().present()
+        && observation.source().producerDeliveryRatio() < thresholds.minProducerDeliveryRatio()) {
+      return result(plan, BenchmarkStatus.UNSTABLE,
+          "producer delivery ratio " + observation.source().producerDeliveryRatio(), observation);
+    }
+    if (flink.sourceBacklogRecords() > thresholds.maxSourceBacklogRecords()) {
+      return result(plan, BenchmarkStatus.UNSTABLE, "source backlog " + flink.sourceBacklogRecords() + " records",
+          observation);
+    }
     if (flink.backpressureRatio() > thresholds.maxBackpressureRatio()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "sustained backpressure ratio " + flink.backpressureRatio(),
           observation);
@@ -48,6 +57,6 @@ public final class BenchmarkDecisionEngine {
   private static BenchmarkRunResult result(BenchmarkRunPlan plan, BenchmarkStatus status, String reason,
       RunObservation observation) {
     return new BenchmarkRunResult(plan, status, reason, observation.flink(), observation.fdb(), observation.storage(),
-        observation.source());
+        observation.topology(), observation.source());
   }
 }
