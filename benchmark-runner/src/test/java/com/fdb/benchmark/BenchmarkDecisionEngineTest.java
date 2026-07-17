@@ -45,6 +45,17 @@ class BenchmarkDecisionEngineTest {
     assertThat(result.bottleneckReason()).isEqualTo("all thresholds healthy");
   }
 
+  @Test
+  void preserves_source_metrics_in_decision_result() {
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300, 600, 294.0, 1000, 100.0, 1000, 1000.0);
+    BenchmarkRunResult result = engine.decide(plan(), healthy().withSource(source));
+
+    assertThat(result.source().present()).isTrue();
+    assertThat(result.source().chrTargetEps()).isEqualTo(300);
+    assertThat(result.source().chrPublished()).isEqualTo(600);
+    assertThat(result.source().producerDeliveryRatio()).isEqualTo(0.98);
+  }
+
   private static BenchmarkRunPlan plan() {
     return new BenchmarkRunPlan("bench-a", BenchmarkSink.NONE, 1000, 300, "bench-a-none-cells1000-eps300",
         "benchmark-none");
