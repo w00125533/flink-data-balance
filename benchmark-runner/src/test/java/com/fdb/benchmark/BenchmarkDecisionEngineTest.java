@@ -38,7 +38,7 @@ class BenchmarkDecisionEngineTest {
     BenchmarkRunResult result = engine.decide(plan(), healthy().withSource(source));
 
     assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
-    assertThat(result.bottleneckReason()).contains("producer delivery").contains("0.9");
+    assertThat(result.bottleneckReason()).contains("source throughput attainment").contains("0.9");
   }
 
   @Test
@@ -50,7 +50,7 @@ class BenchmarkDecisionEngineTest {
     BenchmarkRunResult result = backlogEngine.decide(plan(), observation);
 
     assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
-    assertThat(result.bottleneckReason()).contains("source backlog").contains("42");
+    assertThat(result.bottleneckReason()).contains("max source operator backlog").contains("42");
   }
 
   @Test

@@ -100,4 +100,127 @@ class FlinkRestClientTest {
       assertThat(operator.backpressureRatio()).isCloseTo(0.025, within(0.0001));
     });
   }
+
+  @Test
+  void source_backlog_records_uses_max_pending_records_across_source_operators() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
+        "/jobs/job-a/checkpoints", "{}",
+        "/taskmanagers", "{\"taskmanagers\":[]}",
+        "/jobs/job-a",
+            """
+                {"vertices":[{
+                  "id":"v1",
+                  "name":"chr-source",
+                  "parallelism":1,
+                  "metrics":{}
+                },{
+                  "id":"v2",
+                  "name":"pm-source",
+                  "parallelism":1,
+                  "metrics":{}
+                }]}
+                """,
+        metricPath("job-a", "v1"),
+            """
+                [
+                  {"id":"pendingRecords","value":"42"}
+                ]
+                """,
+        metricPath("job-a", "v2"),
+            """
+                [
+                  {"id":"pendingRecords","value":"30"}
+                ]
+                """));
+
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
+
+    assertThat(snapshot.sourceBacklogRecords()).isEqualTo(42);
+  }
+
+  @Test
+  void invalid_or_missing_pending_records_are_treated_as_zero() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
+        "/jobs/job-a/checkpoints", "{}",
+        "/taskmanagers", "{\"taskmanagers\":[]}",
+        "/jobs/job-a",
+            """
+                {"vertices":[{
+                  "id":"v1",
+                  "name":"chr-source",
+                  "parallelism":1,
+                  "metrics":{}
+                },{
+                  "id":"v2",
+                  "name":"pm-source",
+                  "parallelism":1,
+                  "metrics":{}
+                }]}
+                """,
+        metricPath("job-a", "v1"),
+            """
+                [
+                  {"id":"pendingRecords","value":"not-a-number"}
+                ]
+                """,
+        metricPath("job-a", "v2"),
+            """
+                [
+                  {"id":"numRecordsOutPerSecond","value":"10"}
+                ]
+                """));
+
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
+
+    assertThat(snapshot.sourceBacklogRecords()).isZero();
+    assertThat(snapshot.operators())
+        .extracting(FlinkOperatorSnapshot::pendingRecords)
+        .containsExactly(0L, 0L);
+  }
+
+  @Test
+  void source_backlog_records_is_zero_when_no_operator_name_contains_source() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
+        "/jobs/job-a/checkpoints", "{}",
+        "/taskmanagers", "{\"taskmanagers\":[]}",
+        "/jobs/job-a",
+            """
+                {"vertices":[{
+                  "id":"v1",
+                  "name":"map",
+                  "parallelism":1,
+                  "metrics":{}
+                },{
+                  "id":"v2",
+                  "name":"sink",
+                  "parallelism":1,
+                  "metrics":{}
+                }]}
+                """,
+        metricPath("job-a", "v1"),
+            """
+                [
+                  {"id":"pendingRecords","value":"42"}
+                ]
+                """,
+        metricPath("job-a", "v2"),
+            """
+                [
+                  {"id":"pendingRecords","value":"30"}
+                ]
+                """));
+
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
+
+    assertThat(snapshot.sourceBacklogRecords()).isZero();
+  }
+
+  private static String metricPath(String jobId, String vertexId) {
+    return "/jobs/" + jobId + "/vertices/" + vertexId
+        + "/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,"
+        + "busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords";
+  }
 }

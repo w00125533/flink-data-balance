@@ -18,11 +18,11 @@ public final class BenchmarkDecisionEngine {
     if (observation.source().present()
         && observation.source().producerDeliveryRatio() < thresholds.minProducerDeliveryRatio()) {
       return result(plan, BenchmarkStatus.UNSTABLE,
-          "producer delivery ratio " + observation.source().producerDeliveryRatio(), observation);
+          "source throughput attainment " + observation.source().producerDeliveryRatio(), observation);
     }
     if (flink.sourceBacklogRecords() > thresholds.maxSourceBacklogRecords()) {
-      return result(plan, BenchmarkStatus.UNSTABLE, "source backlog " + flink.sourceBacklogRecords() + " records",
-          observation);
+      return result(plan, BenchmarkStatus.UNSTABLE,
+          "max source operator backlog " + flink.sourceBacklogRecords() + " records", observation);
     }
     if (flink.backpressureRatio() > thresholds.maxBackpressureRatio()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "sustained backpressure ratio " + flink.backpressureRatio(),
