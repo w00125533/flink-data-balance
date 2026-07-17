@@ -568,7 +568,7 @@ fdb.user_anomaly_events
 fdb.grid_anomaly_events
 ```
 
-`cell_kpi` 中通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`。业务结果通过 StarRocks Flink connector 以 Stream Load 写入，默认 `exactly-once` 语义随 checkpoint 事务提交；KPI 表使用 `(window_start_ts, window_kind, cell_id)` 主键，三类异常表使用稳定 `anomaly_id` 主键，便于重放和失败恢复时去重。
+`cell_kpi` 中通过 `window_kind` 区分 `MIN_1` 与 `MIN_5`。业务结果通过 StarRocks Flink connector 以 Stream Load 写入，默认 `exactly-once` 语义随 checkpoint 事务提交；KPI 表使用 `(window_start_ts, window_kind, cell_id)` 主键，三类异常表使用稳定 `anomaly_id` 主键，便于重放和失败恢复时去重。StarRocks connector 的 `sink.buffer-flush.max-bytes`、`sink.buffer-flush.max-rows`、`sink.buffer-flush.interval-ms` 可分别通过 `FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES`、`FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS`、`FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS` 配置；本地高强度压测默认下调这些值，避免多个 StarRocks sink 并行 subtask 的默认缓冲叠加撑高 TaskManager 内存峰值。
 
 ### 6.5 Kafka Result Topics
 
@@ -624,8 +624,7 @@ Flink metrics
 
 - Source delay：CHR/PM/CFG 入口按 `processing_time - source_event_time` 统计 p50/p95/p99。
 - KPI availability delay：`kpi-1m` 与 `kpi-5m` 按 `processing_time - CellKpi.windowEndTs` 统计出数时延。
-- Sink probe delay：业务结果进入选定 connector 分支前，按 `processing_time - result_window_end_or_detection_time` 统计 p50/p95/p99。该指标表示 connector handoff/probe 时延，不等同于后端 commit 时延或查询可见时延。
-- Backend-visible latency 后续可通过在业务结果表增加 `write_ts` 并由查询器确认目标系统可查/可消费时间来补充。
+- Sink commit/visibility delay：业务结果增加 sink 写入打点字段，按结果窗口结束或异常检测时间到目标系统可查/可消费时间统计 p50/p95/p99。connector handoff 只能作为调试指标，不能替代 commit/visibility 口径。
 
 Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小、小于 1MB 文件数量，因为 file-based sink 的数据可见性和小文件成本会直接影响性能规格。
 
@@ -768,6 +767,7 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
     flink-snapshot.json
     fdb-metrics-snapshot.json
     storage-snapshot.json
+    topology-metrics.json
     report.html
 ```
 
@@ -794,8 +794,10 @@ arguments through. It does not contain benchmark state-machine logic.
 The Java `benchmark-runner` owns sink upper-bound benchmarking:
 
 - run a `sink x cellLevel` matrix;
-- use cell count as the primary pressure multiplier;
+- use generated cell count as the primary pressure multiplier;
+- treat `cellLevel` as the target generated cell count, not site count;
 - calculate `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`;
+- call `deploy.sh <target> prepare` before each run to reset benchmark data;
 - start topology-service plus CFG/PM/CHR simulators on the runner host;
 - submit and stop Flink through the existing `deploy.sh <target> submit/stop`
   commands so local and external-yarn deployment behavior stays centralized;
@@ -810,18 +812,22 @@ First-version benchmark matrix:
 FDB_BENCHMARK_SINKS=none starrocks kafka hive iceberg
 FDB_BENCHMARK_CELL_LEVELS=10000 20000 40000
 FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3
+FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05
 FDB_BENCHMARK_WARMUP_SEC=60
 FDB_BENCHMARK_DURATION_SEC=300
 ```
 
 Pressure model:
 
-- `cellLevel` controls topology size and is the primary benchmark multiplier.
-- `FDB_SITES_COUNT` is set per level; `sites.cellsPerSite` remains fixed in the
-  first version.
+- `cellLevel` controls the target generated cell count and is the primary
+  benchmark multiplier. The topology generator should translate this into a
+  site count or stop after the target cell count is reached.
 - CFG baseline records grow with cell count.
 - PM emits roughly one record per cell every 10 seconds.
-- CHR total target EPS grows linearly with cell count.
+- CHR total target EPS grows linearly with generated cell count.
+- `Target CHR EPS` is a global per-second target for the whole benchmark run,
+  not per-cell EPS. For example, `cellLevel=50000` and
+  `FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3` means global target CHR EPS is `15000`.
 - KPI and sink output volume grow with active cells.
 
 Run id format:
@@ -846,7 +852,8 @@ Stable/unstable/failed decisions:
 - `failed`: submit failed, Flink job failed/canceled, or the run cannot complete.
 - `unstable`: sustained backpressure, checkpoint failures or slow checkpoint,
   KPI availability delay over threshold, sink latency over threshold, growing
-  sink failures, or storage probe anomalies.
+  sink failures, producer under-delivery, Kafka/source backlog growth, or
+  storage probe anomalies.
 - `stable`: job stays RUNNING and all thresholds remain healthy through the
   measurement window.
 
@@ -860,6 +867,8 @@ FDB_BENCHMARK_MAX_CONSECUTIVE_CHECKPOINT_FAILURES=2
 FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS=180000
 FDB_BENCHMARK_MAX_SINK_P95_MS=180000
 FDB_BENCHMARK_MAX_WATERMARK_LAG_MS=180000
+FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO=0.98
+FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS=0
 ```
 
 Benchmark artifacts are fixed under the runner module and are not Docker-volume
@@ -876,6 +885,7 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
     flink-snapshot.json
     fdb-metrics-snapshot.json
     storage-snapshot.json
+    topology-metrics.json
     report.html
 ```
 
@@ -883,6 +893,57 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
 configuration, stable upper-bound cards per sink, the `sink x cellLevel` matrix,
 failure points, cross-sink metric comparisons, global recommendations, per-sink
 recommendations, and links to every single-run `report.html`.
+
+Per-run `prepare` resets the Kafka benchmark topics, StarRocks result tables,
+and Hive/Iceberg HDFS output paths before topology generation and simulator
+startup. This makes sink comparisons less sensitive to old Kafka offsets,
+historic compact-topic replays, or stale storage rows/files.
+
+`topology-service` writes `topology-metrics.json` when
+`FDB_TOPOLOGY_METRICS_FILE` is set by benchmark-runner. The single-run report
+shows generated records, site count, frequency-band count, generation duration,
+Kafka publish duration, publish failures, and latitude/longitude ranges.
+
+Flink operator `Records In/s`, `Records Out/s`, `Bytes In/s`, and `Bytes Out/s`
+must come from per-vertex Flink metrics API values such as
+`numRecordsInPerSecond`. Cumulative `/jobs/{jobId}` counters are shown only as
+`Records In Total` and `Records Out Total`, not as `/s` rates.
+
+Benchmark source pacing and latency rules:
+
+- CHR simulator must pace publishing by the configured global target EPS. If it
+  cannot deliver at least `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` of target
+  EPS after warmup, the run is `unstable` because the pressure source itself is
+  saturated.
+- PM and CFG simulators publish according to their business cadence; the report
+  must show total records, records/s, records/cell total, and records/s/cell for
+  CHR, PM, and CFG.
+- Kafka/Flink source backlog is part of stability judgment. A run is
+  `unstable` when source lag/backlog grows beyond the configured threshold even
+  if downstream sink latency has not crossed its threshold yet.
+- Latency is split into source delay, KPI availability delay, and sink commit or
+  visibility delay. Window waiting and watermark lag are shown separately from
+  producer/source backlog.
+- p50/p95/p99 must be calculated from observed samples. When there are no
+  samples, reports display `N/A`, not `0 ms`.
+- Result sink checkpoint cadence is shown in the report. Default checkpoint
+  interval remains `30s`; file-based Hive/Iceberg sinks may be raised but must
+  not exceed `180s`.
+
+Benchmark anomaly injection:
+
+- `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05` means 5% of generated cells and
+  5% of generated users are assigned to deterministic anomaly cohorts for the
+  run.
+- Cell anomaly injection is cohort-based, not random single-record noise. The
+  selected cells produce consecutive low radio quality or poor service KPI
+  signals so the existing 3-minute cell anomaly rule can activate.
+- User anomaly injection is cohort-based. The selected users produce consecutive
+  access failure or QoE-bad CHR events within the configured user anomaly window
+  so user anomaly rules can activate.
+- Injected anomalies are marked only through ordinary CHR/PM field values; the
+  Flink detection logic still relies on the same business rules and dedup state
+  used in non-benchmark runs.
 
 单轮 `report.html` 采用“顶部总览 + 分区钻取”布局。首屏需要回答本轮是否稳定、
 施加了多大压力、发现了什么瓶颈或告警、下一步建议调优什么；下方再按结构化分区
@@ -1012,7 +1073,10 @@ cleanup.policy=compact
 | `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | `benchmark-runner` 顺序执行的 sink 列表，支持空格或逗号分隔 |
 | `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | 小区数升压档位；第一版用小区数作为主压力倍率 |
-| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | 每小区 CHR EPS；总 CHR EPS = cellLevel * epsPerCell |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | 每小区 CHR EPS；全局 Target CHR EPS = cellLevel * epsPerCell |
+| `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | 压测异常注入比例；5% cell 和 5% user 进入确定性异常 cohort |
+| `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` | `0.98` | producer 实际交付率低于目标 EPS 的比例阈值时，本轮 unstable |
+| `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS` | `0` | source backlog 容忍阈值；持续增长或超过阈值时，本轮 unstable |
 | `FDB_BENCHMARK_WARMUP_SEC` | `60` | 单轮 submit 后、正式计量前的预热秒数 |
 | `FDB_BENCHMARK_DURATION_SEC` | `300` | 单轮计量秒数，结束后由 runner 判定 stable/unstable/failed |
 | `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | runner 采样 Flink REST、Observability API 和存储探测的周期 |
@@ -1319,7 +1383,15 @@ DLQ：
 - 压力倍率以小区数为主。`cellLevel` 控制 topology size、CFG baseline、
   PM 窗口记录数、KPI key 空间和 sink 写入规模。
 - CHR 总 EPS 由 `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`
-  计算，保持每小区 CHR EPS 稳定。
+  计算。`Target CHR EPS` 表示整轮压测的全局每秒 CHR 目标值，不是每小区 EPS。
+- CHR 模拟器必须按目标全局 EPS 做每秒节奏控制；producer 实际交付率低于阈值，
+  或 Kafka/Flink source backlog 持续增长时，本轮判定为 `unstable`。
+- 压测异常注入默认 `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05`，5% cell
+  和 5% user 进入确定性异常 cohort，连续产生可被现有规则检测到的异常信号。
+- 单轮报告必须展示 CHR/PM/CFG 的 total、records/s、total/cell、records/s/cell。
+- Latency 表拆分为 source delay、KPI availability delay、sink commit 或
+  visibility delay，并单独展示 watermark lag/backlog。无样本时 p50/p95/p99
+  显示 `N/A`，不能显示 `0 ms`。
 - 运行态判断优先使用 Flink REST API，结合 Observability API 的业务语义
   metrics 和 Kafka/StarRocks/Hive/Iceberg storage probes。
 - 稳定性判定输出 `stable`、`unstable`、`failed` 三类状态；上一档
