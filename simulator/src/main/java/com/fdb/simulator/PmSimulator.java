@@ -64,8 +64,10 @@ public class PmSimulator {
                 publisher.flush();
                 totalPublished += published;
                 long durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
-                double observedEps = totalPublished / Math.max(durationMs / 1000.0d, 0.001d);
-                sourceMetrics.write("pm", 0L, totalPublished, observedEps, durationMs, 0L, 0L);
+                long delivered = publisher.deliveredRecords();
+                double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
+                sourceMetrics.write("pm", 0L, delivered, observedEps, durationMs, 0L,
+                    publisher.undeliveredRecords());
                 if (summaryEnabled && published > 0) {
                     log.info(SummarySwitch.format("sim-pm", "records_published_last_window", published));
                     log.info(SummarySwitch.format("sim-pm", "avg_active_users_last_window", activeUsers / published));

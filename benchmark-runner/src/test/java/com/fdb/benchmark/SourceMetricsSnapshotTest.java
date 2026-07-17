@@ -1,6 +1,7 @@
 package com.fdb.benchmark;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,5 +62,16 @@ class SourceMetricsSnapshotTest {
     assertThat(snapshot.chrPublished()).isZero();
     assertThat(snapshot.pmPublished()).isEqualTo(1000);
     assertThat(snapshot.pmDurationMs()).isEqualTo(10000);
+  }
+
+  @Test
+  void throws_when_metrics_path_is_directory() throws Exception {
+    BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
+        "bench-starrocks-cells1000-eps300", "starrocks");
+    Path runDir = SourceMetricsSnapshot.runDir(tempDir, plan);
+    Files.createDirectories(runDir.resolve("chr-source-metrics.json"));
+
+    assertThatThrownBy(() -> SourceMetricsSnapshot.read(tempDir, plan))
+        .isInstanceOf(java.io.IOException.class);
   }
 }

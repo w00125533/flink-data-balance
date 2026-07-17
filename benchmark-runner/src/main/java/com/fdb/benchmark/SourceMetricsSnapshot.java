@@ -1,9 +1,12 @@
 package com.fdb.benchmark;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
 public record SourceMetricsSnapshot(
@@ -93,13 +96,23 @@ public record SourceMetricsSnapshot(
     return cellLevel <= 0 ? 0.0d : value / cellLevel;
   }
 
-  private static RawSourceMetrics readRaw(Path path) {
+  private static RawSourceMetrics readRaw(Path path) throws IOException {
     if (!Files.exists(path)) {
       return null;
     }
+    if (!Files.isRegularFile(path)) {
+      throw new IOException("source metrics path is not a file: " + path);
+    }
     try {
       return MAPPER.readValue(path.toFile(), RawSourceMetrics.class);
-    } catch (IOException e) {
+    } catch (FileNotFoundException e) {
+      if (!Files.exists(path)) {
+        return null;
+      }
+      throw e;
+    } catch (NoSuchFileException e) {
+      return null;
+    } catch (JsonProcessingException e) {
       return null;
     }
   }

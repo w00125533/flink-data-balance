@@ -91,10 +91,12 @@ public class ChrSimulator {
                 }
                 long metricsNow = System.currentTimeMillis();
                 long durationMs = Math.max(0L, metricsNow - startTime);
-                double observedEps = counter / Math.max(durationMs / 1000.0d, 0.001d);
+                long delivered = publisher.deliveredRecords();
+                double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
                 long expected = expectedEvents(baseEps, startTime, metricsNow);
-                long pending = Math.max(0L, expected - counter);
-                sourceMetrics.write("chr", baseEps, counter, observedEps, durationMs, pending, pending);
+                long pending = backlogRecords(expected, counter);
+                sourceMetrics.write("chr", baseEps, delivered, observedEps, durationMs,
+                    pending, undeliveredRecords(counter, delivered));
 
                 long elapsed = System.currentTimeMillis() - now;
                 if (elapsed < DEFAULT_LOOP_INTERVAL_MS) Thread.sleep(DEFAULT_LOOP_INTERVAL_MS - elapsed);
@@ -112,6 +114,14 @@ public class ChrSimulator {
             return 0L;
         }
         return Math.floorDiv((nowMs - startMs) * targetEps, 1000L);
+    }
+
+    static long backlogRecords(long expected, long submitted) {
+        return Math.max(0L, expected - submitted);
+    }
+
+    static long undeliveredRecords(long submitted, long delivered) {
+        return Math.max(0L, submitted - delivered);
     }
 
     private Map<String, List<String>> assignUsers(List<TopologyRecord> cells) {
