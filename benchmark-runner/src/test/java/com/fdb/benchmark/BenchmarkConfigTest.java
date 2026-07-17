@@ -40,6 +40,27 @@ class BenchmarkConfigTest {
   }
 
   @Test
+  void allows_zero_and_one_anomaly_injection_ratio() {
+    assertThat(BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0")).anomalyInjectionRatio()).isZero();
+    assertThat(BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "1")).anomalyInjectionRatio()).isEqualTo(1.0);
+  }
+
+  @Test
+  void rejects_out_of_range_anomaly_injection_ratio() {
+    assertThatThrownBy(() -> BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "-0.01")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO");
+
+    assertThatThrownBy(() -> BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "1.01")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO");
+  }
+
+  @Test
   void ignores_removed_topology_cells_per_site_for_chr_eps_estimate() {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_CELL_LEVELS", "1000",

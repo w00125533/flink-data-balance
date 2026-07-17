@@ -19,6 +19,17 @@ class JavaSimulatorProcessManagerTest {
     assertThat(env).containsEntry("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.05");
   }
 
+  @Test
+  void preserves_explicit_anomaly_injection_ratio_env() throws Exception {
+    JavaSimulatorProcessManager manager = new JavaSimulatorProcessManager(Map.of(
+        "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.12"));
+
+    Map<String, String> env = envFor(manager, new BenchmarkRunPlan(
+        "bench-a", BenchmarkSink.NONE, 1000, 1, "bench-a-none-cells1000-eps1", "small"));
+
+    assertThat(env).containsEntry("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.12");
+  }
+
   @SuppressWarnings("unchecked")
   private static Map<String, String> envFor(JavaSimulatorProcessManager manager, BenchmarkRunPlan plan)
       throws Exception {

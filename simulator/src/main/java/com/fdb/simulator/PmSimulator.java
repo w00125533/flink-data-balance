@@ -83,8 +83,8 @@ public class PmSimulator {
         }
     }
 
-    private PmStat generatePmStat(TopologyRecord cell, long windowStart, long windowEnd,
-                                  double anomalyInjectionRatio) {
+    PmStat generatePmStat(TopologyRecord cell, long windowStart, long windowEnd,
+                          double anomalyInjectionRatio) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
             cell.getSiteLat() + rng.nextGaussian() * 0.001,
             cell.getSiteLon() + rng.nextGaussian() * 0.001);
@@ -108,8 +108,8 @@ public class PmSimulator {
             totalConnections = 200;
             dropped = Math.round(anomalyValues.dropRate() * totalConnections);
             rrcAttempt = 100;
-            rrcSuccess = Math.round(anomalyValues.attachSuccessRate() * rrcAttempt);
-            latency = 250.0f;
+            rrcSuccess = 40;
+            latency = anomalyValues.avgLatencyMs();
         }
 
         return PmStat.newBuilder()
@@ -149,7 +149,7 @@ public class PmSimulator {
     }
 
     static AnomalyValues anomalousValues() {
-        return new AnomalyValues(-125.0f, -8.0f, 0.40f, 0.125f);
+        return new AnomalyValues(-125.0f, -8.0f, 0.125f, 250.0f);
     }
 
     static double anomalyInjectionRatio(SimulatorConfig config) {
@@ -166,5 +166,5 @@ public class PmSimulator {
     }
 }
 
-record AnomalyValues(float avgRsrp, float avgSinr, float attachSuccessRate, float dropRate) {
+record AnomalyValues(float avgRsrp, float avgSinr, float dropRate, float avgLatencyMs) {
 }

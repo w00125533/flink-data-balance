@@ -177,9 +177,9 @@ public class ChrSimulator {
         return staticWeight * diurnalWeight * noise;
     }
 
-    private ChrEvent generateEvent(TopologyRecord cell, String imsi, long now,
-                                   double outOfOrderProbability, long maxOutOfOrderLagMs,
-                                   double anomalyInjectionRatio) {
+    ChrEvent generateEvent(TopologyRecord cell, String imsi, long now,
+                           double outOfOrderProbability, long maxOutOfOrderLagMs,
+                           double anomalyInjectionRatio) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
             cell.getSiteLat() + rng.nextGaussian() * 0.001,
             cell.getSiteLon() + rng.nextGaussian() * 0.001);

@@ -2,6 +2,10 @@ package com.fdb.simulator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fdb.common.avro.ChrEvent;
+import com.fdb.common.avro.ChrEventType;
+import com.fdb.common.avro.TopoCellType;
+import com.fdb.common.avro.TopologyRecord;
 import org.junit.jupiter.api.Test;
 
 class ChrSimulatorTest {
@@ -36,5 +40,44 @@ class ChrSimulatorTest {
         assertThat(ChrSimulator.inAnomalyCohort(" ", 0.05d)).isFalse();
         assertThat(ChrSimulator.inAnomalyCohort("stable-id", 1.0d)).isTrue();
         assertThat(ChrSimulator.inAnomalyCohort("stable-id", 1.5d)).isTrue();
+    }
+
+    @Test
+    void anomalous_event_overrides_signal_result_and_latency_fields() {
+        ChrEvent event = new ChrSimulator("unused").generateEvent(
+            cell("cell-a"), "imsi-a", 123_456L, 0.0d, 5_000L, 1.0d);
+
+        assertThat(event.getEventType()).isEqualTo(ChrEventType.RRC_SETUP_FAIL);
+        assertThat(event.getResultCode()).isEqualTo(1);
+        assertThat(event.getRsrp()).isEqualTo(-125.0f);
+        assertThat(event.getSinr()).isEqualTo(-8.0f);
+        assertThat(event.getRsrq()).isEqualTo(-18.0f);
+        assertThat(event.getCqi()).isEqualTo(1);
+        assertThat(event.getMcs()).isEqualTo(1);
+        assertThat(event.getDurationMs()).isEqualTo(60_000L);
+        assertThat(event.getLatencyMs()).isEqualTo(2_500.0f);
+    }
+
+    private static TopologyRecord cell(String cellId) {
+        return TopologyRecord.newBuilder()
+            .setSiteId("site-a")
+            .setCellId(cellId)
+            .setSiteLat(39.9d)
+            .setSiteLon(116.4d)
+            .setCellType(TopoCellType.NR_SA)
+            .setCellIndex(1)
+            .setPci(10)
+            .setTac(20)
+            .setEci(30L)
+            .setMcc("460")
+            .setMnc("00")
+            .setFrequencyBand("n78")
+            .setArfcn(640_000)
+            .setBandwidthMhz(100)
+            .setAzimuth(0)
+            .setCoverageRadiusM(500)
+            .setMaxPowerDbm(46.0f)
+            .setVersion(1L)
+            .build();
     }
 }
