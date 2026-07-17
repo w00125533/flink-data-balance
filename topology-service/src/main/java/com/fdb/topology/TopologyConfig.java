@@ -21,12 +21,16 @@ public class TopologyConfig {
 
     public static class SitesConfig {
         private int count = 3000;
+        private int targetCells = 0;
         private CellsPerSiteConfig cellsPerSite = new CellsPerSiteConfig();
         private RegionConfig region = new RegionConfig();
         private List<HotZoneConfig> hotZones = List.of();
 
         public int getCount() { return count; }
         public void setCount(int count) { this.count = count; }
+
+        public int getTargetCells() { return targetCells; }
+        public void setTargetCells(int targetCells) { this.targetCells = Math.max(0, targetCells); }
 
         public CellsPerSiteConfig getCellsPerSite() { return cellsPerSite; }
         public void setCellsPerSite(CellsPerSiteConfig cfg) { this.cellsPerSite = cfg; }

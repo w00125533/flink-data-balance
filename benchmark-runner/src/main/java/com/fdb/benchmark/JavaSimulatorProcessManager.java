@@ -10,10 +10,16 @@ import java.util.Map;
 
 public final class JavaSimulatorProcessManager implements SimulatorProcessManager {
   private final Map<String, String> baseEnv;
+  private final Path outputRoot;
   private final List<Process> processes = new ArrayList<>();
 
   public JavaSimulatorProcessManager(Map<String, String> baseEnv) {
+    this(baseEnv, Path.of("benchmark-runner/output/benchmark-runs"));
+  }
+
+  public JavaSimulatorProcessManager(Map<String, String> baseEnv, Path outputRoot) {
     this.baseEnv = Map.copyOf(baseEnv);
+    this.outputRoot = outputRoot;
   }
 
   @Override
@@ -62,13 +68,23 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
     return builder.start();
   }
 
-  private Map<String, String> envFor(BenchmarkRunPlan plan) {
+  Map<String, String> envFor(BenchmarkRunPlan plan) {
     Map<String, String> env = new HashMap<>(baseEnv);
+    String hostBootstrap = baseEnv.get("FDB_KAFKA_HOST_BOOTSTRAP");
+    if (hostBootstrap != null && !hostBootstrap.isBlank()) {
+      env.put("FDB_KAFKA_BOOTSTRAP", hostBootstrap);
+    }
     env.put("FDB_SITES_COUNT", String.valueOf(plan.cellLevel()));
+    env.put("FDB_TOPOLOGY_TARGET_CELLS", String.valueOf(plan.cellLevel()));
     env.put("FDB_RATE_EPS", String.valueOf(plan.targetChrEps()));
     env.put("FDB_E2E_SUMMARY", "1");
     env.put("FDB_SIM_SUMMARY", "1");
     env.put("FDB_TOPOLOGY_SUMMARY", "1");
+    env.put("FDB_TOPOLOGY_METRICS_FILE", portablePath(TopologyMetricsSnapshot.metricsFile(outputRoot, plan)));
     return env;
+  }
+
+  private static String portablePath(Path path) {
+    return path.toString().replace('\\', '/');
   }
 }

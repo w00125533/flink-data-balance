@@ -24,6 +24,19 @@ class TopologyGeneratorTest {
     }
 
     @Test
+    void stops_after_target_cell_count_when_configured() {
+        TopologyConfig config = new TopologyConfig();
+        config.setSeed(42);
+        config.getSites().setCount(100);
+        config.getSites().setTargetCells(123);
+
+        List<TopologyRecord> records = new TopologyGenerator(config).generate();
+
+        assertThat(records).hasSize(123);
+        assertThat(records.stream().map(TopologyRecord::getSiteId).distinct().count()).isLessThan(100);
+    }
+
+    @Test
     void records_have_correct_cell_count_range() {
         TopologyConfig config = new TopologyConfig();
         config.setSeed(42);
@@ -63,6 +76,15 @@ class TopologyGeneratorTest {
 
         assertThat(records.stream().map(TopologyRecord::getPci).distinct().count())
             .isGreaterThan(100);
+        for (int i = 0; i < records.size(); i++) {
+            int pci = records.get(i).getPci();
+            if (i >= 1) {
+                assertThat(pci).isNotEqualTo(records.get(i - 1).getPci());
+            }
+            if (i >= 2) {
+                assertThat(pci).isNotEqualTo(records.get(i - 2).getPci());
+            }
+        }
     }
 
     @Test
