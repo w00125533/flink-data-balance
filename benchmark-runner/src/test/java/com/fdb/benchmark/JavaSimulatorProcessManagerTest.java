@@ -12,13 +12,13 @@ class JavaSimulatorProcessManagerTest {
         "FDB_KAFKA_BOOTSTRAP", "kafka:9092",
         "FDB_KAFKA_HOST_BOOTSTRAP", "localhost:9092"));
 
-    Map<String, String> env = manager.envFor(new BenchmarkRunPlan(
-        "bench-a", BenchmarkSink.NONE, 1000, 1, "bench-a-none-cells1000-eps1", "small"));
+    Map<String, String> env = manager.envFor(plan());
 
     assertThat(env.get("FDB_KAFKA_BOOTSTRAP")).isEqualTo("localhost:9092");
     assertThat(env).containsEntry("FDB_TOPOLOGY_TARGET_CELLS", "1000");
     assertThat(env).containsEntry("FDB_SITES_COUNT", "1000");
-    assertThat(env.get("FDB_RATE_EPS")).isEqualTo("1");
+    assertThat(env.get("FDB_RATE_EPS")).isEqualTo("100");
+    assertThat(env.get("FDB_PM_EPS_PER_CELL")).isEqualTo("1.0");
     assertThat(env).containsEntry("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.05");
     assertThat(env.get("FDB_TOPOLOGY_METRICS_FILE"))
         .isEqualTo("benchmark-runner/output/benchmark-runs/bench-a/runs/bench-a-none-cells1000-eps1/topology-metrics.json");
@@ -29,9 +29,23 @@ class JavaSimulatorProcessManagerTest {
     JavaSimulatorProcessManager manager = new JavaSimulatorProcessManager(Map.of(
         "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.12"));
 
-    Map<String, String> env = manager.envFor(new BenchmarkRunPlan(
-        "bench-a", BenchmarkSink.NONE, 1000, 1, "bench-a-none-cells1000-eps1", "small"));
+    Map<String, String> env = manager.envFor(plan());
 
     assertThat(env).containsEntry("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.12");
+  }
+
+  @Test
+  void passes_explicit_pm_eps_per_cell_to_pm_simulator() {
+    JavaSimulatorProcessManager manager = new JavaSimulatorProcessManager(Map.of(
+        "FDB_BENCHMARK_PM_EPS_PER_CELL", "2.5"));
+
+    Map<String, String> env = manager.envFor(plan());
+
+    assertThat(env).containsEntry("FDB_PM_EPS_PER_CELL", "2.5");
+  }
+
+  private static BenchmarkRunPlan plan() {
+    return new BenchmarkRunPlan("bench-a", BenchmarkSink.NONE, 1000,
+        0.1, 100, 1.0, 1000, "bench-a-none-cells1000-eps1", "small");
   }
 }

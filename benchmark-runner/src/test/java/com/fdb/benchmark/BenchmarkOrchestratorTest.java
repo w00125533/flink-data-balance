@@ -35,10 +35,10 @@ class BenchmarkOrchestratorTest {
     assertThat(results).extracting(BenchmarkRunResult::status)
         .containsExactly(BenchmarkStatus.STABLE, BenchmarkStatus.UNSTABLE);
     assertThat(deploy.actions).containsExactly(
-        "prepare:bench-a-none-cells1000-eps100", "submit:bench-a-none-cells1000-eps100",
-        "stop:bench-a-none-cells1000-eps100",
-        "prepare:bench-a-none-cells3000-eps300", "submit:bench-a-none-cells3000-eps300",
-        "stop:bench-a-none-cells3000-eps300");
+        "prepare:bench-a-none-cells1000-chr-eps0.1", "submit:bench-a-none-cells1000-chr-eps0.1",
+        "stop:bench-a-none-cells1000-chr-eps0.1",
+        "prepare:bench-a-none-cells3000-chr-eps0.1", "submit:bench-a-none-cells3000-chr-eps0.1",
+        "stop:bench-a-none-cells3000-chr-eps0.1");
     assertThat(simulators.actions).contains("start:1000:100", "start:3000:300", "stop", "stop");
   }
 
@@ -62,9 +62,9 @@ class BenchmarkOrchestratorTest {
         new BenchmarkDecisionEngine(config.thresholds())).run();
 
     assertThat(events).containsSubsequence(
-        "prepare:bench-a-none-cells1000-eps300",
-        "start:1000:300",
-        "submit:bench-a-none-cells1000-eps300");
+        "prepare:bench-a-none-cells1000-chr-eps10",
+        "start:1000:10000",
+        "submit:bench-a-none-cells1000-chr-eps10");
   }
 
   @Test
@@ -152,8 +152,8 @@ class BenchmarkOrchestratorTest {
 
     @Override
     public void start(BenchmarkRunPlan plan) {
-      actions.add("start:" + plan.cellLevel() + ":" + plan.targetChrEps());
-      events.add("start:" + plan.cellLevel() + ":" + plan.targetChrEps());
+      actions.add("start:" + plan.cellLevel() + ":" + plan.targetChrTotalEps());
+      events.add("start:" + plan.cellLevel() + ":" + plan.targetChrTotalEps());
     }
 
     @Override

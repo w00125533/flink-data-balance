@@ -17,9 +17,9 @@ class BenchmarkMatrixTest {
     assertThat(BenchmarkMatrix.expand(config))
         .extracting(BenchmarkRunPlan::runId)
         .containsExactly(
-            "bench-20260716-153000-none-cells1000-eps300",
-            "bench-20260716-153000-none-cells3000-eps900",
-            "bench-20260716-153000-starrocks-cells1000-eps300",
-            "bench-20260716-153000-starrocks-cells3000-eps900");
+            "bench-20260716-153000-none-cells1000-chr-eps0.3",
+            "bench-20260716-153000-none-cells3000-chr-eps0.3",
+            "bench-20260716-153000-starrocks-cells1000-chr-eps0.3",
+            "bench-20260716-153000-starrocks-cells3000-chr-eps0.3");
   }
 }

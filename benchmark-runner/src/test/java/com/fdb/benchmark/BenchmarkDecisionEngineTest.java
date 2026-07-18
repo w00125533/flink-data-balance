@@ -125,8 +125,8 @@ class BenchmarkDecisionEngineTest {
   }
 
   private static BenchmarkRunPlan plan() {
-    return new BenchmarkRunPlan("bench-a", BenchmarkSink.NONE, 1000, 300, "bench-a-none-cells1000-eps300",
-        "benchmark-none");
+    return new BenchmarkRunPlan("bench-a", BenchmarkSink.NONE, 1000,
+        0.3, 300, 0.1, 100, "bench-a-none-cells1000-chr-eps0.3", "benchmark-none");
   }
 
   private static RunObservation healthy() {

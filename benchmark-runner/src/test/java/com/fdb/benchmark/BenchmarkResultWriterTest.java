@@ -17,14 +17,16 @@ class BenchmarkResultWriterTest {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-a",
         "FDB_BENCHMARK_SINKS", "none",
-        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_CHR_EPS_PER_CELL", "0.3",
+        "FDB_BENCHMARK_PM_EPS_PER_CELL", "0.1"));
     BenchmarkRunResult result = sampleResult(config);
 
     new BenchmarkResultWriter(tempDir).write(config, List.of(result));
 
     assertThat(tempDir.resolve("bench-a/benchmark-config.json")).exists();
     assertThat(tempDir.resolve("bench-a/benchmark-results.json")).exists();
-    Path sourceMetrics = tempDir.resolve("bench-a/runs/bench-a-none-cells1000-eps300/source-metrics.json");
+    Path sourceMetrics = tempDir.resolve("bench-a/runs/bench-a-none-cells1000-chr-eps0.3/source-metrics.json");
     assertThat(sourceMetrics).exists();
     assertThat(Files.readString(sourceMetrics))
         .contains("\"present\" : true")
@@ -36,8 +38,8 @@ class BenchmarkResultWriterTest {
         .contains("\"pmTargetEps\" : 100")
         .contains("\"cfgTargetEps\" : 250");
     String csv = Files.readString(tempDir.resolve("bench-a/benchmark-summary.csv"));
-    assertThat(csv).contains("sink,cellLevel,targetChrEps,status");
-    assertThat(csv).contains("none,1000,300,STABLE");
+    assertThat(csv).contains("sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status");
+    assertThat(csv).contains("none,1000,0.3,300,0.1,100,STABLE");
   }
 
   static BenchmarkRunResult sampleResult(BenchmarkConfig config) {
@@ -55,7 +57,8 @@ class BenchmarkResultWriterTest {
                 new FlinkOperatorEdge("kpi-1m", "sink-1"))),
         new FdbMetricsSnapshot(1, 2, 3, -1, 0, 5),
         new StorageSnapshot(true, "healthy", 10, 0, 0),
-        TopologyMetricsSnapshot.empty(),
+        new TopologyMetricsSnapshot(true, 1000, 200, 3, 50, 100, 180, 1000, 0,
+            39.7d, 40.2d, 116.0d, 116.8d),
         new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
             100, 1000, 100.0, 10_000, 0, 0,
             250, 1000, 1000.0, 0, 0, 0));

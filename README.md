@@ -129,13 +129,21 @@ FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local --dry-run
 The runner expands a `sink x cellLevel` matrix. For each run it sets a distinct
 `FDB_RUN_ID`, `FDB_RUN_LABEL` and `FDB_RESULT_SINK`, calls the target-specific
 `scripts/deploy.sh <target> prepare/submit/stop`, starts the local topology and
-simulator processes with `FDB_SITES_COUNT` and `FDB_RATE_EPS`, observes Flink
-REST plus the observability API, and stops higher pressure levels for a sink
-after the first unstable or failed run.
+simulator processes with `FDB_SITES_COUNT`, `FDB_RATE_EPS` and
+`FDB_PM_EPS_PER_CELL`, observes Flink REST plus the observability API, and stops
+higher pressure levels for a sink after the first unstable or failed run.
+
+`FDB_CHR_PRODUCER_THREADS` controls CHR producer worker threads inside the same
+simulator process. `FDB_RATE_EPS` remains the global CHR target EPS; worker
+threads split that target evenly and each worker uses its own Kafka producer.
 
 `cellLevel` 表示本轮目标生成小区数，不再乘站点数或每站小区估算。
-`Target CHR EPS = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`，表示整轮压测的全局
-CHR 每秒目标值，不是每小区 EPS。
+`Target CHR EPS = FDB_BENCHMARK_CHR_EPS_PER_CELL`，表示每小区每秒 CHR 目标输出记录数。
+全局 CHR EPS 使用 `Global CHR EPS = cellLevel * Target CHR EPS` 计算，并通过
+`FDB_RATE_EPS` 传给 CHR 模拟器。
+
+`Target PM EPS = FDB_BENCHMARK_PM_EPS_PER_CELL`，表示每小区每秒 PM 目标输出记录数。
+全局 PM EPS 使用 `Global PM EPS = cellLevel * Target PM EPS` 计算。
 
 `prepare` resets benchmark data before each run. For local runs it recreates the
 benchmark Kafka topics, truncates StarRocks result tables, and clears/recreates
@@ -147,7 +155,7 @@ set, passes that value into the Flink runtime, and writes the current run state
 to `logs/local-current.env` or `logs/external-yarn-current.env`. You can also set
 `FDB_RUN_ID` manually in the env file or command environment when rerunning a
 known benchmark label. In benchmark-runner mode, the per-run id is generated
-from the benchmark id, sink, cell count and target CHR EPS.
+from the benchmark id, sink, cell count and CHR EPS per cell.
 
 The runner writes static HTML and machine-readable artifacts under:
 
@@ -164,6 +172,10 @@ analysis.
 Each run directory contains `run.json`, `flink-snapshot.json`,
 `fdb-metrics-snapshot.json`, `storage-snapshot.json` and
 `topology-metrics.json`.
+
+单轮报告中的 `Published Topology Records` 是 topology-service 发布的小区拓扑
+记录数，通常等于 `cellLevel`；它不是 CHR/PM 事件生产量。CHR/PM 的事件量以
+`Source Density` 和 `source-metrics.json` 为准。
 
 The single-run report shows topology-service generation/publish metrics,
 operator throughput rates from Flink's per-vertex metrics API, and separate
@@ -185,8 +197,10 @@ Benchmark-specific environment variables:
 |---|---:|---|
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | Space- or comma-separated sink list: `starrocks`, `iceberg`, `hive`, `kafka`, `none` |
 | `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | Space- or comma-separated cell-count pressure levels |
-| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | CHR EPS multiplier per generated cell; global Target CHR EPS = `cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL` |
-| `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | Ratio of generated cells/users assigned to deterministic anomaly cohorts |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `10` | Target CHR EPS，每小区每秒生成的 CHR 条数；Global CHR EPS = `cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL` |
+| `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒生成的 PM 条数；Global PM EPS = `cellLevel * FDB_BENCHMARK_PM_EPS_PER_CELL` |
+| `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
+| `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | Ratio of generated cells/users assigned to deterministic anomaly cohorts; anomalous CHR records also converge to stable geohash6 hotspots for grid coverage-hole output |
 | `FDB_BENCHMARK_WARMUP_SEC` | `60` | Warmup time after submit and before measurement |
 | `FDB_BENCHMARK_DURATION_SEC` | `300` | Measurement time before stop/report |
 | `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | Intended observation poll interval for benchmark sampling |

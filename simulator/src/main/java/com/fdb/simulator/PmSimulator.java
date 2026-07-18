@@ -40,10 +40,13 @@ public class PmSimulator {
         }
 
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_PM_METRICS_FILE");
-        long targetEps = targetEpsForWindow(cells.size());
+        double epsPerCell = pmEpsPerCell(config);
+        long targetEps = targetEpsForCellRate(cells.size(), epsPerCell);
+        long publishIntervalMs = publishIntervalMs(epsPerCell);
         double anomalyInjectionRatio = anomalyInjectionRatio(config);
         try (KafkaPublisher<PmStat> publisher = new KafkaPublisher<>(bootstrap, topic, PmStat.class)) {
             long metricsStartMs = System.currentTimeMillis();
+            long nextPublishAtMs = metricsStartMs;
             while (!Thread.currentThread().isInterrupted()) {
                 long wallNow = System.currentTimeMillis();
                 long windowEnd = alignTo10s(wallNow);
@@ -76,9 +79,13 @@ public class PmSimulator {
                     log.info(SummarySwitch.format("sim-pm", "window_ts", windowStart + ".." + windowEnd));
                 }
 
-                long nextBoundary = windowEnd + 10_000;
-                long sleepMs = nextBoundary - System.currentTimeMillis();
-                if (sleepMs > 0) Thread.sleep(sleepMs);
+                nextPublishAtMs += publishIntervalMs;
+                long sleepMs = nextPublishAtMs - System.currentTimeMillis();
+                if (sleepMs > 0) {
+                    Thread.sleep(sleepMs);
+                } else {
+                    nextPublishAtMs = System.currentTimeMillis();
+                }
             }
         }
     }
@@ -146,6 +153,28 @@ public class PmSimulator {
 
     static long targetEpsForWindow(int cellCount) {
         return cellCount <= 0 ? 0L : Math.max(1L, Math.round(cellCount / 10.0d));
+    }
+
+    static long targetEpsForCellRate(int cellCount, double epsPerCell) {
+        if (cellCount <= 0) {
+            return 0L;
+        }
+        return Math.max(1L, Math.round(cellCount * validatePmEpsPerCell(epsPerCell)));
+    }
+
+    static long publishIntervalMs(double epsPerCell) {
+        return Math.max(1L, Math.round(1000.0d / validatePmEpsPerCell(epsPerCell)));
+    }
+
+    static double pmEpsPerCell(SimulatorConfig config) {
+        return validatePmEpsPerCell(config.getDouble("pm.eps.per.cell", 0.1d));
+    }
+
+    static double validatePmEpsPerCell(double epsPerCell) {
+        if (!Double.isFinite(epsPerCell) || epsPerCell <= 0.0d) {
+            throw new IllegalArgumentException("FDB_PM_EPS_PER_CELL must be a finite positive number");
+        }
+        return epsPerCell;
     }
 
     static AnomalyValues anomalousValues() {

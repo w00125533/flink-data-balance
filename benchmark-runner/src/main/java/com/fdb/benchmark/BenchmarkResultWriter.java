@@ -38,13 +38,16 @@ public final class BenchmarkResultWriter {
 
   private static String csv(List<BenchmarkRunResult> results) {
     StringBuilder out = new StringBuilder();
-    out.append("sink,cellLevel,targetChrEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,")
+    out.append("sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,")
         .append("sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId\n");
     for (BenchmarkRunResult result : results) {
       BenchmarkRunPlan plan = result.plan();
       out.append(plan.sink().value()).append(',')
           .append(plan.cellLevel()).append(',')
-          .append(plan.targetChrEps()).append(',')
+          .append(rateValue(plan.targetChrEpsPerCell())).append(',')
+          .append(plan.targetChrTotalEps()).append(',')
+          .append(rateValue(plan.targetPmEpsPerCell())).append(',')
+          .append(plan.targetPmTotalEps()).append(',')
           .append(result.status()).append(',')
           .append(result.flink().recordsInPerSec()).append(',')
           .append(result.flink().recordsOutPerSec()).append(',')
@@ -69,5 +72,9 @@ public final class BenchmarkResultWriter {
       return '"' + value.replace("\"", "\"\"") + '"';
     }
     return value;
+  }
+
+  private static String rateValue(double value) {
+    return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
   }
 }

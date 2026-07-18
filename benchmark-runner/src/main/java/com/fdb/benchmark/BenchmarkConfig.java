@@ -17,6 +17,7 @@ public record BenchmarkConfig(
     List<BenchmarkSink> sinks,
     List<Integer> cellLevels,
     double chrEpsPerCell,
+    double pmEpsPerCell,
     double anomalyInjectionRatio,
     long warmupSec,
     long durationSec,
@@ -49,7 +50,8 @@ public record BenchmarkConfig(
         sanitize(valueOrDefault(env, "FDB_BENCHMARK_ID", defaultId)),
         List.copyOf(sinks),
         List.copyOf(cellLevels),
-        BenchmarkThresholds.doubleValue(env, "FDB_BENCHMARK_CHR_EPS_PER_CELL", 0.3),
+        finiteNonNegativeDouble(env, "FDB_BENCHMARK_CHR_EPS_PER_CELL", 10.0),
+        finitePositiveDouble(env, "FDB_BENCHMARK_PM_EPS_PER_CELL", 1.0),
         boundedRatio(env, "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", 0.05),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_WARMUP_SEC", 60),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DURATION_SEC", 300),
@@ -61,8 +63,12 @@ public record BenchmarkConfig(
         BenchmarkThresholds.from(env));
   }
 
-  public long targetChrEps(int cellLevel) {
+  public long targetChrTotalEps(int cellLevel) {
     return Math.round(cellLevel * chrEpsPerCell);
+  }
+
+  public long targetPmTotalEps(int cellLevel) {
+    return Math.round(cellLevel * pmEpsPerCell);
   }
 
   static String sanitize(String raw) {
@@ -114,6 +120,22 @@ public record BenchmarkConfig(
       throw new IllegalArgumentException(key + " must be between 0 and 1");
     }
     return ratio;
+  }
+
+  private static double finiteNonNegativeDouble(Map<String, String> env, String key, double defaultValue) {
+    double value = BenchmarkThresholds.doubleValue(env, key, defaultValue);
+    if (!Double.isFinite(value) || value < 0.0d) {
+      throw new IllegalArgumentException(key + " must be a finite non-negative number");
+    }
+    return value;
+  }
+
+  private static double finitePositiveDouble(Map<String, String> env, String key, double defaultValue) {
+    double value = BenchmarkThresholds.doubleValue(env, key, defaultValue);
+    if (!Double.isFinite(value) || value <= 0.0d) {
+      throw new IllegalArgumentException(key + " must be a finite positive number");
+    }
+    return value;
   }
 
   private static long positiveLong(Map<String, String> env, String key, long defaultValue) {

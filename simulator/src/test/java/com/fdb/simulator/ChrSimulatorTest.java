@@ -7,7 +7,11 @@ import com.fdb.common.avro.ChrEvent;
 import com.fdb.common.avro.ChrEventType;
 import com.fdb.common.avro.TopoCellType;
 import com.fdb.common.avro.TopologyRecord;
+import com.fdb.common.geo.Geohash;
 import org.junit.jupiter.api.Test;
+
+import java.util.HashSet;
+import java.util.Set;
 
 class ChrSimulatorTest {
     @Test
@@ -23,6 +27,26 @@ class ChrSimulatorTest {
         assertThat(ChrSimulator.backlogRecords(900L, 1_000L)).isZero();
         assertThat(ChrSimulator.undeliveredRecords(1_000L, 960L)).isEqualTo(40L);
         assertThat(ChrSimulator.undeliveredRecords(960L, 1_000L)).isZero();
+    }
+
+    @Test
+    void splits_global_target_eps_across_producer_threads_without_losing_records() {
+        long[] threadTargets = ChrSimulator.splitTargetEps(500_003L, 4);
+
+        assertThat(threadTargets).containsExactly(125_001L, 125_001L, 125_001L, 125_000L);
+        assertThat(java.util.Arrays.stream(threadTargets).sum()).isEqualTo(500_003L);
+    }
+
+    @Test
+    void rejects_invalid_chr_producer_thread_count() {
+        assertThat(ChrSimulator.validateProducerThreads(1)).isEqualTo(1);
+        assertThat(ChrSimulator.validateProducerThreads(8)).isEqualTo(8);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ChrSimulator.validateProducerThreads(0))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("FDB_CHR_PRODUCER_THREADS");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ChrSimulator.validateProducerThreads(257))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("FDB_CHR_PRODUCER_THREADS");
     }
 
     @Test
@@ -70,6 +94,25 @@ class ChrSimulatorTest {
     }
 
     @Test
+    void anomalous_events_converge_to_stable_grid_hotspots_for_coverage_detection() {
+        ChrSimulator simulator = new ChrSimulator("unused");
+        Set<String> geohashes = new HashSet<>();
+
+        for (int i = 0; i < 200; i++) {
+            ChrEvent event = simulator.generateEvent(
+                cell("cell-" + i, 39.5d + i * 0.002d, 116.0d + i * 0.002d),
+                "imsi-" + i,
+                123_456L + i,
+                0.0d,
+                5_000L,
+                1.0d);
+            geohashes.add(Geohash.encode(event.getLatitude(), event.getLongitude(), 6));
+        }
+
+        assertThat(geohashes).hasSizeLessThanOrEqualTo(4);
+    }
+
+    @Test
     void normal_events_allow_nullable_optional_measurement_fields() {
         ChrSimulator simulator = new ChrSimulator("unused");
 
@@ -90,11 +133,15 @@ class ChrSimulatorTest {
     }
 
     private static TopologyRecord cell(String cellId) {
+        return cell(cellId, 39.9d, 116.4d);
+    }
+
+    private static TopologyRecord cell(String cellId, double latitude, double longitude) {
         return TopologyRecord.newBuilder()
             .setSiteId("site-a")
             .setCellId(cellId)
-            .setSiteLat(39.9d)
-            .setSiteLon(116.4d)
+            .setSiteLat(latitude)
+            .setSiteLon(longitude)
             .setCellType(TopoCellType.NR_SA)
             .setCellIndex(1)
             .setPci(10)

@@ -11,6 +11,7 @@ import java.util.Map;
 public final class JavaSimulatorProcessManager implements SimulatorProcessManager {
   private static final String ANOMALY_RATIO_ENV = "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO";
   private static final String DEFAULT_ANOMALY_RATIO = "0.05";
+  private static final String DEFAULT_PM_EPS_PER_CELL = "1.0";
 
   private final Map<String, String> baseEnv;
   private final Path outputRoot;
@@ -79,7 +80,9 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
     }
     env.put("FDB_SITES_COUNT", String.valueOf(plan.cellLevel()));
     env.put("FDB_TOPOLOGY_TARGET_CELLS", String.valueOf(plan.cellLevel()));
-    env.put("FDB_RATE_EPS", String.valueOf(plan.targetChrEps()));
+    env.put("FDB_RATE_EPS", String.valueOf(plan.targetChrTotalEps()));
+    env.put("FDB_PM_EPS_PER_CELL", valueOrDefault(baseEnv.get("FDB_PM_EPS_PER_CELL"),
+        valueOrDefault(baseEnv.get("FDB_BENCHMARK_PM_EPS_PER_CELL"), DEFAULT_PM_EPS_PER_CELL)));
     env.put("FDB_E2E_SUMMARY", "1");
     env.put("FDB_SIM_SUMMARY", "1");
     env.put("FDB_TOPOLOGY_SUMMARY", "1");

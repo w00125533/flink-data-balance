@@ -796,9 +796,12 @@ The Java `benchmark-runner` owns sink upper-bound benchmarking:
 - run a `sink x cellLevel` matrix;
 - use generated cell count as the primary pressure multiplier;
 - treat `cellLevel` as the target generated cell count, not site count;
-- calculate `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`;
-- `Target CHR EPS` 表示整轮压测的全局 CHR EPS，不是每小区 EPS；`cellLevel`
-  表示目标生成小区数，不再乘站点数或每站小区估算;
+- calculate `targetChrEpsPerCell = FDB_BENCHMARK_CHR_EPS_PER_CELL`;
+- calculate `targetChrTotalEps = cellLevel * targetChrEpsPerCell`;
+- calculate `targetPmEpsPerCell = FDB_BENCHMARK_PM_EPS_PER_CELL`;
+- calculate `targetPmTotalEps = cellLevel * targetPmEpsPerCell`;
+- `Target CHR EPS` 表示每小区每秒 CHR 目标输出记录数；全局总压力量使用
+  `Global CHR EPS = cellLevel * Target CHR EPS` 表示；
 - call `deploy.sh <target> prepare` before each run to reset benchmark data;
 - start topology-service plus CFG/PM/CHR simulators on the runner host;
 - submit and stop Flink through the existing `deploy.sh <target> submit/stop`
@@ -813,7 +816,9 @@ First-version benchmark matrix:
 ```text
 FDB_BENCHMARK_SINKS=none starrocks kafka hive iceberg
 FDB_BENCHMARK_CELL_LEVELS=10000 20000 40000
-FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3
+FDB_BENCHMARK_CHR_EPS_PER_CELL=10
+FDB_BENCHMARK_PM_EPS_PER_CELL=1
+FDB_CHR_PRODUCER_THREADS=6
 FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05
 FDB_BENCHMARK_WARMUP_SEC=60
 FDB_BENCHMARK_DURATION_SEC=300
@@ -825,17 +830,19 @@ Pressure model:
   benchmark multiplier. The topology generator should translate this into a
   site count or stop after the target cell count is reached.
 - CFG baseline records grow with cell count.
-- PM emits roughly one record per cell every 10 seconds.
-- CHR total target EPS grows linearly with generated cell count.
-- `Target CHR EPS` is a global per-second target for the whole benchmark run,
-  not per-cell EPS. For example, `cellLevel=50000` and
-  `FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3` means global target CHR EPS is `15000`.
+- PM and CHR total EPS grow linearly with generated cell count.
+- `Target CHR EPS` is the per-cell per-second CHR output target. For example,
+  `FDB_BENCHMARK_CHR_EPS_PER_CELL=10` means each generated cell targets 10 CHR
+  records/s; with `cellLevel=50000`, `Global CHR EPS` is `500000`.
+- `Target PM EPS` follows the same per-cell model. For example,
+  `FDB_BENCHMARK_PM_EPS_PER_CELL=1` means each generated cell targets 1 PM
+  record/s; with `cellLevel=50000`, `Global PM EPS` is `50000`.
 - KPI and sink output volume grow with active cells.
 
 Run id format:
 
 ```text
-<benchmarkId>-<sink>-cells<cellLevel>-eps<targetChrEps>
+<benchmarkId>-<sink>-cells<cellLevel>-chr-eps<targetChrEpsPerCell>
 ```
 
 Observation sources:
@@ -875,7 +882,8 @@ FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS=0
 
 关键压测变量语义：
 
-- `FDB_BENCHMARK_CHR_EPS_PER_CELL=0.3`：用于计算全局 Target CHR EPS。
+- `FDB_BENCHMARK_CHR_EPS_PER_CELL=10`：Target CHR EPS，每小区每秒 CHR 目标输出记录数；全局总压力量为 `cellLevel * Target CHR EPS`。
+- `FDB_BENCHMARK_PM_EPS_PER_CELL=1`：Target PM EPS，每小区每秒 PM 目标输出记录数；全局总压力量为 `cellLevel * Target PM EPS`。
 - `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05`：5% cell 和 5% user 进入确定性异常 cohort。
 - `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO=0.98`：source 实际交付率低于目标 98% 时判定 unstable。
 - `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS=0`：source backlog 超过 0 条即判定 unstable。
@@ -928,9 +936,14 @@ Benchmark source pacing and latency rules:
   cannot deliver at least `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` of target
   EPS after warmup, the run is `unstable` because the pressure source itself is
   saturated.
+- CHR simulator can use `FDB_CHR_PRODUCER_THREADS` producer worker threads
+  inside one process. `FDB_RATE_EPS` remains the global target EPS; workers split
+  that target evenly and each worker owns an independent Kafka producer.
 - PM and CFG simulators publish according to their business cadence; the report
   must show total records, records/s, records/cell total, and records/s/cell for
   CHR, PM, and CFG.
+- Topology `Published Topology Records` counts topology-service cell records and
+  usually equals `cellLevel`; it is not CHR/PM event volume.
 - Kafka/Flink source backlog is part of stability judgment. A run is
   `unstable` when source lag/backlog grows beyond the configured threshold even
   if downstream sink latency has not crossed its threshold yet.
@@ -954,6 +967,11 @@ Benchmark anomaly injection:
 - User anomaly injection is cohort-based. The selected users produce consecutive
   access failure or QoE-bad CHR events within the configured user anomaly window
   so user anomaly rules can activate.
+- Grid anomaly injection is also data-source driven. Anomalous CHR records keep
+  the same low RSRP/SINR and failure fields, and their latitude/longitude
+  converge to a small set of stable geohash6 hotspots so the existing
+  `CoverageHoleDetector` can reach its per-grid low-signal threshold and emit
+  `COVERAGE_HOLE` without synthetic downstream events.
 - Injected anomalies are marked only through ordinary CHR/PM field values; the
   Flink detection logic still relies on the same business rules and dedup state
   used in non-benchmark runs.
@@ -962,7 +980,7 @@ Benchmark anomaly injection:
 施加了多大压力、发现了什么瓶颈或告警、下一步建议调优什么；下方再按结构化分区
 展示明细，不再把 Java `toString()` 输出作为主要阅读内容：
 
-- 运行摘要：sink、cell level、目标 CHR EPS、实际 in/out EPS、target、warmup、
+- 运行摘要：sink、cell level、Target CHR/PM EPS、Global CHR/PM EPS、实际 in/out EPS、target、warmup、
   duration、最终状态和瓶颈原因；
 - Flink 资源：job status、TaskManager 数、slots、job 并行度、checkpoint
   duration/failure、restart/fail/cancel 信号和 backpressure；
@@ -1086,7 +1104,9 @@ cleanup.policy=compact
 | `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | `benchmark-runner` 顺序执行的 sink 列表，支持空格或逗号分隔 |
 | `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | 小区数升压档位；第一版用小区数作为主压力倍率 |
-| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `0.3` | 每小区 CHR EPS；全局 Target CHR EPS = cellLevel * epsPerCell |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `10` | Target CHR EPS，每小区每秒 CHR 目标输出记录数；Global CHR EPS = cellLevel * epsPerCell |
+| `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒 PM 目标输出记录数；Global PM EPS = cellLevel * epsPerCell |
+| `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | 压测异常注入比例；5% cell 和 5% user 进入确定性异常 cohort |
 | `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` | `0.98` | producer 实际交付率低于目标 EPS 的比例阈值时，本轮 unstable |
 | `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS` | `0` | source backlog 容忍阈值；持续增长或超过阈值时，本轮 unstable |
@@ -1395,8 +1415,8 @@ DLQ：
   `unstable` 或 `failed` 后停止该 sink 后续更高档位。
 - 压力倍率以小区数为主。`cellLevel` 控制 topology size、CFG baseline、
   PM 窗口记录数、KPI key 空间和 sink 写入规模。
-- CHR 总 EPS 由 `targetChrEps = cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL`
-  计算。`Target CHR EPS` 表示整轮压测的全局每秒 CHR 目标值，不是每小区 EPS。
+- Target CHR EPS 由 `FDB_BENCHMARK_CHR_EPS_PER_CELL` 配置，表示每小区每秒
+  CHR 目标输出记录数；Global CHR EPS 由 `cellLevel * Target CHR EPS` 计算。
 - CHR 模拟器必须按目标全局 EPS 做每秒节奏控制；producer 实际交付率低于阈值，
   或 Kafka/Flink source backlog 持续增长时，本轮判定为 `unstable`。
 - 压测异常注入默认 `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05`，5% cell

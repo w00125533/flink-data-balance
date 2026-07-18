@@ -20,6 +20,7 @@ class BenchmarkRunnerMainTest {
         FDB_BENCHMARK_SINKS=none
         FDB_BENCHMARK_CELL_LEVELS=1000
         FDB_BENCHMARK_CHR_EPS_PER_CELL=0.1
+        FDB_BENCHMARK_PM_EPS_PER_CELL=0.2
         """);
 
     Path runDir = Path.of("benchmark-runner/output/benchmark-runs/bench-dry");
@@ -28,10 +29,13 @@ class BenchmarkRunnerMainTest {
 
       assertThat(exit).isZero();
       assertThat(runDir.resolve("index.html")).exists();
-      Path report = runDir.resolve("runs/bench-dry-none-cells1000-eps100/report.html");
+      Path report = runDir.resolve("runs/bench-dry-none-cells1000-chr-eps0.1/report.html");
       assertThat(report).exists();
       assertThat(Files.readString(report))
-          .contains("<tr><th>Target CHR EPS</th><td>100</td></tr>")
+          .contains("<tr><th>Target CHR EPS</th><td>0.1 records/cell/s</td></tr>")
+          .contains("<tr><th>Global CHR EPS</th><td>100 records/s</td></tr>")
+          .contains("<tr><th>Target PM EPS</th><td>0.2 records/cell/s</td></tr>")
+          .contains("<tr><th>Global PM EPS</th><td>200 records/s</td></tr>")
           .contains("<tr><th>Source Throughput Attainment</th><td>98.00%</td></tr>")
           .contains("<tr><th>CHR total</th><td>200</td><td>98.00</td>")
           .contains("Operator Flow")

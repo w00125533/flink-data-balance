@@ -13,8 +13,7 @@ class SourceMetricsSnapshotTest {
 
   @Test
   void reads_chr_pm_cfg_metrics_and_computes_delivery() throws Exception {
-    BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
-        "bench-starrocks-cells1000-eps300", "starrocks");
+    BenchmarkRunPlan plan = plan();
     Path runDir = SourceMetricsSnapshot.runDir(tempDir, plan);
     Files.createDirectories(runDir);
     Files.writeString(runDir.resolve("chr-source-metrics.json"),
@@ -51,8 +50,7 @@ class SourceMetricsSnapshotTest {
 
   @Test
   void skips_bad_source_file_and_keeps_other_sources() throws Exception {
-    BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
-        "bench-starrocks-cells1000-eps300", "starrocks");
+    BenchmarkRunPlan plan = plan();
     Path runDir = SourceMetricsSnapshot.runDir(tempDir, plan);
     Files.createDirectories(runDir);
     Files.writeString(runDir.resolve("chr-source-metrics.json"), "{\"source\":\"chr\",");
@@ -71,8 +69,7 @@ class SourceMetricsSnapshotTest {
 
   @Test
   void retries_when_metrics_path_is_temporarily_not_a_file() throws Exception {
-    BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
-        "bench-starrocks-cells1000-eps300", "starrocks");
+    BenchmarkRunPlan plan = plan();
     Path runDir = SourceMetricsSnapshot.runDir(tempDir, plan);
     Path chrMetrics = runDir.resolve("chr-source-metrics.json");
     Files.createDirectories(chrMetrics);
@@ -106,12 +103,16 @@ class SourceMetricsSnapshotTest {
 
   @Test
   void throws_when_metrics_path_is_directory() throws Exception {
-    BenchmarkRunPlan plan = new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000, 300,
-        "bench-starrocks-cells1000-eps300", "starrocks");
+    BenchmarkRunPlan plan = plan();
     Path runDir = SourceMetricsSnapshot.runDir(tempDir, plan);
     Files.createDirectories(runDir.resolve("chr-source-metrics.json"));
 
     assertThatThrownBy(() -> SourceMetricsSnapshot.read(tempDir, plan))
         .isInstanceOf(java.io.IOException.class);
+  }
+
+  private static BenchmarkRunPlan plan() {
+    return new BenchmarkRunPlan("bench", BenchmarkSink.STARROCKS, 1000,
+        0.3, 300, 0.1, 100, "bench-starrocks-cells1000-chr-eps0.3", "starrocks");
   }
 }

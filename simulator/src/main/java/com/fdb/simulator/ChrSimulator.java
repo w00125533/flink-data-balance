@@ -7,6 +7,9 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -15,6 +18,14 @@ public class ChrSimulator {
 
     private static final Logger log = LoggerFactory.getLogger(ChrSimulator.class);
     private static final long DEFAULT_LOOP_INTERVAL_MS = 100L;
+    private static final long METRICS_INTERVAL_MS = 1_000L;
+    private static final int MAX_PRODUCER_THREADS = 256;
+    private static final Coordinate[] ANOMALY_GRID_HOTSPOTS = {
+        new Coordinate(39.9042d, 116.4074d),
+        new Coordinate(39.9142d, 116.3974d),
+        new Coordinate(39.8942d, 116.4174d),
+        new Coordinate(39.8842d, 116.3974d)
+    };
 
     private static final List<String> IMSI_PREFIXES = List.of("46000", "46001", "46002", "46003", "46004");
     private static final List<String> IMEI_POOL = IntStream.range(0, 500)
@@ -54,57 +65,63 @@ public class ChrSimulator {
         double lambdaPerCell = (double) baseEps / totalCells;
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CHR_METRICS_FILE");
         double anomalyInjectionRatio = anomalyInjectionRatio(config);
+        int producerThreads = producerThreads(config);
         if (summaryEnabled) {
             log.info(SummarySwitch.format("sim-chr", "configured_base_eps", baseEps));
             log.info(SummarySwitch.format("sim-chr", "lambda_per_cell", String.format("%.3f", lambdaPerCell)));
             log.info(SummarySwitch.format("sim-chr", "anomaly_injection_ratio",
                 String.format("%.3f", anomalyInjectionRatio)));
+            log.info(SummarySwitch.format("sim-chr", "producer_threads", producerThreads));
         }
 
-        try (KafkaPublisher<ChrEvent> publisher = new KafkaPublisher<>(bootstrap, topic, ChrEvent.class)) {
-            long startTime = System.currentTimeMillis();
-            long counter = 0;
-
+        long startTime = System.currentTimeMillis();
+        long[] threadTargets = splitTargetEps(baseEps, producerThreads);
+        List<ChrProducerWorker> workers = new ArrayList<>(producerThreads);
+        List<Thread> threads = new ArrayList<>(producerThreads);
+        for (int i = 0; i < producerThreads; i++) {
+            ChrProducerWorker worker = new ChrProducerWorker(
+                i,
+                threadTargets[i],
+                startTime,
+                bootstrap,
+                topic,
+                cells,
+                cellUsers,
+                config.getDouble("rate.outOfOrderProb", 0.05),
+                config.getLong("rate.maxOutOfOrderLagMs", 5000),
+                anomalyInjectionRatio);
+            workers.add(worker);
+            threads.add(new Thread(worker, "chr-producer-" + i));
+        }
+        try {
+            threads.forEach(Thread::start);
+            long lastLoggedDelivered = 0L;
             while (!Thread.currentThread().isInterrupted()) {
-                long now = System.currentTimeMillis();
-                long due = dueEvents(baseEps, startTime, now, counter);
-                for (long i = 0; i < due; i++) {
-                    TopologyRecord cell = cells.get(rng.nextInt(cells.size()));
-                    List<String> users = cellUsers.get(cell.getCellId().toString());
-                    if (users == null || users.isEmpty()) {
-                        continue;
-                    }
-
-                    String imsi = users.get(rng.nextInt(users.size()));
-                    ChrEvent event = generateEvent(cell, imsi, now,
-                        config.getDouble("rate.outOfOrderProb", 0.05),
-                        config.getLong("rate.maxOutOfOrderLagMs", 5000),
-                        anomalyInjectionRatio);
-                    publisher.publish(cell.getSiteId().toString(), event);
-                    counter++;
-
-                    if (counter % 10000 == 0) {
-                        publisher.flush();
-                        double eps = counter / ((System.currentTimeMillis() - startTime) / 1000.0 + 1);
-                        log.info("Published {} CHR events (EPS: {})", counter, eps);
-                        if (summaryEnabled) {
-                            log.info(SummarySwitch.format("sim-chr", "events_published", counter));
-                            log.info(SummarySwitch.format("sim-chr", "observed_eps", String.format("%.1f", eps)));
-                        }
-                    }
+                Throwable failure = firstWorkerFailure(workers);
+                if (failure != null) {
+                    throw new IllegalStateException("CHR producer worker failed", failure);
                 }
                 long metricsNow = System.currentTimeMillis();
                 long durationMs = Math.max(0L, metricsNow - startTime);
-                long delivered = publisher.deliveredRecords();
+                long submitted = sumSubmittedRecords(workers);
+                long delivered = sumDeliveredRecords(workers);
                 double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
                 long expected = expectedEvents(baseEps, startTime, metricsNow);
-                long pending = backlogRecords(expected, counter);
+                long pending = backlogRecords(expected, submitted);
                 sourceMetrics.write("chr", baseEps, delivered, observedEps, durationMs,
-                    pending, undeliveredRecords(counter, delivered));
-
-                long elapsed = System.currentTimeMillis() - now;
-                if (elapsed < DEFAULT_LOOP_INTERVAL_MS) Thread.sleep(DEFAULT_LOOP_INTERVAL_MS - elapsed);
+                    pending, undeliveredRecords(submitted, delivered));
+                if (delivered - lastLoggedDelivered >= 100_000L) {
+                    lastLoggedDelivered = delivered;
+                    log.info("Published {} CHR events (EPS: {})", delivered, observedEps);
+                    if (summaryEnabled) {
+                        log.info(SummarySwitch.format("sim-chr", "events_published", delivered));
+                        log.info(SummarySwitch.format("sim-chr", "observed_eps", String.format("%.1f", observedEps)));
+                    }
+                }
+                Thread.sleep(METRICS_INTERVAL_MS);
             }
+        } finally {
+            stopWorkers(workers, threads);
         }
     }
 
@@ -137,6 +154,30 @@ public class ChrSimulator {
 
     static boolean inAnomalyCohort(String id, double ratio) {
         return AnomalyInjection.inAnomalyCohort(id, ratio);
+    }
+
+    static int producerThreads(SimulatorConfig config) {
+        return validateProducerThreads(config.getLong("chr.producer.threads", 1L));
+    }
+
+    static int validateProducerThreads(long threads) {
+        if (threads < 1 || threads > MAX_PRODUCER_THREADS) {
+            throw new IllegalArgumentException(
+                "FDB_CHR_PRODUCER_THREADS must be between 1 and " + MAX_PRODUCER_THREADS);
+        }
+        return (int) threads;
+    }
+
+    static long[] splitTargetEps(long targetEps, int producerThreads) {
+        int threads = validateProducerThreads(producerThreads);
+        long normalizedTarget = Math.max(0L, targetEps);
+        long[] targets = new long[threads];
+        long base = normalizedTarget / threads;
+        long remainder = normalizedTarget % threads;
+        for (int i = 0; i < threads; i++) {
+            targets[i] = base + (i < remainder ? 1L : 0L);
+        }
+        return targets;
     }
 
     static double anomalyInjectionRatio(SimulatorConfig config) {
@@ -194,21 +235,28 @@ public class ChrSimulator {
     ChrEvent generateEvent(TopologyRecord cell, String imsi, long now,
                            double outOfOrderProbability, long maxOutOfOrderLagMs,
                            double anomalyInjectionRatio) {
+        return generateEvent(cell, imsi, now, outOfOrderProbability, maxOutOfOrderLagMs,
+            anomalyInjectionRatio, rng);
+    }
+
+    private ChrEvent generateEvent(TopologyRecord cell, String imsi, long now,
+                           double outOfOrderProbability, long maxOutOfOrderLagMs,
+                           double anomalyInjectionRatio, Random random) {
         double distKm = haversine(cell.getSiteLat(), cell.getSiteLon(),
-            cell.getSiteLat() + rng.nextGaussian() * 0.001,
-            cell.getSiteLon() + rng.nextGaussian() * 0.001);
+            cell.getSiteLat() + random.nextGaussian() * 0.001,
+            cell.getSiteLon() + random.nextGaussian() * 0.001);
         double maxDist = cell.getCoverageRadiusM() / 1000.0;
         double signalQuality = Math.max(0, 1.0 - (distKm / Math.max(maxDist, 0.1)));
 
-        float rsrp = (float) (-80 - (1 - signalQuality) * 50 + rng.nextGaussian() * 5);
-        float sinr = (float) (signalQuality * 25 + rng.nextGaussian() * 3);
-        float rsrq = (float) (-5 - (1 - signalQuality) * 10 + rng.nextGaussian() * 2);
+        float rsrp = (float) (-80 - (1 - signalQuality) * 50 + random.nextGaussian() * 5);
+        float sinr = (float) (signalQuality * 25 + random.nextGaussian() * 3);
+        float rsrq = (float) (-5 - (1 - signalQuality) * 10 + random.nextGaussian() * 2);
 
-        int cqi = Math.max(0, Math.min(15, (int) (signalQuality * 15 + rng.nextGaussian())));
-        int mcs = Math.max(0, Math.min(28, (int) (signalQuality * 28 + rng.nextGaussian())));
+        int cqi = Math.max(0, Math.min(15, (int) (signalQuality * 15 + random.nextGaussian())));
+        int mcs = Math.max(0, Math.min(28, (int) (signalQuality * 28 + random.nextGaussian())));
 
         ChrEventType[] eventTypes = ChrEventType.values();
-        ChrEventType eventType = eventTypes[rng.nextInt(eventTypes.length)];
+        ChrEventType eventType = eventTypes[random.nextInt(eventTypes.length)];
         boolean anomalous = inAnomalyCohort(imsi, anomalyInjectionRatio)
             || inAnomalyCohort(cell.getCellId().toString(), anomalyInjectionRatio);
         if (anomalous) {
@@ -220,22 +268,26 @@ public class ChrSimulator {
             mcs = 1;
         }
 
-        int outOfOrderLag = rng.nextDouble() < outOfOrderProbability
-            ? rng.nextInt((int) Math.max(1, maxOutOfOrderLagMs)) + 100 : 0;
+        int outOfOrderLag = random.nextDouble() < outOfOrderProbability
+            ? random.nextInt((int) Math.max(1, maxOutOfOrderLagMs)) + 100 : 0;
         int resultCode = anomalous || eventType == ChrEventType.RRC_SETUP_FAIL || eventType == ChrEventType.DETACH
             ? 1 : 0;
         boolean dataSession = eventType == ChrEventType.DATA_SESSION;
         Long durationMs = anomalous ? Long.valueOf(60_000L)
-            : dataSession ? Long.valueOf((long) (1000 + rng.nextDouble() * 30000)) : null;
-        Long bytesUp = dataSession ? Long.valueOf((long) (1024 + rng.nextDouble() * 1024 * 1024)) : null;
-        Long bytesDown = dataSession ? Long.valueOf((long) (2048 + rng.nextDouble() * 10 * 1024 * 1024)) : null;
+            : dataSession ? Long.valueOf((long) (1000 + random.nextDouble() * 30000)) : null;
+        Long bytesUp = dataSession ? Long.valueOf((long) (1024 + random.nextDouble() * 1024 * 1024)) : null;
+        Long bytesDown = dataSession ? Long.valueOf((long) (2048 + random.nextDouble() * 10 * 1024 * 1024)) : null;
         Float latencyMs = anomalous ? Float.valueOf(2_500.0f) : null;
+        Coordinate eventLocation = anomalous
+            ? anomalyGridHotspot(cell, imsi)
+            : new Coordinate(cell.getSiteLat() + random.nextGaussian() * 0.002,
+                cell.getSiteLon() + random.nextGaussian() * 0.002);
 
         return ChrEvent.newBuilder()
             .setChrId(UUID.randomUUID().toString())
             .setEventTs(now - outOfOrderLag)
             .setImsi(imsi)
-            .setImei(IMEI_POOL.get(rng.nextInt(IMEI_POOL.size())))
+            .setImei(IMEI_POOL.get(random.nextInt(IMEI_POOL.size())))
             .setSiteId(cell.getSiteId().toString())
             .setCellId(cell.getCellId().toString())
             .setEventType(eventType)
@@ -247,8 +299,8 @@ public class ChrSimulator {
             .setMnc(cell.getMnc().toString())
             .setArfcn(cell.getArfcn())
             .setResultCode(resultCode)
-            .setLatitude(cell.getSiteLat() + rng.nextGaussian() * 0.002)
-            .setLongitude(cell.getSiteLon() + rng.nextGaussian() * 0.002)
+            .setLatitude(eventLocation.latitude())
+            .setLongitude(eventLocation.longitude())
             .setRsrp(rsrp)
             .setRsrq(rsrq)
             .setSinr(sinr)
@@ -261,6 +313,56 @@ public class ChrSimulator {
             .build();
     }
 
+    private static long sumSubmittedRecords(List<ChrProducerWorker> workers) {
+        return workers.stream().mapToLong(ChrProducerWorker::submittedRecords).sum();
+    }
+
+    private static long sumDeliveredRecords(List<ChrProducerWorker> workers) {
+        return workers.stream().mapToLong(ChrProducerWorker::deliveredRecords).sum();
+    }
+
+    private static Throwable firstWorkerFailure(List<ChrProducerWorker> workers) {
+        return workers.stream()
+            .map(ChrProducerWorker::failure)
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElse(null);
+    }
+
+    private static void stopWorkers(List<ChrProducerWorker> workers, List<Thread> threads) {
+        boolean interrupted = false;
+        for (ChrProducerWorker worker : workers) {
+            worker.stop();
+        }
+        for (Thread thread : threads) {
+            thread.interrupt();
+        }
+        for (Thread thread : threads) {
+            try {
+                thread.join(5_000L);
+            } catch (InterruptedException e) {
+                interrupted = true;
+                Thread.currentThread().interrupt();
+            }
+        }
+        for (ChrProducerWorker worker : workers) {
+            worker.close();
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static Coordinate anomalyGridHotspot(TopologyRecord cell, String imsi) {
+        String key = value(cell.getCellId()) + ":" + value(imsi);
+        int index = Math.floorMod(key.hashCode(), ANOMALY_GRID_HOTSPOTS.length);
+        return ANOMALY_GRID_HOTSPOTS[index];
+    }
+
+    private static String value(Object value) {
+        return value == null ? "" : value.toString();
+    }
+
     private static double haversine(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
@@ -268,5 +370,101 @@ public class ChrSimulator {
             Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
                 Math.sin(dLon / 2) * Math.sin(dLon / 2);
         return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    private record Coordinate(double latitude, double longitude) {
+    }
+
+    private final class ChrProducerWorker implements Runnable, AutoCloseable {
+        private final int id;
+        private final long targetEps;
+        private final long startTime;
+        private final String topic;
+        private final List<TopologyRecord> cells;
+        private final Map<String, List<String>> cellUsers;
+        private final double outOfOrderProbability;
+        private final long maxOutOfOrderLagMs;
+        private final double anomalyInjectionRatio;
+        private final KafkaPublisher<ChrEvent> publisher;
+        private final Random random;
+        private final AtomicBoolean stopping = new AtomicBoolean(false);
+        private final AtomicLong submittedRecords = new AtomicLong();
+        private final AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        ChrProducerWorker(
+            int id,
+            long targetEps,
+            long startTime,
+            String bootstrap,
+            String topic,
+            List<TopologyRecord> cells,
+            Map<String, List<String>> cellUsers,
+            double outOfOrderProbability,
+            long maxOutOfOrderLagMs,
+            double anomalyInjectionRatio) {
+            this.id = id;
+            this.targetEps = targetEps;
+            this.startTime = startTime;
+            this.topic = topic;
+            this.cells = cells;
+            this.cellUsers = cellUsers;
+            this.outOfOrderProbability = outOfOrderProbability;
+            this.maxOutOfOrderLagMs = maxOutOfOrderLagMs;
+            this.anomalyInjectionRatio = anomalyInjectionRatio;
+            this.publisher = new KafkaPublisher<>(bootstrap, topic, ChrEvent.class);
+            this.random = new Random(42L + id);
+        }
+
+        @Override
+        public void run() {
+            try {
+                while (!stopping.get() && !Thread.currentThread().isInterrupted()) {
+                    long now = System.currentTimeMillis();
+                    long due = dueEvents(targetEps, startTime, now, submittedRecords.get());
+                    for (long i = 0; i < due && !stopping.get(); i++) {
+                        TopologyRecord cell = cells.get(random.nextInt(cells.size()));
+                        List<String> users = cellUsers.get(cell.getCellId().toString());
+                        if (users == null || users.isEmpty()) {
+                            continue;
+                        }
+                        String imsi = users.get(random.nextInt(users.size()));
+                        ChrEvent event = generateEvent(cell, imsi, now, outOfOrderProbability,
+                            maxOutOfOrderLagMs, anomalyInjectionRatio, random);
+                        publisher.publish(cell.getSiteId().toString(), event);
+                        submittedRecords.incrementAndGet();
+                    }
+                    long elapsed = System.currentTimeMillis() - now;
+                    if (elapsed < DEFAULT_LOOP_INTERVAL_MS) {
+                        Thread.sleep(DEFAULT_LOOP_INTERVAL_MS - elapsed);
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable e) {
+                failure.compareAndSet(null, e);
+                log.warn("CHR producer worker {} failed while publishing to {}: {}", id, topic, e.getMessage());
+            }
+        }
+
+        long submittedRecords() {
+            return submittedRecords.get();
+        }
+
+        long deliveredRecords() {
+            return publisher.deliveredRecords();
+        }
+
+        Throwable failure() {
+            return failure.get();
+        }
+
+        void stop() {
+            stopping.set(true);
+        }
+
+        @Override
+        public void close() {
+            publisher.close();
+        }
     }
 }

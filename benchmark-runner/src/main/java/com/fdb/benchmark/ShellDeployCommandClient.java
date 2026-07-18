@@ -52,7 +52,7 @@ public final class ShellDeployCommandClient implements DeployCommandClient {
     env.put("FDB_RUN_LABEL", plan.runLabel());
     env.put("FDB_RESULT_SINK", plan.sink().value());
     env.put("FDB_SITES_COUNT", String.valueOf(plan.cellLevel()));
-    env.put("FDB_RATE_EPS", String.valueOf(plan.targetChrEps()));
+    env.put("FDB_RATE_EPS", String.valueOf(plan.targetChrTotalEps()));
     return env;
   }
 }

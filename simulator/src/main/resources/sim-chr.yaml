@@ -8,6 +8,10 @@ rate:
   maxOutOfOrderLagMs: 5000
   outOfOrderProb: 0.05
 
+chr:
+  producer:
+    threads: 1
+
 userPool:
   size: 100000
 

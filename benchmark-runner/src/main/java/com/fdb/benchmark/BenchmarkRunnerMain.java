@@ -25,7 +25,7 @@ public final class BenchmarkRunnerMain {
       List<BenchmarkRunResult> results;
       if (parsed.dryRun()) {
         results = BenchmarkMatrix.expand(config).stream()
-            .map(plan -> new BenchmarkDecisionEngine(config.thresholds()).decide(plan, dryRunObservation(plan)))
+            .map(plan -> new BenchmarkDecisionEngine(config.thresholds()).decide(plan, dryRunObservation(config, plan)))
             .toList();
       } else {
         results = defaultOrchestrator(config, env).run();
@@ -50,7 +50,7 @@ public final class BenchmarkRunnerMain {
         new BenchmarkDecisionEngine(config.thresholds()));
   }
 
-  private static RunObservation dryRunObservation(BenchmarkRunPlan plan) {
+  private static RunObservation dryRunObservation(BenchmarkConfig config, BenchmarkRunPlan plan) {
     return new RunObservation(
         new FlinkSnapshot("RUNNING", 0.03, 10_000, 0, 1000, 1000, 8192, 8192, 1, 4, List.of(
             new FlinkOperatorSnapshot("dry-source", "dry-source-chr", 4, 1000, 1000, 8192, 8192, 0.30, 0.67, 0.03),
@@ -64,15 +64,15 @@ public final class BenchmarkRunnerMain {
             new StageLatencySnapshot("dry-kpi-1m", 600, 1000, 1500, 900),
             new StageLatencySnapshot("dry-kpi-5m", 1800, 3000, 4500, 800)),
             List.of(new SinkLatencySnapshot("dry-sink", 250, 2048, 600, 1000, 1800, 0))),
-        new StorageSnapshot(true, "dry-run", 0, 0, 0)).withSource(dryRunSource(plan));
+        new StorageSnapshot(true, "dry-run", 0, 0, 0)).withSource(dryRunSource(config, plan));
   }
 
-  private static SourceMetricsSnapshot dryRunSource(BenchmarkRunPlan plan) {
-    long chrTargetEps = plan.targetChrEps();
+  private static SourceMetricsSnapshot dryRunSource(BenchmarkConfig config, BenchmarkRunPlan plan) {
+    long chrTargetEps = plan.targetChrTotalEps();
     long chrDurationMs = 2_000;
     long chrPublished = Math.round(chrTargetEps * (chrDurationMs / 1000.0d));
     double chrObservedEps = chrTargetEps * 0.98d;
-    long pmTargetEps = Math.max(1L, Math.round(chrTargetEps / 3.0d));
+    long pmTargetEps = plan.targetPmTotalEps();
     long cfgTargetEps = Math.max(1L, Math.round(chrTargetEps / 6.0d));
     return new SourceMetricsSnapshot(true, chrTargetEps, chrPublished, chrObservedEps, chrDurationMs, 0, 0,
         pmTargetEps, pmTargetEps * 10, pmTargetEps, 10_000, 0, 0,

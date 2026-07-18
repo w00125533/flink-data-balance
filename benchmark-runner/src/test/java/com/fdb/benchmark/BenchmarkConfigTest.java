@@ -15,6 +15,7 @@ class BenchmarkConfigTest {
         "FDB_BENCHMARK_SINKS", "none starrocks,kafka",
         "FDB_BENCHMARK_CELL_LEVELS", "1000 3000",
         "FDB_BENCHMARK_CHR_EPS_PER_CELL", "0.25",
+        "FDB_BENCHMARK_PM_EPS_PER_CELL", "1.5",
         "FDB_BENCHMARK_WARMUP_SEC", "30",
         "FDB_BENCHMARK_DURATION_SEC", "120"));
 
@@ -22,14 +23,26 @@ class BenchmarkConfigTest {
     assertThat(config.sinks()).containsExactly(BenchmarkSink.NONE, BenchmarkSink.STARROCKS, BenchmarkSink.KAFKA);
     assertThat(config.cellLevels()).containsExactly(1000, 3000);
     assertThat(config.chrEpsPerCell()).isEqualTo(0.25);
+    assertThat(config.pmEpsPerCell()).isEqualTo(1.5);
     assertThat(config.anomalyInjectionRatio()).isEqualTo(0.05);
-    assertThat(config.targetChrEps(3000)).isEqualTo(750);
+    assertThat(config.targetChrTotalEps(3000)).isEqualTo(750);
+    assertThat(config.targetPmTotalEps(3000)).isEqualTo(4500);
     assertThat(config.warmupSec()).isEqualTo(30);
     assertThat(config.durationSec()).isEqualTo(120);
     assertThat(config.thresholds().maxCheckpointDurationMs()).isEqualTo(120_000L);
     assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.98);
     assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(0L);
     assertThat(config.outputRoot()).isEqualTo(Path.of("benchmark-runner/output/benchmark-runs"));
+  }
+
+  @Test
+  void defaults_to_high_pressure_chr_and_pm_per_cell_rates() {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of());
+
+    assertThat(config.chrEpsPerCell()).isEqualTo(10.0);
+    assertThat(config.pmEpsPerCell()).isEqualTo(1.0);
+    assertThat(config.targetChrTotalEps(1000)).isEqualTo(10_000);
+    assertThat(config.targetPmTotalEps(1000)).isEqualTo(1_000);
   }
 
   @Test
@@ -72,6 +85,16 @@ class BenchmarkConfigTest {
   }
 
   @Test
+  void rejects_invalid_pm_eps_per_cell() {
+    for (String value : List.of("0", "-0.01", "NaN", "Infinity", "-Infinity")) {
+      assertThatThrownBy(() -> BenchmarkConfig.from("local", Map.of(
+          "FDB_BENCHMARK_PM_EPS_PER_CELL", value)))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("FDB_BENCHMARK_PM_EPS_PER_CELL");
+    }
+  }
+
+  @Test
   void ignores_removed_topology_cells_per_site_for_chr_eps_estimate() {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_CELL_LEVELS", "1000",
@@ -80,7 +103,7 @@ class BenchmarkConfigTest {
         "FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO", "0.97",
         "FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS", "123"));
 
-    assertThat(config.targetChrEps(1000)).isEqualTo(300);
+    assertThat(config.targetChrTotalEps(1000)).isEqualTo(300);
     assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.97);
     assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(123L);
   }

@@ -4,7 +4,10 @@ public record BenchmarkRunPlan(
     String benchmarkId,
     BenchmarkSink sink,
     int cellLevel,
-    long targetChrEps,
+    double targetChrEpsPerCell,
+    long targetChrTotalEps,
+    double targetPmEpsPerCell,
+    long targetPmTotalEps,
     String runId,
     String runLabel) {
 }

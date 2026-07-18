@@ -13,7 +13,8 @@ class TopologyMetricsSnapshotTest {
   @Test
   void reads_topology_metrics_file_and_builds_run_relative_path() throws Exception {
     BenchmarkRunPlan plan = new BenchmarkRunPlan(
-        "bench-a", BenchmarkSink.STARROCKS, 1000, 300, "bench-a-starrocks-cells1000-eps300", "benchmark-starrocks");
+        "bench-a", BenchmarkSink.STARROCKS, 1000,
+        0.3, 300, 0.1, 100, "bench-a-starrocks-cells1000-chr-eps0.3", "benchmark-starrocks");
     Path metricsFile = TopologyMetricsSnapshot.metricsFile(tempDir, plan);
     Files.createDirectories(metricsFile.getParent());
     Files.writeString(metricsFile, """
@@ -36,7 +37,7 @@ class TopologyMetricsSnapshotTest {
     TopologyMetricsSnapshot snapshot = TopologyMetricsSnapshot.read(metricsFile);
 
     assertThat(metricsFile).isEqualTo(tempDir.resolve(
-        "bench-a/runs/bench-a-starrocks-cells1000-eps300/topology-metrics.json"));
+        "bench-a/runs/bench-a-starrocks-cells1000-chr-eps0.3/topology-metrics.json"));
     assertThat(snapshot.generatedRecords()).isEqualTo(6000);
     assertThat(snapshot.siteCount()).isEqualTo(1000);
     assertThat(snapshot.publishDurationMs()).isEqualTo(450);

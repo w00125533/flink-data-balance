@@ -39,7 +39,8 @@ public final class HtmlReportWriter {
       rows.append("<tr>")
           .append("<td>").append(escape(plan.sink().value())).append("</td>")
           .append("<td>").append(plan.cellLevel()).append("</td>")
-          .append("<td>").append(plan.targetChrEps()).append("</td>")
+          .append("<td>").append(rateValue(plan.targetChrEpsPerCell())).append("</td>")
+          .append("<td>").append(formatNumber(plan.targetChrTotalEps())).append("</td>")
           .append("<td><span class=\"status ").append(statusClass(result.status())).append("\">")
           .append(result.status()).append("</span></td>")
           .append("<td>").append(formatNumber(result.flink().recordsOutPerSec())).append("</td>")
@@ -99,7 +100,7 @@ public final class HtmlReportWriter {
             <h2>Runs</h2>
             <table>
               <thead>
-                <tr><th>Sink</th><th>Cells</th><th>CHR EPS</th><th>Status</th><th>Out EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Checkpoint</th><th>Backpressure</th><th>Watermark Lag</th><th>Storage</th><th>Reason</th><th>Report</th></tr>
+                <tr><th>Sink</th><th>Cells</th><th>CHR EPS/cell/s</th><th>Global CHR EPS</th><th>Status</th><th>Out EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Checkpoint</th><th>Backpressure</th><th>Watermark Lag</th><th>Storage</th><th>Reason</th><th>Report</th></tr>
               </thead>
               <tbody>
         """.formatted(escape(config.benchmarkId()), escape(config.target()), config.warmupSec(), config.durationSec(),
@@ -153,6 +154,11 @@ public final class HtmlReportWriter {
             .stable { background: #dff5e5; color: #186238; }
             .unstable { background: #fff1d6; color: #875400; }
             .failed { background: #fde2e1; color: #b42318; }
+            .health { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
+            .health-ok { background: #dff5e5; color: #186238; }
+            .health-warn { background: #fff1d6; color: #875400; }
+            .health-fail { background: #fde2e1; color: #b42318; }
+            .health-na { background: #eef2f6; color: #475467; }
             .raw-links { display: flex; flex-wrap: wrap; gap: 10px; }
             .raw-links a { background: #fff; border: 1px solid #d9dee7; padding: 8px 10px; color: #1d4ed8; }
             .flow-wrap { overflow-x: auto; background: #fff; border: 1px solid #d9dee7; padding: 12px; }
@@ -171,7 +177,7 @@ public final class HtmlReportWriter {
           <main>
             <a href="../../index.html">Back to benchmark</a>
             <h1>%s</h1>
-            <p class="meta">Benchmark %s | Target %s | Sink %s | Cells %s | CHR EPS %s</p>
+            <p class="meta">Benchmark %s | Target %s | Sink %s | Cells %s | CHR EPS %s records/cell/s</p>
             <p><span class="status %s">%s</span> %s</p>
             <div class="cards">
               %s
@@ -182,6 +188,8 @@ public final class HtmlReportWriter {
               %s
             </div>
             <h2>Run Summary</h2>
+            %s
+            <h2>Stability Gates</h2>
             %s
             <h2>Source Density</h2>
             %s
@@ -236,7 +244,7 @@ public final class HtmlReportWriter {
             escape(config.target()),
             escape(plan.sink().value()),
             plan.cellLevel(),
-            plan.targetChrEps(),
+            rateValue(plan.targetChrEpsPerCell()),
             statusClass(result.status()),
             result.status(),
             escape(result.bottleneckReason()),
@@ -248,6 +256,7 @@ public final class HtmlReportWriter {
             metricCard("KPI 1m P95", formatMs(fdb.kpi1mP95Ms()), "KPI availability"),
             metricCard("Sink P95", formatMs(fdb.sinkP95Ms()), "Failures " + fdb.sinkFailures()),
             runSummaryTable(config, result),
+            stabilityGateTable(config, result),
             sourceDensity(result.source(), plan.cellLevel()),
             runNotes(result),
             topologyTable(result.topology()),
@@ -268,6 +277,81 @@ public final class HtmlReportWriter {
         """.formatted(escape(label), escape(value), escape(detail));
   }
 
+  private static String stabilityGateTable(BenchmarkConfig config, BenchmarkRunResult result) {
+    BenchmarkThresholds thresholds = config.thresholds();
+    FlinkSnapshot flink = result.flink();
+    FdbMetricsSnapshot fdb = result.fdb();
+    SourceMetricsSnapshot source = result.source();
+    StorageSnapshot storage = result.storage();
+    long kpiAvailabilityP95Ms = maxAvailableLatency(fdb.kpi1mP95Ms(), fdb.kpi5mP95Ms());
+
+    List<HealthGateRow> rows = List.of(
+        gate("Flink Job Status", flink.jobStatus(), "RUNNING",
+            "RUNNING".equalsIgnoreCase(flink.jobStatus()) ? GateHealth.HEALTHY : GateHealth.FAILED),
+        gate("Source Metrics", source.present() ? "present" : "missing", "present",
+            source.present() ? GateHealth.HEALTHY : GateHealth.UNSTABLE),
+        gate("CHR Source Metrics", source.hasChrMetrics() ? "present" : "missing", "present",
+            source.hasChrMetrics() ? GateHealth.HEALTHY : GateHealth.UNSTABLE),
+        gate("Source Throughput Attainment", source.hasChrMetrics() ? formatRatio(source.producerDeliveryRatio()) : "N/A",
+            ">= " + formatRatio(thresholds.minProducerDeliveryRatio()),
+            source.hasChrMetrics()
+                ? health(source.producerDeliveryRatio() >= thresholds.minProducerDeliveryRatio())
+                : GateHealth.NA),
+        gate("Source Operator Backlog", flink.sourceBacklogRecords() + " records",
+            "<= " + thresholds.maxSourceBacklogRecords() + " records",
+            health(flink.sourceBacklogRecords() <= thresholds.maxSourceBacklogRecords())),
+        gate("Backpressure Ratio", formatRatio(flink.backpressureRatio()),
+            "<= " + formatRatio(thresholds.maxBackpressureRatio()),
+            health(flink.backpressureRatio() <= thresholds.maxBackpressureRatio())),
+        gate("Consecutive Checkpoint Failures", flink.consecutiveCheckpointFailures() + " failures",
+            "< " + thresholds.maxConsecutiveCheckpointFailures() + " failures",
+            health(flink.consecutiveCheckpointFailures() < thresholds.maxConsecutiveCheckpointFailures())),
+        gate("Checkpoint Duration", formatMs(flink.checkpointDurationMs()),
+            "<= " + formatMs(thresholds.maxCheckpointDurationMs()),
+            health(flink.checkpointDurationMs() <= thresholds.maxCheckpointDurationMs())),
+        gate("KPI Availability P95", formatMs(kpiAvailabilityP95Ms),
+            "<= " + formatMs(thresholds.maxKpiAvailabilityP95Ms()),
+            kpiAvailabilityP95Ms >= 0
+                ? health(kpiAvailabilityP95Ms <= thresholds.maxKpiAvailabilityP95Ms())
+                : GateHealth.NA),
+        gate("Sink P95", formatMs(fdb.sinkP95Ms()),
+            "<= " + formatMs(thresholds.maxSinkP95Ms()),
+            fdb.sinkP95Ms() >= 0 ? health(fdb.sinkP95Ms() <= thresholds.maxSinkP95Ms()) : GateHealth.NA),
+        gate("Sink Failures", fdb.sinkFailures() + " failures", "<= 0 failures",
+            health(fdb.sinkFailures() <= 0)),
+        gate("Watermark Lag", formatMs(fdb.watermarkLagMs()),
+            "<= " + formatMs(thresholds.maxWatermarkLagMs()),
+            health(fdb.watermarkLagMs() <= thresholds.maxWatermarkLagMs())),
+        gate("Storage Health", storage.healthy() ? "healthy" : "unhealthy", "healthy",
+            storage.healthy() ? GateHealth.HEALTHY : GateHealth.UNSTABLE));
+
+    StringBuilder body = new StringBuilder();
+    for (HealthGateRow row : rows) {
+      body.append("<tr><td>").append(escape(row.metric())).append("</td><td>")
+          .append(escape(row.observed())).append("</td><td>")
+          .append(escape(row.threshold())).append("</td><td>")
+          .append(healthBadge(row.health())).append("</td></tr>");
+    }
+    return """
+        <table>
+          <thead><tr><th>Metric</th><th>Observed</th><th>Threshold</th><th>Health</th></tr></thead>
+          <tbody>%s</tbody>
+        </table>
+        """.formatted(body);
+  }
+
+  private static HealthGateRow gate(String metric, String observed, String threshold, GateHealth health) {
+    return new HealthGateRow(metric, observed, threshold, health);
+  }
+
+  private static GateHealth health(boolean healthy) {
+    return healthy ? GateHealth.HEALTHY : GateHealth.UNSTABLE;
+  }
+
+  private static String healthBadge(GateHealth health) {
+    return "<span class=\"health " + health.cssClass() + "\">" + health.label() + "</span>";
+  }
+
   private static String runSummaryTable(BenchmarkConfig config, BenchmarkRunResult result) {
     BenchmarkRunPlan plan = result.plan();
     FlinkSnapshot flink = result.flink();
@@ -279,11 +363,14 @@ public final class HtmlReportWriter {
         row("Run Label", plan.runLabel()),
         row("Sink", plan.sink().value()),
         row("Cell Level", String.valueOf(plan.cellLevel())),
-        row("Target CHR EPS", String.valueOf(plan.targetChrEps())),
+        row("Target CHR EPS", rateValue(plan.targetChrEpsPerCell()) + " records/cell/s"),
+        row("Global CHR EPS", formatNumber(plan.targetChrTotalEps()) + " records/s"),
+        row("Target PM EPS", rateValue(plan.targetPmEpsPerCell()) + " records/cell/s"),
+        row("Global PM EPS", formatNumber(plan.targetPmTotalEps()) + " records/s"),
         row("Status", result.status().name()),
         row("Reason", result.bottleneckReason()),
         row("Source Throughput Attainment", formatRatio(source.producerDeliveryRatio())),
-        row("Source Backlog", flink.sourceBacklogRecords() + " records"),
+        row("Source Backlog", source.chrBacklogRecords() + " CHR records"),
         row("Checkpoint Interval", formatMs(effectiveCheckpointIntervalMs(plan.sink(), config.checkpointIntervalMs()))),
         row("Checkpoint Duration", formatMs(flink.checkpointDurationMs())),
         row("Checkpoint Failures", String.valueOf(flink.consecutiveCheckpointFailures()))));
@@ -348,7 +435,7 @@ public final class HtmlReportWriter {
         row("Topology Generation Duration", formatMs(topology.generationDurationMs())),
         row("Kafka Publish Duration", formatMs(topology.publishDurationMs())),
         row("Total Duration", formatMs(topology.totalDurationMs())),
-        row("Published Records", formatNumber(topology.publishedRecords())),
+        row("Published Topology Records", formatNumber(topology.publishedRecords())),
         row("Publish Failures", formatNumber(topology.publishFailures())),
         row("Latitude Range", formatRange(topology.minLatitude(), topology.maxLatitude())),
         row("Longitude Range", formatRange(topology.minLongitude(), topology.maxLongitude()))));
@@ -647,6 +734,32 @@ public final class HtmlReportWriter {
   private record TableRow(String label, String value) {
   }
 
+  private record HealthGateRow(String metric, String observed, String threshold, GateHealth health) {
+  }
+
+  private enum GateHealth {
+    HEALTHY("health-ok", "HEALTHY"),
+    UNSTABLE("health-warn", "UNSTABLE"),
+    FAILED("health-fail", "FAILED"),
+    NA("health-na", "N/A");
+
+    private final String cssClass;
+    private final String label;
+
+    GateHealth(String cssClass, String label) {
+      this.cssClass = cssClass;
+      this.label = label;
+    }
+
+    String cssClass() {
+      return cssClass;
+    }
+
+    String label() {
+      return label;
+    }
+  }
+
   private static String stableBounds(List<BenchmarkRunResult> results) {
     Map<BenchmarkSink, Integer> maxCells = results.stream()
         .filter(result -> result.status() == BenchmarkStatus.STABLE)
@@ -695,6 +808,17 @@ public final class HtmlReportWriter {
     return configuredMs;
   }
 
+  private static long maxAvailableLatency(long left, long right) {
+    long max = -1L;
+    if (left >= 0) {
+      max = left;
+    }
+    if (right >= 0) {
+      max = Math.max(max, right);
+    }
+    return max;
+  }
+
   private static String statusClass(BenchmarkStatus status) {
     return status.name().toLowerCase(Locale.ROOT);
   }
@@ -719,6 +843,10 @@ public final class HtmlReportWriter {
 
   private static String formatDouble(double value) {
     return String.format(Locale.ROOT, "%.2f", value);
+  }
+
+  private static String rateValue(double value) {
+    return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
   }
 
   private static String formatRange(double min, double max) {
