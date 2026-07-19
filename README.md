@@ -197,7 +197,7 @@ Benchmark-specific environment variables:
 |---|---:|---|
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | Space- or comma-separated sink list: `starrocks`, `iceberg`, `hive`, `kafka`, `none` |
 | `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | Space- or comma-separated cell-count pressure levels |
-| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `10` | Target CHR EPS，每小区每秒生成的 CHR 条数；Global CHR EPS = `cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL` |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `30` | Target CHR EPS，每小区每秒生成的 CHR 条数；Global CHR EPS = `cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL` |
 | `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒生成的 PM 条数；Global PM EPS = `cellLevel * FDB_BENCHMARK_PM_EPS_PER_CELL` |
 | `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | Ratio of generated cells/users assigned to deterministic anomaly cohorts; anomalous CHR records also converge to stable geohash6 hotspots for grid coverage-hole output |

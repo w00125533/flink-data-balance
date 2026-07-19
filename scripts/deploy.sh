@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
+export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:-*}"
 
 TARGET="${1:-}"
 COMMAND="${2:-}"
@@ -106,6 +107,59 @@ write_current_run_env() {
     printf 'FDB_METRICS_HISTORY_ENABLED=%q\n' "${FDB_METRICS_HISTORY_ENABLED:-}"
     printf 'FDB_DLQ_ENABLED=%q\n' "${FDB_DLQ_ENABLED:-}"
   } >> "$state_file"
+}
+
+local_wait_for_job_terminal() {
+  local job_id=$1
+  local wait_sec="${FDB_FLINK_CANCEL_WAIT_SEC:-120}"
+  local rest_url="${FDB_FLINK_REST_URL:-http://localhost:8081}"
+
+  if [[ "$wait_sec" == "0" ]]; then
+    return 0
+  fi
+
+  local deadline=$((SECONDS + wait_sec))
+  local body
+  while ((SECONDS < deadline)); do
+    if ! body="$(curl -fsS "${rest_url}/jobs/${job_id}" 2>/dev/null)"; then
+      ok "Flink job no longer visible: $job_id"
+      return 0
+    fi
+    if [[ "$body" =~ \"state\"[[:space:]]*:[[:space:]]*\"(CANCELED|FAILED|FINISHED)\" ]]; then
+      ok "Flink job reached terminal state: $job_id"
+      return 0
+    fi
+    sleep 2
+  done
+
+  warn "timed out waiting for Flink job to reach terminal state: $job_id"
+  return 1
+}
+
+local_wait_for_flink_slots() {
+  local wait_sec="${FDB_FLINK_READY_WAIT_SEC:-60}"
+  local rest_url="${FDB_FLINK_REST_URL:-http://localhost:8081}"
+
+  if [[ "$wait_sec" == "0" ]]; then
+    return 0
+  fi
+
+  local deadline=$((SECONDS + wait_sec))
+  local body taskmanagers slots_available
+  while ((SECONDS < deadline)); do
+    if body="$(curl -fsS "${rest_url}/overview" 2>/dev/null)"; then
+      taskmanagers="$(printf '%s\n' "$body" | sed -nE 's/.*"taskmanagers"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1)"
+      slots_available="$(printf '%s\n' "$body" | sed -nE 's/.*"slots-available"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1)"
+      if [[ "${taskmanagers:-0}" -gt 0 && "${slots_available:-0}" -gt 0 ]]; then
+        ok "Flink slots available: taskmanagers=${taskmanagers}, slots=${slots_available}"
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+
+  warn "timed out waiting for Flink slots to become available"
+  return 1
 }
 
 current_run_id() {
@@ -762,6 +816,12 @@ local_stop() {
   if ! curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null; then
     warn "Flink REST cancel failed; falling back to CLI cancel"
     docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id" || stop_status=$?
+  fi
+  if [[ "$stop_status" -eq 0 ]]; then
+    local_wait_for_job_terminal "$job_id" || stop_status=$?
+  fi
+  if [[ "$stop_status" -eq 0 ]]; then
+    local_wait_for_flink_slots || stop_status=$?
   fi
 
   if [[ "${FDB_REPORT_ON_STOP:-false}" == "true" ]]; then

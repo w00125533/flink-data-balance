@@ -43,7 +43,36 @@ class BenchmarkOrchestratorTest {
   }
 
   @Test
-  void prepares_data_before_starting_simulators_and_submitting_job() throws Exception {
+  void continues_higher_levels_when_early_stop_is_disabled() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000 3000",
+        "FDB_BENCHMARK_CHR_EPS_PER_CELL", "0.1",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_DURATION_SEC", "0",
+        "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", "false"));
+    RecordingDeploy deploy = new RecordingDeploy();
+    RecordingSimulators simulators = new RecordingSimulators();
+    FakeObservationSource observations = new FakeObservationSource(List.of(
+        healthy().withFlink(healthy().flink().withBackpressureRatio(0.5)),
+        healthy()));
+
+    List<BenchmarkRunResult> results = new BenchmarkOrchestrator(
+        config,
+        deploy,
+        simulators,
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(results).hasSize(2);
+    assertThat(results).extracting(result -> result.plan().cellLevel()).containsExactly(1000, 3000);
+    assertThat(results).extracting(BenchmarkRunResult::status)
+        .containsExactly(BenchmarkStatus.UNSTABLE, BenchmarkStatus.STABLE);
+  }
+
+  @Test
+  void submits_job_before_starting_simulators() throws Exception {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-a",
         "FDB_BENCHMARK_SINKS", "none",
@@ -62,9 +91,34 @@ class BenchmarkOrchestratorTest {
         new BenchmarkDecisionEngine(config.thresholds())).run();
 
     assertThat(events).containsSubsequence(
-        "prepare:bench-a-none-cells1000-chr-eps10",
-        "start:1000:10000",
-        "submit:bench-a-none-cells1000-chr-eps10");
+        "prepare:bench-a-none-cells1000-chr-eps30",
+        "submit:bench-a-none-cells1000-chr-eps30",
+        "start:1000:30000");
+  }
+
+  @Test
+  void stops_simulators_before_canceling_job() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_DURATION_SEC", "0"));
+    List<String> events = new ArrayList<>();
+    RecordingDeploy deploy = new RecordingDeploy(events);
+    RecordingSimulators simulators = new RecordingSimulators(events);
+
+    new BenchmarkOrchestrator(
+        config,
+        deploy,
+        simulators,
+        plan -> healthy(),
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(events).containsSubsequence(
+        "start:1000:30000",
+        "stop",
+        "stop:bench-a-none-cells1000-chr-eps30");
   }
 
   @Test

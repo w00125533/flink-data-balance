@@ -816,7 +816,7 @@ First-version benchmark matrix:
 ```text
 FDB_BENCHMARK_SINKS=none starrocks kafka hive iceberg
 FDB_BENCHMARK_CELL_LEVELS=10000 20000 40000
-FDB_BENCHMARK_CHR_EPS_PER_CELL=10
+FDB_BENCHMARK_CHR_EPS_PER_CELL=30
 FDB_BENCHMARK_PM_EPS_PER_CELL=1
 FDB_CHR_PRODUCER_THREADS=6
 FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05
@@ -832,8 +832,8 @@ Pressure model:
 - CFG baseline records grow with cell count.
 - PM and CHR total EPS grow linearly with generated cell count.
 - `Target CHR EPS` is the per-cell per-second CHR output target. For example,
-  `FDB_BENCHMARK_CHR_EPS_PER_CELL=10` means each generated cell targets 10 CHR
-  records/s; with `cellLevel=50000`, `Global CHR EPS` is `500000`.
+  `FDB_BENCHMARK_CHR_EPS_PER_CELL=30` means each generated cell targets 30 CHR
+  records/s; with `cellLevel=50000`, `Global CHR EPS` is `1500000`.
 - `Target PM EPS` follows the same per-cell model. For example,
   `FDB_BENCHMARK_PM_EPS_PER_CELL=1` means each generated cell targets 1 PM
   record/s; with `cellLevel=50000`, `Global PM EPS` is `50000`.
@@ -882,7 +882,7 @@ FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS=0
 
 关键压测变量语义：
 
-- `FDB_BENCHMARK_CHR_EPS_PER_CELL=10`：Target CHR EPS，每小区每秒 CHR 目标输出记录数；全局总压力量为 `cellLevel * Target CHR EPS`。
+- `FDB_BENCHMARK_CHR_EPS_PER_CELL=30`：Target CHR EPS，每小区每秒 CHR 目标输出记录数；全局总压力量为 `cellLevel * Target CHR EPS`。
 - `FDB_BENCHMARK_PM_EPS_PER_CELL=1`：Target PM EPS，每小区每秒 PM 目标输出记录数；全局总压力量为 `cellLevel * Target PM EPS`。
 - `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05`：5% cell 和 5% user 进入确定性异常 cohort。
 - `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO=0.98`：source 实际交付率低于目标 98% 时判定 unstable。
@@ -1104,7 +1104,7 @@ cleanup.policy=compact
 | `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | `benchmark-runner` 顺序执行的 sink 列表，支持空格或逗号分隔 |
 | `FDB_BENCHMARK_CELL_LEVELS` | `10000 20000 40000` | 小区数升压档位；第一版用小区数作为主压力倍率 |
-| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `10` | Target CHR EPS，每小区每秒 CHR 目标输出记录数；Global CHR EPS = cellLevel * epsPerCell |
+| `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `30` | Target CHR EPS，每小区每秒 CHR 目标输出记录数；Global CHR EPS = cellLevel * epsPerCell |
 | `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒 PM 目标输出记录数；Global PM EPS = cellLevel * epsPerCell |
 | `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | 压测异常注入比例；5% cell 和 5% user 进入确定性异常 cohort |

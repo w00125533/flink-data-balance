@@ -43,4 +43,29 @@ class MetricSamplePublisherTest {
         assertThat(MetricSamplePublisher.metricsEnabled(
             Map.of("FDB_METRICS_ENABLED", "on"), properties)).isTrue();
     }
+
+    @Test
+    void producer_properties_bound_kafka_waits_for_best_effort_metrics() {
+        Properties properties = MetricSamplePublisher.producerProperties(
+            "broker:9092",
+            Map.of(),
+            new Properties());
+
+        assertThat(properties.getProperty("bootstrap.servers")).isEqualTo("broker:9092");
+        assertThat(properties.getProperty("delivery.timeout.ms")).isEqualTo("10000");
+        assertThat(properties.getProperty("request.timeout.ms")).isEqualTo("5000");
+        assertThat(properties.getProperty("max.block.ms")).isEqualTo("5000");
+        assertThat(properties.getProperty("retries")).isEqualTo("3");
+    }
+
+    @Test
+    void parses_close_timeout_from_environment_values() {
+        assertThat(MetricSamplePublisher.closeTimeoutMs(
+            Map.of("FDB_METRICS_PRODUCER_CLOSE_TIMEOUT_MS", "2500"), new Properties()))
+            .isEqualTo(2500L);
+
+        assertThat(MetricSamplePublisher.closeTimeoutMs(
+            Map.of("FDB_METRICS_PRODUCER_CLOSE_TIMEOUT_MS", "invalid"), new Properties()))
+            .isEqualTo(5000L);
+    }
 }

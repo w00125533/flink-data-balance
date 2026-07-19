@@ -151,6 +151,14 @@ cat > "$FAKE_BIN_DIR/curl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_CURL_LOG:?}"
+if [[ "$*" == *"/jobs/"* && "$*" != *"-X PATCH"* ]]; then
+  echo '{"state":"CANCELED"}'
+  exit 0
+fi
+if [[ "$*" == *"/overview"* ]]; then
+  echo '{"taskmanagers":1,"slots-available":4}'
+  exit 0
+fi
 echo '{"ok":true}'
 SH
 chmod +x "$FAKE_BIN_DIR/curl"

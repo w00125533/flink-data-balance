@@ -29,6 +29,7 @@ class BenchmarkConfigTest {
     assertThat(config.targetPmTotalEps(3000)).isEqualTo(4500);
     assertThat(config.warmupSec()).isEqualTo(30);
     assertThat(config.durationSec()).isEqualTo(120);
+    assertThat(config.earlyStopOnUnstable()).isTrue();
     assertThat(config.thresholds().maxCheckpointDurationMs()).isEqualTo(120_000L);
     assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.98);
     assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(0L);
@@ -36,12 +37,20 @@ class BenchmarkConfigTest {
   }
 
   @Test
+  void parses_early_stop_override() {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", "false"));
+
+    assertThat(config.earlyStopOnUnstable()).isFalse();
+  }
+
+  @Test
   void defaults_to_high_pressure_chr_and_pm_per_cell_rates() {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of());
 
-    assertThat(config.chrEpsPerCell()).isEqualTo(10.0);
+    assertThat(config.chrEpsPerCell()).isEqualTo(30.0);
     assertThat(config.pmEpsPerCell()).isEqualTo(1.0);
-    assertThat(config.targetChrTotalEps(1000)).isEqualTo(10_000);
+    assertThat(config.targetChrTotalEps(1000)).isEqualTo(30_000);
     assertThat(config.targetPmTotalEps(1000)).isEqualTo(1_000);
   }
 

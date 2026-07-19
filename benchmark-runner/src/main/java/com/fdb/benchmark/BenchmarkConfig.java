@@ -22,6 +22,7 @@ public record BenchmarkConfig(
     long warmupSec,
     long durationSec,
     long pollIntervalSec,
+    boolean earlyStopOnUnstable,
     long checkpointIntervalMs,
     URI flinkRestUrl,
     URI observabilityApiUrl,
@@ -50,12 +51,13 @@ public record BenchmarkConfig(
         sanitize(valueOrDefault(env, "FDB_BENCHMARK_ID", defaultId)),
         List.copyOf(sinks),
         List.copyOf(cellLevels),
-        finiteNonNegativeDouble(env, "FDB_BENCHMARK_CHR_EPS_PER_CELL", 10.0),
+        finiteNonNegativeDouble(env, "FDB_BENCHMARK_CHR_EPS_PER_CELL", 30.0),
         finitePositiveDouble(env, "FDB_BENCHMARK_PM_EPS_PER_CELL", 1.0),
         boundedRatio(env, "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", 0.05),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_WARMUP_SEC", 60),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DURATION_SEC", 300),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_POLL_INTERVAL_SEC", 10),
+        booleanValue(env, "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", true),
         positiveLong(env, "FDB_FLINK_CHECKPOINT_INTERVAL_MS", 30_000),
         URI.create(valueOrDefault(env, "FDB_FLINK_REST_URL", "http://localhost:8081")),
         URI.create(valueOrDefault(env, "FDB_OBSERVABILITY_API_URL", "http://localhost:18080")),
@@ -141,6 +143,11 @@ public record BenchmarkConfig(
   private static long positiveLong(Map<String, String> env, String key, long defaultValue) {
     long value = BenchmarkThresholds.longValue(env, key, defaultValue);
     return value > 0 ? value : defaultValue;
+  }
+
+  private static boolean booleanValue(Map<String, String> env, String key, boolean defaultValue) {
+    String value = env.get(key);
+    return value == null || value.isBlank() ? defaultValue : Boolean.parseBoolean(value.trim());
   }
 
 }

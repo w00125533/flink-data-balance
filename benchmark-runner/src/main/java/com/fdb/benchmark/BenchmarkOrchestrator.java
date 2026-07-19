@@ -39,8 +39,8 @@ public final class BenchmarkOrchestrator {
       BenchmarkRunResult result = null;
       try {
         deploy.prepare(plan);
-        simulators.start(plan);
         deploy.submit(plan);
+        simulators.start(plan);
         sleepSeconds(config.warmupSec());
         result = observeMeasurement(plan);
       } catch (Exception e) {
@@ -53,7 +53,7 @@ public final class BenchmarkOrchestrator {
         result = failedResult(plan, cleanupFailure);
       }
       results.add(result);
-      if (result.status() != BenchmarkStatus.STABLE) {
+      if (config.earlyStopOnUnstable() && result.status() != BenchmarkStatus.STABLE) {
         skipCurrentSink = true;
       }
     }
@@ -63,12 +63,12 @@ public final class BenchmarkOrchestrator {
   private Exception cleanup(BenchmarkRunPlan plan) {
     Exception failure = null;
     try {
-      deploy.stop(plan);
+      simulators.stop();
     } catch (Exception e) {
       failure = e;
     }
     try {
-      simulators.stop();
+      deploy.stop(plan);
     } catch (Exception e) {
       if (failure == null) {
         failure = e;
@@ -82,7 +82,8 @@ public final class BenchmarkOrchestrator {
   private BenchmarkRunResult observeMeasurement(BenchmarkRunPlan plan) throws Exception {
     long deadline = System.currentTimeMillis() + (config.durationSec() * 1000);
     BenchmarkRunResult last = decideOnce(plan);
-    if (config.durationSec() <= 0 || last.status() != BenchmarkStatus.STABLE) {
+    if (config.durationSec() <= 0
+        || (config.earlyStopOnUnstable() && last.status() != BenchmarkStatus.STABLE)) {
       return last;
     }
     while (System.currentTimeMillis() < deadline) {
@@ -92,7 +93,7 @@ public final class BenchmarkOrchestrator {
         Thread.sleep(sleepMs);
       }
       last = decideOnce(plan);
-      if (last.status() != BenchmarkStatus.STABLE) {
+      if (config.earlyStopOnUnstable() && last.status() != BenchmarkStatus.STABLE) {
         return last;
       }
     }
