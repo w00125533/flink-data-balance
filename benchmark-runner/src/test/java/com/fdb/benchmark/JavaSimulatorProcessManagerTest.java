@@ -2,6 +2,7 @@ package com.fdb.benchmark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +22,9 @@ class JavaSimulatorProcessManagerTest {
     assertThat(env.get("FDB_PM_EPS_PER_CELL")).isEqualTo("1.0");
     assertThat(env).containsEntry("FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", "0.05");
     assertThat(env.get("FDB_TOPOLOGY_METRICS_FILE"))
-        .isEqualTo("benchmark-runner/output/benchmark-runs/bench-a/runs/bench-a-none-cells1000-eps1/topology-metrics.json");
+        .endsWith("benchmark-runner/output/benchmark-runs/bench-a/runs/bench-a-none-cells1000-eps1/topology-metrics.json");
+    assertThat(env.get("FDB_TOPOLOGY_METRICS_FILE"))
+        .doesNotContain("benchmark-runner/benchmark-runner");
   }
 
   @Test
@@ -42,6 +45,18 @@ class JavaSimulatorProcessManagerTest {
     Map<String, String> env = manager.envFor(plan());
 
     assertThat(env).containsEntry("FDB_PM_EPS_PER_CELL", "2.5");
+  }
+
+  @Test
+  void writes_process_logs_under_configured_logs_directory() {
+    Path logsDir = Path.of("logs-root");
+    JavaSimulatorProcessManager manager = new JavaSimulatorProcessManager(
+        Map.of(), Path.of("output-root"), logsDir);
+
+    assertThat(manager.logFile("simulator-chr", "out"))
+        .isEqualTo(logsDir.resolve("benchmark-simulator-chr.out"));
+    assertThat(manager.logFile("simulator-chr", "err"))
+        .isEqualTo(logsDir.resolve("benchmark-simulator-chr.err"));
   }
 
   private static BenchmarkRunPlan plan() {

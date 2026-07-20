@@ -23,7 +23,7 @@ class BenchmarkRunnerMainTest {
         FDB_BENCHMARK_PM_EPS_PER_CELL=0.2
         """);
 
-    Path runDir = Path.of("benchmark-runner/output/benchmark-runs/bench-dry");
+    Path runDir = BenchmarkPaths.outputRoot().resolve("bench-dry");
     try {
       int exit = BenchmarkRunnerMain.run(new String[] {"local", "--env", env.toString(), "--dry-run"});
 
@@ -56,7 +56,7 @@ class BenchmarkRunnerMainTest {
         FDB_BENCHMARK_PM_EPS_PER_CELL=0.2
         """);
 
-    Path runDir = Path.of("benchmark-runner/output/benchmark-runs/bench-set");
+    Path runDir = BenchmarkPaths.outputRoot().resolve("bench-set");
     try {
       int exit = BenchmarkRunnerMain.run(new String[] {
           "local",

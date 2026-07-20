@@ -15,15 +15,21 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
 
   private final Map<String, String> baseEnv;
   private final Path outputRoot;
+  private final Path logsDir;
   private final List<Process> processes = new ArrayList<>();
 
   public JavaSimulatorProcessManager(Map<String, String> baseEnv) {
-    this(baseEnv, Path.of("benchmark-runner/output/benchmark-runs"));
+    this(baseEnv, BenchmarkPaths.outputRoot());
   }
 
   public JavaSimulatorProcessManager(Map<String, String> baseEnv, Path outputRoot) {
+    this(baseEnv, outputRoot, BenchmarkPaths.logsDir());
+  }
+
+  JavaSimulatorProcessManager(Map<String, String> baseEnv, Path outputRoot, Path logsDir) {
     this.baseEnv = Map.copyOf(baseEnv);
     this.outputRoot = outputRoot;
+    this.logsDir = logsDir;
   }
 
   @Override
@@ -64,12 +70,16 @@ public final class JavaSimulatorProcessManager implements SimulatorProcessManage
   }
 
   private Process startProcess(String name, Map<String, String> env, List<String> command) throws IOException {
-    Files.createDirectories(Path.of("logs"));
+    Files.createDirectories(logsDir);
     ProcessBuilder builder = new ProcessBuilder(command);
     builder.environment().putAll(env);
-    builder.redirectOutput(ProcessBuilder.Redirect.appendTo(Path.of("logs", "benchmark-" + name + ".out").toFile()));
-    builder.redirectError(ProcessBuilder.Redirect.appendTo(Path.of("logs", "benchmark-" + name + ".err").toFile()));
+    builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile(name, "out").toFile()));
+    builder.redirectError(ProcessBuilder.Redirect.appendTo(logFile(name, "err").toFile()));
     return builder.start();
+  }
+
+  Path logFile(String name, String extension) {
+    return logsDir.resolve("benchmark-" + name + "." + extension);
   }
 
   Map<String, String> envFor(BenchmarkRunPlan plan) {

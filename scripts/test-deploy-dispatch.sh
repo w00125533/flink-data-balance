@@ -341,6 +341,10 @@ run_expect_success "first local submit generates run id" env \
   FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-1.env" \
   bash "$submit_repo/scripts/deploy.sh" local submit
 first_run_id="$(awk -F= '/^FDB_RUN_ID=/ {print $2}' "$submit_repo/logs/local-current-1.env")"
+[[ -f "$submit_repo/logs/local-flink-submit.out" ]] \
+  || fail "local submit should write submit log under logs/"
+[[ ! -f "$submit_repo/logs-local-flink-submit.out" ]] \
+  || fail "local submit should not write submit log in repo root"
 
 run_expect_success "second local submit generates distinct run id" env \
   PATH="$fixed_date_bin:$PATH" \

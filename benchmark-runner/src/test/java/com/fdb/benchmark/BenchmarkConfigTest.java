@@ -3,7 +3,6 @@ package com.fdb.benchmark;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -33,7 +32,7 @@ class BenchmarkConfigTest {
     assertThat(config.thresholds().maxCheckpointDurationMs()).isEqualTo(120_000L);
     assertThat(config.thresholds().minProducerDeliveryRatio()).isEqualTo(0.98);
     assertThat(config.thresholds().maxSourceBacklogRecords()).isEqualTo(0L);
-    assertThat(config.outputRoot()).isEqualTo(Path.of("benchmark-runner/output/benchmark-runs"));
+    assertThat(config.outputRoot()).isEqualTo(BenchmarkPaths.outputRoot());
   }
 
   @Test
@@ -122,7 +121,7 @@ class BenchmarkConfigTest {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_OUTPUT_DIR", "/tmp/not-used"));
 
-    assertThat(config.outputRoot()).isEqualTo(Path.of("benchmark-runner/output/benchmark-runs"));
+    assertThat(config.outputRoot()).isEqualTo(BenchmarkPaths.outputRoot());
   }
 
   @Test

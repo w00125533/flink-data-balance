@@ -913,6 +913,12 @@ benchmark-runner/output/benchmark-runs/<benchmarkId>/
     report.html
 ```
 
+运行期日志统一写入仓库根目录 `logs/`。`deploy.sh` 的 Flink submit 输出使用
+`logs/local-flink-submit.out` 或 `logs/external-yarn-submit.out`；
+local smoke 的 topology/simulator 日志使用 `logs/topology.log`、
+`logs/cfg.log`、`logs/pm.log`、`logs/chr.log`；benchmark runner 拉起的
+Java 子进程 stdout/stderr 使用 `logs/benchmark-*.out|err`。
+
 `index.html` is the primary delivery artifact. It includes benchmark
 configuration, stable upper-bound cards per sink, the `sink x cellLevel` matrix,
 failure points, cross-sink metric comparisons, global recommendations, per-sink

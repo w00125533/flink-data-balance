@@ -743,7 +743,8 @@ local_submit() {
   fi
   ensure_run_context
   local jar="${FDB_FLINK_JOB_JAR:-/opt/fdb/flink-job-0.1.0-SNAPSHOT.jar}"
-  local submit_log="logs-local-flink-submit.out"
+  mkdir -p logs
+  local submit_log="logs/local-flink-submit.out"
   local state_file="${FDB_LOCAL_STATE_FILE:-logs/local-current.env}"
   local state_dir
   local flink_job_id
@@ -793,7 +794,7 @@ local_stop() {
   if [[ -n "$requested_report_on_stop" ]]; then
     export FDB_REPORT_ON_STOP="$requested_report_on_stop"
   fi
-  local submit_log="logs-local-flink-submit.out"
+  local submit_log="logs/local-flink-submit.out"
   local job_id="${FDB_FLINK_JOB_ID:-}"
   local state_file="${FDB_LOCAL_STATE_FILE:-logs/local-current.env}"
   local stop_status=0
@@ -894,18 +895,19 @@ local_smoke() {
 
   echo "[e2e] Publishing topology and starting simulators..."
   local host_kafka_bootstrap="${FDB_KAFKA_HOST_BOOTSTRAP:-localhost:9092}"
-  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar topology-service/target/topology-service-0.1.0-SNAPSHOT.jar > logs-topology.log 2>&1
-  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar cfg > logs-cfg.log 2>&1 & PIDS+=("$!")
-  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar pm > logs-pm.log 2>&1 & PIDS+=("$!")
-  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar chr > logs-chr.log 2>&1 & PIDS+=("$!")
+  mkdir -p logs
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar topology-service/target/topology-service-0.1.0-SNAPSHOT.jar > logs/topology.log 2>&1
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar cfg > logs/cfg.log 2>&1 & PIDS+=("$!")
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar pm > logs/pm.log 2>&1 & PIDS+=("$!")
+  FDB_KAFKA_BOOTSTRAP="$host_kafka_bootstrap" java -jar simulator/target/simulator-0.1.0-SNAPSHOT.jar chr > logs/chr.log 2>&1 & PIDS+=("$!")
   summary_section "Data Generation"
-  summary_command "Data Generation" "topology log lines" "wc -l < logs-topology.log | tr -d ' '"
+  summary_command "Data Generation" "topology log lines" "wc -l < logs/topology.log | tr -d ' '"
   summary_line "Data Generation" "simulator processes" "${#PIDS[@]}"
-  summary_code_logs "Data Generation" cat logs-topology.log logs-cfg.log logs-pm.log logs-chr.log
+  summary_code_logs "Data Generation" cat logs/topology.log logs/cfg.log logs/pm.log logs/chr.log
 
   echo "[e2e] Submitting Flink job..."
   local_submit
-  FLINK_JOB_ID="$(awk '/JobID/ {job_id=$NF} END {print job_id}' logs-local-flink-submit.out)"
+  FLINK_JOB_ID="$(awk '/JobID/ {job_id=$NF} END {print job_id}' logs/local-flink-submit.out)"
   [ -n "$FLINK_JOB_ID" ] || { echo "[fail] Unable to parse Flink JobID"; exit 1; }
   summary_section "Flink Submit"
   summary_line "Flink Submit" "job id" "$FLINK_JOB_ID"
@@ -1670,7 +1672,7 @@ external_submit() {
   local jar="${FDB_FLINK_JOB_LOCAL_JAR:-flink-job/target/flink-job-0.1.0-SNAPSHOT.jar}"
   [[ -f "$jar" ]] || die "Flink job jar not found: $jar"
 
-  local output_file="${FDB_EXTERNAL_SUBMIT_LOG:-logs-external-yarn-submit.out}"
+  local output_file="${FDB_EXTERNAL_SUBMIT_LOG:-logs/external-yarn-submit.out}"
   local output_dir
   output_dir="$(dirname "$output_file")"
   if [[ "$output_dir" != "." ]]; then

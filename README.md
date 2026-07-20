@@ -165,6 +165,8 @@ to `logs/local-current.env` or `logs/external-yarn-current.env`. You can also se
 `FDB_RUN_ID` manually in the env file or command environment when rerunning a
 known benchmark label. In benchmark-runner mode, the per-run id is generated
 from the benchmark id, sink, cell count and CHR EPS per cell.
+运行过程中的本地日志统一写入仓库根目录 `logs/`，包括 Flink submit 输出、
+topology-service/simulator 输出以及 benchmark runner 拉起的子进程 stdout/stderr。
 
 The runner writes static HTML and machine-readable artifacts under:
 

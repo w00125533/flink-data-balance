@@ -61,7 +61,7 @@ public record BenchmarkConfig(
         positiveLong(env, "FDB_FLINK_CHECKPOINT_INTERVAL_MS", 30_000),
         URI.create(valueOrDefault(env, "FDB_FLINK_REST_URL", "http://localhost:8081")),
         URI.create(valueOrDefault(env, "FDB_OBSERVABILITY_API_URL", "http://localhost:18080")),
-        Path.of("benchmark-runner/output/benchmark-runs"),
+        BenchmarkPaths.outputRoot(),
         BenchmarkThresholds.from(env));
   }
 
