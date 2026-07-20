@@ -67,6 +67,12 @@ FDB_BENCHMARK_SINKS=none starrocks
 FDB_BENCHMARK_CELL_LEVELS=1000 3000
 ENV
 
+run_expect_success "accepts env file from runner args" env -u FDB_ENV_FILE PATH="$FAKE_BIN_DIR:$PATH" \
+  FDB_BENCHMARK_RUNNER_JAR="$TEST_JAR" \
+  bash scripts/benchmark.sh local --env "$TEST_TMP_DIR/test.env" --dry-run
+grep -F -- "-jar $TEST_JAR local --env $TEST_TMP_DIR/test.env --dry-run" "$FAKE_JAVA_LOG" \
+  || fail "benchmark.sh should honor --env from runner arguments"
+
 run_expect_success "passes target and env file" env PATH="$FAKE_BIN_DIR:$PATH" \
   FDB_ENV_FILE="$TEST_TMP_DIR/test.env" \
   FDB_BENCHMARK_RUNNER_JAR="$TEST_JAR" \

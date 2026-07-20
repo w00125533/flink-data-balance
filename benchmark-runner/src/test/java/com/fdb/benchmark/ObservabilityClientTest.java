@@ -60,13 +60,62 @@ class ObservabilityClientTest {
 
     FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
 
-    assertThat(snapshot.sourceDelayP95Ms()).isZero();
-    assertThat(snapshot.kpi1mP95Ms()).isZero();
-    assertThat(snapshot.kpi5mP95Ms()).isZero();
-    assertThat(snapshot.sinkP95Ms()).isZero();
+    assertThat(snapshot.sourceDelayP95Ms()).isEqualTo(-1);
+    assertThat(snapshot.kpi1mP95Ms()).isEqualTo(-1);
+    assertThat(snapshot.kpi5mP95Ms()).isEqualTo(-1);
+    assertThat(snapshot.sinkP95Ms()).isEqualTo(-1);
     assertThat(snapshot.sinkFailures()).isZero();
     assertThat(snapshot.watermarkLagMs()).isZero();
     assertThat(snapshot.stageLatencies()).isEmpty();
     assertThat(snapshot.sinkLatencies()).isEmpty();
+  }
+
+  @Test
+  void missing_latency_p99_is_reported_as_not_available() {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/status",
+            """
+                {"stages":[
+                  {"stageId":"kpi-1m","latencyP50Ms":30000,"latencyP95Ms":70000,"watermarkLagMs":12000}
+                ]}
+                """,
+        "/api/results/sink-latency", "[]"));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.stageLatencies()).singleElement().satisfies(stage -> {
+      assertThat(stage.latencyP50Ms()).isEqualTo(30_000);
+      assertThat(stage.latencyP95Ms()).isEqualTo(70_000);
+      assertThat(stage.latencyP99Ms()).isEqualTo(-1);
+    });
+  }
+
+  @Test
+  void skips_default_latency_placeholders() {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/status",
+            """
+                [
+                  {"stageId":"kpi-1m","status":"unknown","latencyP50Ms":-1,"latencyP95Ms":0,"latencyP99Ms":-1,"watermarkLagMs":0},
+                  {"stageId":"enrichment","status":"healthy","latencyP50Ms":4,"latencyP95Ms":8,"latencyP99Ms":12,"watermarkLagMs":5}
+                ]
+                """,
+        "/api/results/sink-latency",
+            """
+                [
+                  {"sinkName":"starrocks-kpi-1m","records":0,"bytes":0,"p50Ms":0,"p95Ms":0,"p99Ms":0,"failureCount":0},
+                  {"sinkName":"starrocks-cell-anomaly","records":7,"bytes":700,"p50Ms":2,"p95Ms":3,"p99Ms":4,"failureCount":0}
+                ]
+                """));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.stageLatencies())
+        .extracting(StageLatencySnapshot::stageId)
+        .containsExactly("enrichment");
+    assertThat(snapshot.sinkLatencies())
+        .extracting(SinkLatencySnapshot::sinkName)
+        .containsExactly("starrocks-cell-anomaly");
+    assertThat(snapshot.kpi1mP95Ms()).isEqualTo(-1);
   }
 }

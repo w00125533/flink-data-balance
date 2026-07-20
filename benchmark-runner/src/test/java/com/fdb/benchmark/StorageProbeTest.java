@@ -58,6 +58,31 @@ class StorageProbeTest {
   }
 
   @Test
+  void starrocks_probe_reports_business_table_rows() throws Exception {
+    StorageProbe probe = StorageProbe.forSink(BenchmarkSink.STARROCKS,
+        command -> new CommandResult(0, "12345\n", ""));
+
+    StorageSnapshot snapshot = probe.snapshot();
+
+    assertThat(snapshot.healthy()).isTrue();
+    assertThat(snapshot.records()).isEqualTo(12_345);
+    assertThat(snapshot.summary()).contains("starrocks rows=12345");
+  }
+
+  @Test
+  void starrocks_probe_queries_result_table_counts() throws Exception {
+    CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
+
+    StorageProbe.forSink(BenchmarkSink.STARROCKS, runner).snapshot();
+
+    assertThat(runner.shell())
+        .contains("FROM cell_kpi")
+        .contains("FROM cell_anomaly_events")
+        .contains("FROM user_anomaly_events")
+        .contains("FROM grid_anomaly_events");
+  }
+
+  @Test
   void hive_probe_has_hdfs_container_fallback_for_local_benchmark() throws Exception {
     CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
 

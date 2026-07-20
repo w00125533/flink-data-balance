@@ -29,7 +29,7 @@ public final class KafkaStorageProbe implements StorageProbe {
     return preferred == null || preferred.isBlank() ? fallback : preferred;
   }
 
-  private static long parseFirstLong(String value) {
+  static long parseFirstLong(String value) {
     if (value == null) {
       return 0;
     }

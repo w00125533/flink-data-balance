@@ -44,6 +44,7 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
     private transient String snapshotDir;
     private transient MetricSamplePublisher metricPublisher;
     private transient long rebalanceTotal;
+    private transient int subtaskIndex = -1;
 
     private transient long lastTimerTime = 0;
 
@@ -72,6 +73,7 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
             NUM_HOTSPOTS, NUM_VBUCKETS);
         snapshotDir = System.getProperty("fdb.snapshot.dir", "/tmp/fdb-state");
         metricPublisher = new MetricSamplePublisher(metricConfig.metricsEnabled());
+        subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
     }
 
     @Override
@@ -255,7 +257,7 @@ public class LoadCoordinator extends KeyedProcessFunction<String, HeartbeatPaylo
     StageMetricSample rebalanceMetricSample(long now) {
         return StageMetricSample.stage("load-coordinator", "Load Coordinator", "healthy",
                 0.0d, rebalanceTotal, 0L, 0L, 0L, now)
-            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism())
+            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism(), subtaskIndex)
             .withRebalanceTotal(rebalanceTotal);
     }
 }

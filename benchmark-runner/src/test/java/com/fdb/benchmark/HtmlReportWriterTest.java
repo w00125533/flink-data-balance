@@ -97,4 +97,38 @@ class HtmlReportWriterTest {
     assertThat(html)
         .contains("<td>Watermark Lag</td><td>181000 ms</td><td>&lt;= 180000 ms</td><td><span class=\"health health-warn\">UNSTABLE</span></td>");
   }
+
+  @Test
+  void report_labels_sampled_rates_missing_latency_and_starrocks_rows() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-c",
+        "FDB_BENCHMARK_SINKS", "starrocks",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+    BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
+    BenchmarkRunResult result = new BenchmarkRunResult(plan, BenchmarkStatus.UNSTABLE,
+        "KPI availability p95 over threshold",
+        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1_200, 1_100, 1, 4, List.of(
+            new FlinkOperatorSnapshot("kpi-1m", "kpi-1m-full-join", 4,
+                300, 100, 600, 200, 8_192, 2_048, 0.4, 0.6, 0.0))),
+        new FdbMetricsSnapshot(1, 2, 3, -1, 0, 5, List.of(
+            new StageLatencySnapshot("kpi-1m", 10, 20, -1, 5)),
+            List.of(new SinkLatencySnapshot("starrocks-kpi-1m", 200, 20_000, 10, 20, -1, 0))),
+        new StorageSnapshot(true, "starrocks rows=12345", 12_345, 0, 0),
+        TopologyMetricsSnapshot.empty(),
+        new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
+            100, 1000, 100.0, 10_000, 0, 0,
+            250, 1000, 1000.0, 0, 0, 0));
+
+    new HtmlReportWriter(tempDir).write(config, List.of(result));
+
+    String html = Files.readString(tempDir.resolve("bench-c/runs/" + plan.runId() + "/report.html"));
+    assertThat(html)
+        .contains("Sampled Avg Out EPS")
+        .contains("<tr><th>Sampled Avg Records In/s</th><td>300</td></tr>")
+        .contains("<tr><th>Operator Aggregate Records In Total</th><td>1200</td></tr>")
+        .contains("<tr><td>kpi-1m</td><td>10 ms</td><td>20 ms</td><td>N/A</td><td>5 ms</td></tr>")
+        .contains("<tr><th>CFG total</th><td>1000</td><td>1000.00</td><td>1.00</td><td>N/A (one-time init)</td></tr>")
+        .contains("<tr><td>Storage Rows</td><td>12345</td><td>-</td><td colspan=\"5\">starrocks rows=12345</td></tr>")
+        .doesNotContain("Storage Files</td><td>12345");
+  }
 }

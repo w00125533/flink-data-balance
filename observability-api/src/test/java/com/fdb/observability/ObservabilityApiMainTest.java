@@ -2,6 +2,7 @@ package com.fdb.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fdb.common.metrics.StageMetricSample;
 import com.fdb.observability.model.ReportStatus;
 import com.fdb.observability.service.BenchmarkReportService;
 import com.fdb.observability.service.ExecutionRunHistoryService;
@@ -26,6 +27,18 @@ class ObservabilityApiMainTest {
     String json = ObservabilityApiMain.toJson(new ObservabilitySnapshotService().stageStatuses());
     assertThat(json).contains("\"stageId\":\"chr-source\"");
     assertThat(json).contains("\"stageId\":\"iceberg-kpi-1m\"");
+  }
+
+  @Test
+  void serializesStageLatencyP99Json() throws Exception {
+    ObservabilitySnapshotService service = new ObservabilitySnapshotService();
+    service.applyMetricSample(StageMetricSample.stageLatency(
+        "kpi-1m", "KPI 1m Full Join", "healthy",
+        100.0, 90.0, 30, 70, 120, 12_000, 0, 1_717_400_000_000L));
+
+    String json = ObservabilityApiMain.toJson(service.stageStatuses());
+
+    assertThat(json).contains("\"latencyP99Ms\":120");
   }
 
   @Test

@@ -28,6 +28,7 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     private long startedAtNanos = -1L;
     private final LatencyStats latencyStats = new LatencyStats();
     private transient MetricSamplePublisher metricPublisher;
+    private int subtaskIndex = -1;
 
     public SinkLatencyProbe(String stageId, String displayName, String sinkType, String dataset,
                             String windowKind, long emitEveryRecords) {
@@ -49,6 +50,7 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     @Override
     public void open(Configuration parameters) {
         metricPublisher = new MetricSamplePublisher(metricConfig.metricsEnabled());
+        subtaskIndex = runtimeSubtaskIndex();
     }
 
     @Override
@@ -95,7 +97,7 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
         LatencyStats.Snapshot latency = latencyStats.snapshotAndReset();
         return StageMetricSample.sinkLatency(stageId, displayName, "healthy", sinkType, dataset, windowKind,
             records, approxBytes, durationMs(), latency.p50Ms(), latency.p95Ms(), latency.p99Ms(), 0L, "", -1L, nowMs)
-            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism());
+            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism(), subtaskIndex);
     }
 
     String summaryLine() {
@@ -117,6 +119,14 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
 
     private boolean shouldEmit() {
         return records == 1L || records % emitEveryRecords == 0L;
+    }
+
+    private int runtimeSubtaskIndex() {
+        try {
+            return getRuntimeContext().getIndexOfThisSubtask();
+        } catch (IllegalStateException ignored) {
+            return -1;
+        }
     }
 
     private long durationMs() {

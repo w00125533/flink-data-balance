@@ -20,6 +20,7 @@ public final class BenchmarkRunnerMain {
         return 0;
       }
       Map<String, String> env = EnvFile.load(parsed.envFile(), System.getenv());
+      env.putAll(parsed.overrides());
       env.put("FDB_ENV_FILE", parsed.envFile().toString());
       BenchmarkConfig config = BenchmarkConfig.from(parsed.target(), env);
       List<BenchmarkRunResult> results;
@@ -80,6 +81,6 @@ public final class BenchmarkRunnerMain {
   }
 
   private static void usage() {
-    System.out.println("Usage: benchmark-runner <local|external-yarn> [--env <file>] [--dry-run]");
+    System.out.println("Usage: benchmark-runner <local|external-yarn> [--env <file>] [--set KEY=VALUE]... [--dry-run]");
   }
 }

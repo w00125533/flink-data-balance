@@ -41,11 +41,14 @@ public final class ObservabilitySnapshotService {
   }
 
   public List<StageStatus> stageStatuses() {
-    Map<String, StageMetricSample> latestByStage = new LinkedHashMap<>();
+    Map<String, List<StageMetricSample>> groupedByStage = new LinkedHashMap<>();
     samples.values().stream()
         .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
-        .forEach(sample -> latestByStage.put(sample.stageId(), sample));
-    return latestByStage.values().stream()
+        .forEach(sample -> groupedByStage.computeIfAbsent(sample.stageId(), ignored -> new ArrayList<>()).add(sample));
+    List<StageMetricSample> latestByStage = groupedByStage.values().stream()
+        .map(this::aggregateSamples)
+        .toList();
+    return latestByStage.stream()
         .sorted(Comparator.comparingInt(sample -> stageOrder().getOrDefault(sample.stageId(), 100)))
         .map(sample -> new StageStatus(
             sample.stageId(),
@@ -55,6 +58,7 @@ public final class ObservabilitySnapshotService {
             sample.outEps(),
             sample.latencyP50Ms(),
             sample.latencyP95Ms(),
+            sample.latencyP99Ms(),
             sample.watermarkLagMs(),
             (int) Math.min(Integer.MAX_VALUE, sample.errorCount()),
             summary(sample),
@@ -63,8 +67,13 @@ public final class ObservabilitySnapshotService {
   }
 
   public List<SourceSummary> sourceSummaries() {
-    return samples.values().stream()
+    Map<String, List<StageMetricSample>> groupedBySource = new LinkedHashMap<>();
+    samples.values().stream()
         .filter(sample -> !sample.source().isBlank())
+        .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .forEach(sample -> groupedBySource.computeIfAbsent(sample.source(), ignored -> new ArrayList<>()).add(sample));
+    return groupedBySource.values().stream()
+        .map(this::aggregateSamples)
         .sorted(Comparator.comparing(StageMetricSample::source))
         .map(sample -> new SourceSummary(sample.source(), sample.status(), sample.outEps(), 0,
             sample.watermarkLagMs(), summary(sample), formatUpdatedAt(sample.updatedAtEpochMs())))
@@ -72,7 +81,7 @@ public final class ObservabilitySnapshotService {
   }
 
   public List<MigrationEvent> migrationEvents() {
-    StageMetricSample coordinator = samples.get("load-coordinator");
+    StageMetricSample coordinator = latestStageSample("load-coordinator");
     if (coordinator == null || coordinator.rebalanceTotal() == 0L) {
       return List.of();
     }
@@ -88,7 +97,8 @@ public final class ObservabilitySnapshotService {
   }
 
   public List<SinkSummary> sinkSummaries() {
-    return samples.values().stream()
+    return groupedSinkSamples().values().stream()
+        .map(this::aggregateSamples)
         .filter(sample -> !sample.sink().isBlank())
         .sorted(Comparator.comparing((StageMetricSample sample) -> sample.stageId())
             .thenComparing(StageMetricSample::window))
@@ -98,7 +108,8 @@ public final class ObservabilitySnapshotService {
   }
 
   public List<SinkLatencySummary> sinkLatencySummaries() {
-    return samples.values().stream()
+    return groupedSinkSamples().values().stream()
+        .map(this::aggregateSamples)
         .filter(sample -> !sample.sink().isBlank())
         .sorted(Comparator.comparing((StageMetricSample sample) -> sample.stageId())
             .thenComparing(StageMetricSample::window))
@@ -121,7 +132,7 @@ public final class ObservabilitySnapshotService {
   }
 
   public long rebalanceTotal() {
-    StageMetricSample coordinator = samples.get("load-coordinator");
+    StageMetricSample coordinator = latestStageSample("load-coordinator");
     return coordinator == null ? 0L : coordinator.rebalanceTotal();
   }
 
@@ -346,13 +357,123 @@ public final class ObservabilitySnapshotService {
   }
 
   private static String sampleKey(StageMetricSample sample) {
+    String baseKey;
     if (!sample.sink().isBlank()) {
-      return sample.stageId() + ":" + sample.sink() + ":" + sample.window();
+      baseKey = sinkGroupKey(sample);
+    } else {
+      baseKey = sample.stageId();
     }
-    return sample.stageId();
+    return sample.subtaskIndex() >= 0 ? baseKey + ":subtask-" + sample.subtaskIndex() : baseKey;
   }
 
   private static boolean isUnknownSeed(StageMetricSample sample) {
     return "unknown".equals(sample.status());
+  }
+
+  private StageMetricSample latestStageSample(String stageId) {
+    List<StageMetricSample> matching = samples.values().stream()
+        .filter(sample -> sample.stageId().equals(stageId))
+        .toList();
+    return matching.isEmpty() ? null : aggregateSamples(matching);
+  }
+
+  private Map<String, List<StageMetricSample>> groupedSinkSamples() {
+    Map<String, List<StageMetricSample>> grouped = new LinkedHashMap<>();
+    samples.values().stream()
+        .filter(sample -> !sample.sink().isBlank())
+        .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .forEach(sample -> grouped.computeIfAbsent(sinkGroupKey(sample), ignored -> new ArrayList<>()).add(sample));
+    return grouped;
+  }
+
+  private StageMetricSample aggregateSamples(List<StageMetricSample> group) {
+    List<StageMetricSample> effective = effectiveSamples(group);
+    StageMetricSample latest = effective.stream()
+        .max(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .orElse(group.get(0));
+    long errorCount = effective.stream().mapToLong(StageMetricSample::errorCount).sum();
+    long rowsWritten = effective.stream().mapToLong(StageMetricSample::rowsWritten).sum();
+    long records = effective.stream().mapToLong(StageMetricSample::records).sum();
+    long bytes = effective.stream().mapToLong(StageMetricSample::bytes).sum();
+    long rebalanceTotal = effective.stream().mapToLong(StageMetricSample::rebalanceTotal).sum();
+    long failureCount = effective.stream().mapToLong(StageMetricSample::failureCount).sum();
+    return new StageMetricSample(
+        latest.stageId(),
+        latest.displayName(),
+        combinedStatus(effective),
+        effective.stream().mapToDouble(StageMetricSample::inEps).sum(),
+        effective.stream().mapToDouble(StageMetricSample::outEps).sum(),
+        maxAvailable(effective, StageMetricSample::latencyP95Ms),
+        effective.stream().mapToLong(StageMetricSample::watermarkLagMs).max().orElse(0L),
+        errorCount,
+        rowsWritten,
+        rebalanceTotal,
+        latest.source(),
+        latest.sink(),
+        latest.window(),
+        latest.sinkType(),
+        latest.dataset(),
+        latest.windowKind(),
+        records,
+        bytes,
+        effective.stream().mapToLong(StageMetricSample::durationMs).max().orElse(0L),
+        maxAvailable(effective, StageMetricSample::latencyP50Ms),
+        maxAvailable(effective, StageMetricSample::latencyP99Ms),
+        failureCount,
+        latestNonBlankError(effective),
+        effective.stream().mapToLong(StageMetricSample::checkpointId).max().orElse(-1L),
+        latest.runId(),
+        latest.resultSink(),
+        effective.stream().mapToInt(StageMetricSample::parallelism).max().orElse(-1),
+        -1,
+        effective.stream().mapToLong(StageMetricSample::updatedAtEpochMs).max().orElse(latest.updatedAtEpochMs()));
+  }
+
+  private static List<StageMetricSample> effectiveSamples(List<StageMetricSample> group) {
+    List<StageMetricSample> nonSeed = group.stream()
+        .filter(sample -> !isUnknownSeed(sample))
+        .toList();
+    return nonSeed.isEmpty() ? group : nonSeed;
+  }
+
+  private static String combinedStatus(List<StageMetricSample> group) {
+    if (group.stream().anyMatch(sample -> "failed".equalsIgnoreCase(sample.status()))) {
+      return "failed";
+    }
+    if (group.stream().anyMatch(sample -> "critical".equalsIgnoreCase(sample.status()))) {
+      return "critical";
+    }
+    if (group.stream().anyMatch(sample -> "warning".equalsIgnoreCase(sample.status())
+        || "degraded".equalsIgnoreCase(sample.status())
+        || "unhealthy".equalsIgnoreCase(sample.status()))) {
+      return "warning";
+    }
+    if (group.stream().anyMatch(sample -> "healthy".equalsIgnoreCase(sample.status()))) {
+      return "healthy";
+    }
+    return group.stream()
+        .max(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .map(StageMetricSample::status)
+        .orElse("unknown");
+  }
+
+  private static long maxAvailable(List<StageMetricSample> group, java.util.function.ToLongFunction<StageMetricSample> value) {
+    return group.stream()
+        .mapToLong(value)
+        .filter(candidate -> candidate >= 0L)
+        .max()
+        .orElse(-1L);
+  }
+
+  private static String latestNonBlankError(List<StageMetricSample> group) {
+    return group.stream()
+        .filter(sample -> !sample.errorMessage().isBlank())
+        .max(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .map(StageMetricSample::errorMessage)
+        .orElse("");
+  }
+
+  private static String sinkGroupKey(StageMetricSample sample) {
+    return sample.stageId() + ":" + sample.sink() + ":" + sample.window();
   }
 }

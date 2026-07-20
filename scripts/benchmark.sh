@@ -8,7 +8,8 @@ usage() {
   echo "Usage: scripts/benchmark.sh <local|external-yarn> [runner args]"
   echo "Examples:"
   echo "  FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local"
-  echo "  FDB_ENV_FILE=.env.external bash scripts/benchmark.sh external-yarn --dry-run"
+  echo "  bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp --dry-run"
+  echo "  bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp --set FDB_BENCHMARK_CELL_LEVELS=2000 --dry-run"
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -32,6 +33,20 @@ esac
 shift
 
 ENV_FILE="${FDB_ENV_FILE:-.env}"
+RUNNER_HAS_ENV=0
+RUNNER_ARGS=("$@")
+for ((i = 0; i < ${#RUNNER_ARGS[@]}; i++)); do
+  if [[ "${RUNNER_ARGS[$i]}" == "--env" ]]; then
+    if (( i + 1 >= ${#RUNNER_ARGS[@]} )); then
+      echo "[ERROR] --env requires a file path" >&2
+      exit 1
+    fi
+    ENV_FILE="${RUNNER_ARGS[$((i + 1))]}"
+    RUNNER_HAS_ENV=1
+    i=$((i + 1))
+  fi
+done
+
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "[ERROR] env file not found: $ENV_FILE" >&2
   exit 1
@@ -72,6 +87,10 @@ if [[ ! -f "$JAR" ]]; then
   echo "[ERROR] benchmark-runner jar not found: $JAR" >&2
   echo "[ERROR] build it with: mvn -pl benchmark-runner -am package" >&2
   exit 1
+fi
+
+if [[ "$RUNNER_HAS_ENV" == "1" ]]; then
+  exec java -jar "$JAR" "$TARGET" "$@"
 fi
 
 exec java -jar "$JAR" "$TARGET" --env "$ENV_FILE" "$@"

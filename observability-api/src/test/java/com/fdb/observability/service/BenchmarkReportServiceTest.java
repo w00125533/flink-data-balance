@@ -111,4 +111,30 @@ class BenchmarkReportServiceTest {
     assertThat(markdown).contains("| starrocks-kpi-1m | starrocks | 1m | 9 |");
     assertThat(markdown).doesNotContain("| starrocks-kpi-1m | starrocks | 1m | 1 |");
   }
+
+  @Test
+  void aggregatesSinkMetricsAcrossSubtasksAndFormatsMissingLatencyAsNotAvailable() throws Exception {
+    Path runDir = tempDir.resolve("run-a");
+    Files.createDirectories(runDir);
+    Files.writeString(runDir.resolve("metrics.jsonl"), String.join("\n",
+        StageMetricSample.sinkLatency(
+            "starrocks-kpi-1m", "Cell KPI 1m StarRocks Sink", "healthy", "starrocks", "kpi_1m", "MIN_1",
+            100, 1_000, 20, -1, 20, -1, 0, "", 3, 1_717_400_000_000L)
+            .withRunMetadata("run-a", "starrocks", 4, 0).toJson(),
+        StageMetricSample.sinkLatency(
+            "starrocks-kpi-1m", "Cell KPI 1m StarRocks Sink", "healthy", "starrocks", "kpi_1m", "MIN_1",
+            200, 2_000, 30, -1, 40, 60, 1, "slow flush", 4, 1_717_400_001_000L)
+            .withRunMetadata("run-a", "starrocks", 4, 1).toJson(),
+        StageMetricSample.stageLatency(
+            "kpi-1m", "KPI 1m Full Join", "healthy", 10.0, 10.0,
+            -1, 20, -1, 500, 0, 1_717_399_999_000L)
+            .withRunMetadata("run-a", "starrocks", 4).toJson()));
+
+    String markdown = Files.readString(new BenchmarkReportService(tempDir).generate("run-a"));
+
+    assertThat(markdown)
+        .contains("| starrocks-kpi-1m | starrocks | 1m | 300 | N/A | 40 | 60 | 1 |")
+        .contains("| kpi-1m | KPI 1m Full Join | 10.00 | N/A | 20 | N/A | 500 |")
+        .contains("- starrocks-kpi-1m: p95=40 ms, failures=1");
+  }
 }

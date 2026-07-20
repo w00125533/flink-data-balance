@@ -118,12 +118,15 @@ Benchmark runner:
 mvn -pl benchmark-runner -am package
 FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local
 FDB_ENV_FILE=.env.external bash scripts/benchmark.sh external-yarn
+bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp
+bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp --set FDB_BENCHMARK_CELL_LEVELS="2000 5000"
 ```
 
 For a local dry run that only validates matrix expansion and report generation:
 
 ```bash
 FDB_ENV_FILE=.env.local bash scripts/benchmark.sh local --dry-run
+bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp --dry-run
 ```
 
 The runner expands a `sink x cellLevel` matrix. For each run it sets a distinct
@@ -136,6 +139,12 @@ higher pressure levels for a sink after the first unstable or failed run.
 `FDB_CHR_PRODUCER_THREADS` controls CHR producer worker threads inside the same
 simulator process. `FDB_RATE_EPS` remains the global CHR target EPS; worker
 threads split that target evenly and each worker uses its own Kafka producer.
+
+压测复跑用的 `.env.benchmark-*.tmp` 文件统一放在 `benchmark-runner/conf/`
+下，通过 `--env <file>` 参数注入；`FDB_ENV_FILE` 仍可用，但命令行里的
+`--env` 优先。少量临时覆盖项可通过重复的 `--set KEY=VALUE` 注入，覆盖 env
+文件中的同名变量，适合临时调整 `FDB_BENCHMARK_CELL_LEVELS`、
+`FDB_BENCHMARK_DURATION_SEC`、`FDB_BENCHMARK_CHR_EPS_PER_CELL` 等压测参数。
 
 `cellLevel` 表示本轮目标生成小区数，不再乘站点数或每站小区估算。
 `Target CHR EPS = FDB_BENCHMARK_CHR_EPS_PER_CELL`，表示每小区每秒 CHR 目标输出记录数。
@@ -180,6 +189,15 @@ Each run directory contains `run.json`, `flink-snapshot.json`,
 The single-run report shows topology-service generation/publish metrics,
 operator throughput rates from Flink's per-vertex metrics API, and separate
 operator `Records In/Out Total` columns from Flink cumulative counters.
+报告口径说明：`Sampled Avg Records In/s` / `Sampled Avg Records Out/s` 是
+benchmark 测量窗口内多次 Flink REST 采样的非零均值，避免收尾瞬时空闲采样把吞吐误显示为 0；
+`Operator Aggregate Records In/Out Total` 是 Flink 各 vertex 累计 counter 的聚合展示，
+不等同于原始业务输入条数。StarRocks 的 `Storage Rows` 直接查询业务结果表行数，
+Hive/Iceberg/Kafka 的 storage 行继续表示文件或 topic 探测结果。CFG 是一次性初始化源，
+`Source Density` 中的每小区每秒速率显示为 `N/A`。
+Observability 历史报告按 `stage/sink/window + subtaskIndex` 保留每个 subtask 最新样本后再聚合；
+缺失的 P50/P95/P99 延迟显示为 `N/A`，不再显示为 `0 ms`；默认 `unknown` 占位指标
+不会进入 benchmark 单轮 latency/sink 明细。
 
 When `FDB_METRICS_HISTORY_ENABLED=true`, observability-api appends sampled
 runtime metrics to `metrics.jsonl` under the same run directory. The report is

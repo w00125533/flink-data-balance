@@ -143,6 +143,106 @@ class ObservabilitySnapshotServiceTest {
   }
 
   @Test
+  void aggregatesLatestSinkLatencySamplesAcrossSubtasks() {
+    service.applyMetricSample(StageMetricSample.fromJson("""
+        {
+          "stageId":"starrocks-kpi-1m",
+          "displayName":"Cell KPI 1m StarRocks Sink",
+          "status":"healthy",
+          "inEps":100.0,
+          "outEps":100.0,
+          "latencyP95Ms":20,
+          "watermarkLagMs":0,
+          "errorCount":0,
+          "rowsWritten":100,
+          "rebalanceTotal":0,
+          "source":"",
+          "sink":"starrocks",
+          "window":"1m",
+          "sinkType":"starrocks",
+          "dataset":"kpi_1m",
+          "windowKind":"MIN_1",
+          "records":100,
+          "bytes":1000,
+          "durationMs":1000,
+          "latencyP50Ms":10,
+          "latencyP99Ms":30,
+          "failureCount":0,
+          "errorMessage":"",
+          "checkpointId":8,
+          "runId":"run-a",
+          "resultSink":"starrocks",
+          "parallelism":2,
+          "subtaskIndex":0,
+          "updatedAtEpochMs":1717400000000
+        }
+        """));
+    service.applyMetricSample(StageMetricSample.fromJson("""
+        {
+          "stageId":"starrocks-kpi-1m",
+          "displayName":"Cell KPI 1m StarRocks Sink",
+          "status":"healthy",
+          "inEps":200.0,
+          "outEps":200.0,
+          "latencyP95Ms":40,
+          "watermarkLagMs":0,
+          "errorCount":0,
+          "rowsWritten":200,
+          "rebalanceTotal":0,
+          "source":"",
+          "sink":"starrocks",
+          "window":"1m",
+          "sinkType":"starrocks",
+          "dataset":"kpi_1m",
+          "windowKind":"MIN_1",
+          "records":200,
+          "bytes":2000,
+          "durationMs":1200,
+          "latencyP50Ms":15,
+          "latencyP99Ms":60,
+          "failureCount":0,
+          "errorMessage":"",
+          "checkpointId":9,
+          "runId":"run-a",
+          "resultSink":"starrocks",
+          "parallelism":2,
+          "subtaskIndex":1,
+          "updatedAtEpochMs":1717400001000
+        }
+        """));
+
+    assertThat(service.sinkLatencySummaries())
+        .filteredOn(summary -> summary.sinkName().equals("starrocks-kpi-1m"))
+        .singleElement()
+        .satisfies(summary -> {
+          assertThat(summary.records()).isEqualTo(300);
+          assertThat(summary.bytes()).isEqualTo(3000);
+          assertThat(summary.p50Ms()).isEqualTo(15);
+          assertThat(summary.p95Ms()).isEqualTo(40);
+          assertThat(summary.p99Ms()).isEqualTo(60);
+          assertThat(summary.checkpointId()).isEqualTo(9);
+        });
+  }
+
+  @Test
+  void criticalSubtaskDominatesAggregatedSinkStatus() {
+    service.applyMetricSample(StageMetricSample.sinkLatency(
+        "starrocks-kpi-1m", "Cell KPI 1m StarRocks Sink", "healthy", "starrocks", "kpi_1m", "MIN_1",
+        100, 1_000, 50, 10, 20, 30, 0, "", 8, 1_717_400_000_000L)
+        .withRunMetadata("run-a", "starrocks", 2, 0));
+    service.applyMetricSample(StageMetricSample.sinkLatency(
+        "starrocks-kpi-1m", "Cell KPI 1m StarRocks Sink", "critical", "starrocks", "kpi_1m", "MIN_1",
+        200, 2_000, 60, 20, 40, 60, 1, "write failed", 9, 1_717_400_001_000L)
+        .withRunMetadata("run-a", "starrocks", 2, 1));
+
+    assertThat(service.sinkSummaries())
+        .filteredOn(summary -> summary.sink().equals("starrocks-kpi-1m"))
+        .singleElement()
+        .extracting("status")
+        .isEqualTo("critical");
+  }
+
+  @Test
   void resolveDynamicBalancingDefaultsToDisabled() {
     assertThat(ObservabilitySnapshotService.resolveDynamicBalancingEnabled(Map.<String, String>of(), new Properties()))
         .isFalse();

@@ -81,10 +81,13 @@ public final class BenchmarkOrchestrator {
 
   private BenchmarkRunResult observeMeasurement(BenchmarkRunPlan plan) throws Exception {
     long deadline = System.currentTimeMillis() + (config.durationSec() * 1000);
-    BenchmarkRunResult last = decideOnce(plan);
+    List<RunObservation> observations = new ArrayList<>();
+    RunObservation observation = clients.observe(plan);
+    observations.add(observation);
+    BenchmarkRunResult last = decisionEngine.decide(plan, observation);
     if (config.durationSec() <= 0
         || (config.earlyStopOnUnstable() && last.status() != BenchmarkStatus.STABLE)) {
-      return last;
+      return decisionEngine.decide(plan, measurementWindow(observations));
     }
     while (System.currentTimeMillis() < deadline) {
       long remainingMs = deadline - System.currentTimeMillis();
@@ -92,24 +95,27 @@ public final class BenchmarkOrchestrator {
       if (sleepMs > 0) {
         Thread.sleep(sleepMs);
       }
-      last = decideOnce(plan);
+      observation = clients.observe(plan);
+      observations.add(observation);
+      last = decisionEngine.decide(plan, observation);
       if (config.earlyStopOnUnstable() && last.status() != BenchmarkStatus.STABLE) {
-        return last;
+        return decisionEngine.decide(plan, measurementWindow(observations));
       }
     }
-    return last;
+    return decisionEngine.decide(plan, measurementWindow(observations));
   }
 
-  private BenchmarkRunResult decideOnce(BenchmarkRunPlan plan) throws Exception {
-    RunObservation observation = clients.observe(plan);
-    return decisionEngine.decide(plan, observation);
+  private static RunObservation measurementWindow(List<RunObservation> observations) {
+    RunObservation last = observations.get(observations.size() - 1);
+    return last.withFlink(FlinkSnapshot.measurementWindow(
+        observations.stream().map(RunObservation::flink).toList()));
   }
 
   private static BenchmarkRunResult failedResult(BenchmarkRunPlan plan, Exception e) {
     String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     return new BenchmarkRunResult(plan, BenchmarkStatus.FAILED, reason,
         new FlinkSnapshot("FAILED", 0, 0, 0, 0, 0, 0, 0),
-        new FdbMetricsSnapshot(0, 0, 0, 0, 0, 0),
+        new FdbMetricsSnapshot(-1, -1, -1, -1, 0, 0),
         new StorageSnapshot(false, "benchmark failed: " + reason, 0, 0, 0));
   }
 

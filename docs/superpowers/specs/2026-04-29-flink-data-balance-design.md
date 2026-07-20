@@ -785,11 +785,18 @@ Sink benchmark orchestration entry:
 ```bash
 bash scripts/benchmark.sh local
 bash scripts/benchmark.sh external-yarn
+bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp
+bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starrocks-30eps-scale-20260719-1148.tmp --set FDB_BENCHMARK_CELL_LEVELS="2000 5000"
 ```
 
 `scripts/benchmark.sh` is a thin launcher for the Java `benchmark-runner`
 module. It loads `.env`, locates the runner jar, and passes the target plus CLI
 arguments through. It does not contain benchmark state-machine logic.
+
+压测配置文件目标态统一放在 `benchmark-runner/conf/` 下。历史复跑或临时压测
+使用 `--env <file>` 显式注入 `.env.benchmark-*.tmp`；`FDB_ENV_FILE` 仍作为
+兼容入口，但命令行 `--env` 优先。少量参数覆写使用重复的
+`--set KEY=VALUE`，runner 在读取 env 文件后再应用这些覆写值。
 
 The Java `benchmark-runner` owns sink upper-bound benchmarking:
 
@@ -1433,6 +1440,17 @@ DLQ：
   不使用 Docker volume 路径，也不提供输出目录配置项。
 - 报告交付为 HTML-only：批次入口 `index.html`，单轮详情
   `runs/<runId>/report.html`。JSON/CSV 仅用于机器分析和复盘。
+- 单轮报告中的 Flink `Records In/s` / `Records Out/s` 采用测量窗口内多次
+  Flink REST 采样的非零均值；`Records In/Out Total` 明确标注为算子累计
+  counter 聚合值，不作为原始业务输入量解释。
+- Observability metrics 按 `stage/sink/window + subtaskIndex` 保留每个
+  subtask 最新样本后再聚合，records/bytes/failures 求和，p50/p95/p99 取可用
+  最大值；缺失时延显示 `N/A`，默认 `unknown` 占位指标不进入 benchmark
+  单轮 latency/sink 明细。`critical` 状态优先于 `healthy` 聚合输出。
+- StarRocks storage probe 必须查询业务结果表行数并在报告中显示为
+  `Storage Rows`；Hive/Iceberg/Kafka 的 storage probe 保持文件或 topic 口径。
+- CFG 为一次性初始化源，`Source Density` 的 `records/s/cell` 显示 `N/A`，
+  避免把初始化平均速率误读为持续事件流密度。
 - `index.html` 集成全局结论、每个 sink 的稳定上限、失败点、横向对比、
   优化建议和所有单轮详情链接，不单独生成 recommendations 文件。
 - 单轮 `report.html` 按 C 方案实现：顶部为运行状态、瓶颈原因、调优建议和

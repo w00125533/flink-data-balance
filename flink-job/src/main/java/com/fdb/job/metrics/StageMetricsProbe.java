@@ -29,6 +29,7 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     private long lastEmitAtMs = -1L;
     private double lastEps;
     private long latestWatermarkLagMs;
+    private int subtaskIndex = -1;
 
     public StageMetricsProbe(String stageId, String displayName, String status, long emitIntervalMs) {
         this(stageId, displayName, status, emitIntervalMs, MetricRuntimeConfig.fromEnvironment());
@@ -62,6 +63,7 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
             .gauge("eps", (Gauge<Double>) () -> lastEps);
 
         metricPublisher = new MetricSamplePublisher(metricConfig.metricsEnabled());
+        subtaskIndex = runtimeSubtaskIndex();
     }
 
     @Override
@@ -107,7 +109,7 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
         LatencyStats.Snapshot latency = latencyStats.snapshotAndReset();
         StageMetricSample sample = StageMetricSample.stageLatency(stageId, displayName, status,
             lastEps, lastEps, latency.p50Ms(), latency.p95Ms(), latency.p99Ms(), latestWatermarkLagMs, 0L, nowMs)
-            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism());
+            .withRunMetadata(metricConfig.runId(), metricConfig.resultSink(), metricConfig.parallelism(), subtaskIndex);
         eventsSinceLastEmit = 0L;
         lastEmitAtMs = nowMs;
         List<StageMetricSample> samples = new ArrayList<>();
@@ -136,6 +138,14 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
             } catch (Exception e) {
                 log.warn("Failed to publish stage metric sample for {}", sample.stageId(), e);
             }
+        }
+    }
+
+    private int runtimeSubtaskIndex() {
+        try {
+            return getRuntimeContext().getIndexOfThisSubtask();
+        } catch (IllegalStateException ignored) {
+            return -1;
         }
     }
 

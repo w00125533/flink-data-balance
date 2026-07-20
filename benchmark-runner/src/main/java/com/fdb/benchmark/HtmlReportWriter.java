@@ -100,7 +100,7 @@ public final class HtmlReportWriter {
             <h2>Runs</h2>
             <table>
               <thead>
-                <tr><th>Sink</th><th>Cells</th><th>CHR EPS/cell/s</th><th>Global CHR EPS</th><th>Status</th><th>Out EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Checkpoint</th><th>Backpressure</th><th>Watermark Lag</th><th>Storage</th><th>Reason</th><th>Report</th></tr>
+                <tr><th>Sink</th><th>Cells</th><th>CHR EPS/cell/s</th><th>Global CHR EPS</th><th>Status</th><th>Sampled Avg Out EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Checkpoint</th><th>Backpressure</th><th>Watermark Lag</th><th>Storage</th><th>Reason</th><th>Report</th></tr>
               </thead>
               <tbody>
         """.formatted(escape(config.benchmarkId()), escape(config.target()), config.warmupSec(), config.durationSec(),
@@ -249,7 +249,8 @@ public final class HtmlReportWriter {
             result.status(),
             escape(result.bottleneckReason()),
             metricCard("Status", result.status().name(), result.bottleneckReason()),
-            metricCard("Out EPS", formatNumber(flink.recordsOutPerSec()), "Flink write records/s"),
+            metricCard("Sampled Avg Out EPS", formatNumber(flink.recordsOutPerSec()),
+                "Flink sampled window avg records/s"),
             metricCard("Checkpoint", formatMs(flink.checkpointDurationMs()),
                 "Failures " + flink.consecutiveCheckpointFailures()),
             metricCard("Backpressure", formatRatio(flink.backpressureRatio()), "Job-level ratio"),
@@ -413,8 +414,7 @@ public final class HtmlReportWriter {
                 source.chrTotalPerCell(cellLevel), source.chrPerSecondPerCell(cellLevel)),
             densityRow("PM total", source.pmPublished(), source.pmObservedEps(),
                 source.pmTotalPerCell(cellLevel), source.pmPerSecondPerCell(cellLevel)),
-            densityRow("CFG total", source.cfgPublished(), source.cfgObservedEps(),
-                source.cfgTotalPerCell(cellLevel), source.cfgPerSecondPerCell(cellLevel)));
+            cfgDensityRow(source, cellLevel));
   }
 
   private static String densityRow(String label, long total, double recordsPerSecond, double totalPerCell,
@@ -422,6 +422,12 @@ public final class HtmlReportWriter {
     return "<tr><th>" + escape(label) + "</th><td>" + total + "</td><td>" + formatDouble(recordsPerSecond)
         + "</td><td>" + formatDouble(totalPerCell) + "</td><td>" + formatDouble(recordsPerSecondPerCell)
         + "</td></tr>";
+  }
+
+  private static String cfgDensityRow(SourceMetricsSnapshot source, int cellLevel) {
+    return "<tr><th>CFG total</th><td>" + source.cfgPublished() + "</td><td>"
+        + formatDouble(source.cfgObservedEps()) + "</td><td>" + formatDouble(source.cfgTotalPerCell(cellLevel))
+        + "</td><td>N/A (one-time init)</td></tr>";
   }
 
   private static String topologyTable(TopologyMetricsSnapshot topology) {
@@ -446,10 +452,10 @@ public final class HtmlReportWriter {
         row("Job Status", flink.jobStatus()),
         row("TaskManagers", String.valueOf(flink.taskManagers())),
         row("Slots", String.valueOf(flink.slots())),
-        row("Records In/s", formatNumber(flink.recordsInPerSec())),
-        row("Records Out/s", formatNumber(flink.recordsOutPerSec())),
-        row("Records In Total", formatNumber(flink.recordsInTotal())),
-        row("Records Out Total", formatNumber(flink.recordsOutTotal())),
+        row("Sampled Avg Records In/s", formatNumber(flink.recordsInPerSec())),
+        row("Sampled Avg Records Out/s", formatNumber(flink.recordsOutPerSec())),
+        row("Operator Aggregate Records In Total", formatNumber(flink.recordsInTotal())),
+        row("Operator Aggregate Records Out Total", formatNumber(flink.recordsOutTotal())),
         row("Backpressure", formatRatio(flink.backpressureRatio())),
         row("Checkpoint Duration", formatMs(flink.checkpointDurationMs())),
         row("Checkpoint Failures", String.valueOf(flink.consecutiveCheckpointFailures()))));
@@ -482,7 +488,7 @@ public final class HtmlReportWriter {
     }
     return """
         <table>
-          <thead><tr><th>Operator</th><th>Parallelism</th><th>Records In/s</th><th>Records Out/s</th><th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th><th>Busy</th><th>Idle</th><th>Backpressure</th></tr></thead>
+          <thead><tr><th>Operator</th><th>Parallelism</th><th>Sampled Avg Records In/s</th><th>Sampled Avg Records Out/s</th><th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th><th>Busy</th><th>Idle</th><th>Backpressure</th></tr></thead>
           <tbody>%s</tbody>
         </table>
         """.formatted(rows);
@@ -645,9 +651,7 @@ public final class HtmlReportWriter {
       rows.append("<tr><td>Storage Health</td><td colspan=\"3\">")
           .append(storage.healthy() ? "healthy" : "unhealthy").append("</td><td colspan=\"4\">")
           .append(escape(storage.summary())).append("</td></tr>");
-      rows.append("<tr><td>Storage Files</td><td>").append(storage.records())
-          .append("</td><td>-</td><td colspan=\"5\">Small files ")
-          .append(storage.smallFiles()).append(", in-progress ").append(storage.inProgressFiles()).append("</td></tr>");
+      appendStorageProbeRow(rows, plan.sink(), storage);
       return """
           <table>
             <thead><tr><th>Type</th><th>Sink</th><th>Records</th><th>Bytes</th><th>P50</th><th>P95</th><th>P99</th><th>Failures</th></tr></thead>
@@ -672,6 +676,18 @@ public final class HtmlReportWriter {
             storage.records(),
             storage.smallFiles(),
             storage.inProgressFiles());
+  }
+
+  private static void appendStorageProbeRow(StringBuilder rows, BenchmarkSink sink, StorageSnapshot storage) {
+    if (sink == BenchmarkSink.STARROCKS) {
+      rows.append("<tr><td>Storage Rows</td><td>").append(formatNumber(storage.records()))
+          .append("</td><td>-</td><td colspan=\"5\">")
+          .append(escape(storage.summary())).append("</td></tr>");
+      return;
+    }
+    rows.append("<tr><td>Storage Files</td><td>").append(formatNumber(storage.records()))
+        .append("</td><td>-</td><td colspan=\"5\">Small files ")
+        .append(storage.smallFiles()).append(", in-progress ").append(storage.inProgressFiles()).append("</td></tr>");
   }
 
   private static void appendSinkRow(StringBuilder rows, String type, SinkLatencySnapshot sink) {

@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.ToLongFunction;
 import java.util.stream.Stream;
 
 public final class BenchmarkReportService {
@@ -105,7 +107,7 @@ public final class BenchmarkReportService {
 
   private static void appendStageLatencyMetrics(StringBuilder out, List<StageMetricSample> samples) {
     out.append("## Stage Latency Metrics\n\n");
-    List<StageMetricSample> stageSamples = latestByStage(samples).values().stream()
+    List<StageMetricSample> stageSamples = aggregateLatestByStage(samples).values().stream()
         .filter(sample -> sample.sink().isBlank())
         .filter(sample -> sample.latencyP50Ms() > 0L
             || sample.latencyP95Ms() > 0L
@@ -123,9 +125,9 @@ public final class BenchmarkReportService {
       out.append("| ").append(sample.stageId())
           .append(" | ").append(sample.displayName())
           .append(" | ").append(String.format(Locale.ROOT, "%.2f", sample.outEps()))
-          .append(" | ").append(sample.latencyP50Ms())
-          .append(" | ").append(sample.latencyP95Ms())
-          .append(" | ").append(sample.latencyP99Ms())
+          .append(" | ").append(formatLatencyMs(sample.latencyP50Ms()))
+          .append(" | ").append(formatLatencyMs(sample.latencyP95Ms()))
+          .append(" | ").append(formatLatencyMs(sample.latencyP99Ms()))
           .append(" | ").append(sample.watermarkLagMs())
           .append(" |\n");
     }
@@ -134,7 +136,7 @@ public final class BenchmarkReportService {
 
   private static void appendSinkMetrics(StringBuilder out, List<StageMetricSample> samples) {
     out.append("## Sink Metrics\n\n");
-    List<StageMetricSample> sinkSamples = latestSinkSamples(samples).values().stream()
+    List<StageMetricSample> sinkSamples = aggregateLatestSinkSamples(samples).values().stream()
         .filter(sample -> !sample.sinkType().isBlank() || !sample.sink().isBlank())
         .sorted(Comparator.comparing(StageMetricSample::stageId)
             .thenComparing(StageMetricSample::window))
@@ -150,9 +152,9 @@ public final class BenchmarkReportService {
           .append(" | ").append(displaySink(sample))
           .append(" | ").append(sample.window())
           .append(" | ").append(sample.records())
-          .append(" | ").append(sample.latencyP50Ms())
-          .append(" | ").append(sample.latencyP95Ms())
-          .append(" | ").append(sample.latencyP99Ms())
+          .append(" | ").append(formatLatencyMs(sample.latencyP50Ms()))
+          .append(" | ").append(formatLatencyMs(sample.latencyP95Ms()))
+          .append(" | ").append(formatLatencyMs(sample.latencyP99Ms()))
           .append(" | ").append(sample.failureCount())
           .append(" |\n");
     }
@@ -161,11 +163,7 @@ public final class BenchmarkReportService {
 
   private static void appendBottleneckCandidates(StringBuilder out, List<StageMetricSample> samples) {
     out.append("## Bottleneck Candidates\n\n");
-    Map<String, StageMetricSample> latestByStage = new LinkedHashMap<>();
-    samples.stream()
-        .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
-        .forEach(sample -> latestByStage.put(sample.stageId(), sample));
-    List<StageMetricSample> candidates = latestByStage.values().stream()
+    List<StageMetricSample> candidates = aggregateLatestByMetric(samples).values().stream()
         .filter(sample -> sample.latencyP95Ms() > 0 || sample.failureCount() > 0)
         .sorted(Comparator.comparingLong(StageMetricSample::latencyP95Ms).reversed())
         .limit(5)
@@ -185,20 +183,130 @@ public final class BenchmarkReportService {
     return sample.sinkType().isBlank() ? sample.sink() : sample.sinkType();
   }
 
-  private static Map<String, StageMetricSample> latestSinkSamples(List<StageMetricSample> samples) {
-    Map<String, StageMetricSample> latest = new LinkedHashMap<>();
-    samples.stream()
-        .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
-        .forEach(sample -> latest.put(sample.stageId() + ":" + sample.sink() + ":" + sample.window(), sample));
-    return latest;
+  private static Map<String, StageMetricSample> aggregateLatestSinkSamples(List<StageMetricSample> samples) {
+    return aggregateLatestBy(samples,
+        sample -> sample.stageId() + ":" + sample.sink() + ":" + sample.window(),
+        sample -> !sample.sink().isBlank());
   }
 
-  private static Map<String, StageMetricSample> latestByStage(List<StageMetricSample> samples) {
-    Map<String, StageMetricSample> latest = new LinkedHashMap<>();
+  private static Map<String, StageMetricSample> aggregateLatestByStage(List<StageMetricSample> samples) {
+    return aggregateLatestBy(samples, StageMetricSample::stageId, sample -> true);
+  }
+
+  private static Map<String, StageMetricSample> aggregateLatestByMetric(List<StageMetricSample> samples) {
+    return aggregateLatestBy(samples,
+        sample -> sample.sink().isBlank()
+            ? sample.stageId()
+            : sample.stageId() + ":" + sample.sink() + ":" + sample.window(),
+        sample -> true);
+  }
+
+  private static Map<String, StageMetricSample> aggregateLatestBy(
+      List<StageMetricSample> samples,
+      Function<StageMetricSample, String> logicalKey,
+      java.util.function.Predicate<StageMetricSample> filter) {
+    Map<String, StageMetricSample> latestPhysicalSamples = new LinkedHashMap<>();
     samples.stream()
+        .filter(filter)
         .sorted(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
-        .forEach(sample -> latest.put(sample.stageId(), sample));
-    return latest;
+        .forEach(sample -> latestPhysicalSamples.put(physicalKey(logicalKey.apply(sample), sample), sample));
+
+    Map<String, List<StageMetricSample>> grouped = new LinkedHashMap<>();
+    latestPhysicalSamples.values().forEach(sample ->
+        grouped.computeIfAbsent(logicalKey.apply(sample), ignored -> new ArrayList<>()).add(sample));
+
+    Map<String, StageMetricSample> aggregated = new LinkedHashMap<>();
+    grouped.forEach((key, group) -> aggregated.put(key, aggregateSamples(group)));
+    return aggregated;
+  }
+
+  private static String physicalKey(String logicalKey, StageMetricSample sample) {
+    return sample.subtaskIndex() >= 0 ? logicalKey + ":subtask-" + sample.subtaskIndex() : logicalKey;
+  }
+
+  private static StageMetricSample aggregateSamples(List<StageMetricSample> group) {
+    List<StageMetricSample> effective = effectiveSamples(group);
+    StageMetricSample latest = effective.stream()
+        .max(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .orElse(group.get(0));
+    return new StageMetricSample(
+        latest.stageId(),
+        latest.displayName(),
+        combinedStatus(effective),
+        effective.stream().mapToDouble(StageMetricSample::inEps).sum(),
+        effective.stream().mapToDouble(StageMetricSample::outEps).sum(),
+        maxAvailable(effective, StageMetricSample::latencyP95Ms),
+        effective.stream().mapToLong(StageMetricSample::watermarkLagMs).max().orElse(0L),
+        effective.stream().mapToLong(StageMetricSample::errorCount).sum(),
+        effective.stream().mapToLong(StageMetricSample::rowsWritten).sum(),
+        effective.stream().mapToLong(StageMetricSample::rebalanceTotal).sum(),
+        latest.source(),
+        latest.sink(),
+        latest.window(),
+        latest.sinkType(),
+        latest.dataset(),
+        latest.windowKind(),
+        effective.stream().mapToLong(StageMetricSample::records).sum(),
+        effective.stream().mapToLong(StageMetricSample::bytes).sum(),
+        effective.stream().mapToLong(StageMetricSample::durationMs).max().orElse(0L),
+        maxAvailable(effective, StageMetricSample::latencyP50Ms),
+        maxAvailable(effective, StageMetricSample::latencyP99Ms),
+        effective.stream().mapToLong(StageMetricSample::failureCount).sum(),
+        latestNonBlankError(effective),
+        effective.stream().mapToLong(StageMetricSample::checkpointId).max().orElse(-1L),
+        latest.runId(),
+        latest.resultSink(),
+        effective.stream().mapToInt(StageMetricSample::parallelism).max().orElse(-1),
+        -1,
+        effective.stream().mapToLong(StageMetricSample::updatedAtEpochMs).max().orElse(latest.updatedAtEpochMs()));
+  }
+
+  private static List<StageMetricSample> effectiveSamples(List<StageMetricSample> group) {
+    List<StageMetricSample> nonSeed = group.stream()
+        .filter(sample -> !"unknown".equals(sample.status()))
+        .toList();
+    return nonSeed.isEmpty() ? group : nonSeed;
+  }
+
+  private static String combinedStatus(List<StageMetricSample> group) {
+    if (group.stream().anyMatch(sample -> "failed".equalsIgnoreCase(sample.status()))) {
+      return "failed";
+    }
+    if (group.stream().anyMatch(sample -> "critical".equalsIgnoreCase(sample.status()))) {
+      return "critical";
+    }
+    if (group.stream().anyMatch(sample -> "warning".equalsIgnoreCase(sample.status())
+        || "degraded".equalsIgnoreCase(sample.status())
+        || "unhealthy".equalsIgnoreCase(sample.status()))) {
+      return "warning";
+    }
+    if (group.stream().anyMatch(sample -> "healthy".equalsIgnoreCase(sample.status()))) {
+      return "healthy";
+    }
+    return group.stream()
+        .max(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .map(StageMetricSample::status)
+        .orElse("unknown");
+  }
+
+  private static long maxAvailable(List<StageMetricSample> group, ToLongFunction<StageMetricSample> value) {
+    return group.stream()
+        .mapToLong(value)
+        .filter(candidate -> candidate >= 0L)
+        .max()
+        .orElse(-1L);
+  }
+
+  private static String latestNonBlankError(List<StageMetricSample> group) {
+    return group.stream()
+        .filter(sample -> !sample.errorMessage().isBlank())
+        .max(Comparator.comparingLong(StageMetricSample::updatedAtEpochMs))
+        .map(StageMetricSample::errorMessage)
+        .orElse("");
+  }
+
+  private static String formatLatencyMs(long value) {
+    return value < 0 ? "N/A" : String.valueOf(value);
   }
 
   private record ReadResult(List<StageMetricSample> samples, int invalidLines, boolean truncated) {
