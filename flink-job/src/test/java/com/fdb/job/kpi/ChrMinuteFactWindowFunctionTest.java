@@ -1,7 +1,7 @@
 package com.fdb.job.kpi;
 
-import com.fdb.job.model.ChrMinuteFact;
 import com.fdb.common.avro.ChrEvent;
+import com.fdb.job.model.ChrMinuteFact;
 import com.fdb.common.avro.ChrEventType;
 import com.fdb.common.avro.RatType;
 import org.apache.flink.api.common.state.KeyedStateStore;
@@ -21,20 +21,21 @@ class ChrMinuteFactWindowFunctionTest {
     @Test
     void aggregates_chr_events_using_event_time_window_start() throws Exception {
         ChrMinuteFactWindowFunction function = new ChrMinuteFactWindowFunction();
+        ChrMinuteFactAggregateFunction aggregate = new ChrMinuteFactAggregateFunction();
+        ChrMinuteFactAccumulator acc = aggregate.createAccumulator();
+        acc = aggregate.add(chr("1", "imsi-1", ChrEventType.ATTACH, 0, -90.0f, 10.0f), acc);
+        acc = aggregate.add(chr("2", "imsi-1", ChrEventType.ATTACH, 7, null, 14.0f), acc);
+        acc = aggregate.add(chr("3", "imsi-2", ChrEventType.DATA_SESSION, 0, -100.0f, null), acc);
         TimeWindow window = new TimeWindow(120_000L, 180_000L);
         List<ChrMinuteFact> output = new ArrayList<>();
 
-        function.process("cell-a", context(function, window), List.of(
-            chr("1", "imsi-1", ChrEventType.ATTACH, 0, -90.0f, 10.0f),
-            chr("2", "imsi-1", ChrEventType.ATTACH, 7, null, 14.0f),
-            chr("3", "imsi-2", ChrEventType.DATA_SESSION, 0, -100.0f, null)
-        ), collector(output));
+        function.process("cell-a", context(function, window), List.of(acc), collector(output));
 
         assertThat(output).containsExactly(new ChrMinuteFact(
             "cell-a", "site-a", 120_000L, 3L, 2L, -190.0, 24.0, 2L, 1L, 2L, 2L));
     }
 
-    private static ProcessWindowFunction<ChrEvent, ChrMinuteFact, String, TimeWindow>.Context context(
+    private static ProcessWindowFunction<ChrMinuteFactAccumulator, ChrMinuteFact, String, TimeWindow>.Context context(
         ChrMinuteFactWindowFunction function,
         TimeWindow window) {
         return function.new Context() {

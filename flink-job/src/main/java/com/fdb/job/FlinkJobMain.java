@@ -11,6 +11,8 @@ import com.fdb.job.config.ResultSinkType;
 import com.fdb.job.config.RuleConfig;
 import com.fdb.job.enrich.EnrichmentProcessFunction;
 import com.fdb.job.kpi.CellKpiRollupAggregator;
+import com.fdb.job.kpi.ChrMinuteFactAccumulator;
+import com.fdb.job.kpi.ChrMinuteFactAggregateFunction;
 import com.fdb.job.kpi.ChrMinuteFactWindowFunction;
 import com.fdb.job.kpi.MinuteKpiJoinFunction;
 import com.fdb.job.kpi.PmMinuteFactWindowFunction;
@@ -205,7 +207,12 @@ public class FlinkJobMain {
         DataStream<ChrMinuteFact> chrMinuteFacts = chrStream
             .keyBy(chr -> chr.getCellId().toString())
             .window(TumblingEventTimeWindows.of(Time.minutes(1)))
-            .process(new ChrMinuteFactWindowFunction(), new GenericTypeInfo<>(ChrMinuteFact.class))
+            .aggregate(
+                new ChrMinuteFactAggregateFunction(),
+                new ChrMinuteFactWindowFunction(),
+                new GenericTypeInfo<>(ChrMinuteFactAccumulator.class),
+                new GenericTypeInfo<>(ChrMinuteFactAccumulator.class),
+                new GenericTypeInfo<>(ChrMinuteFact.class))
             .name("chr-1m-fact");
 
         DataStream<PmMinuteFact> pmMinuteFacts = pmStream
