@@ -1,0 +1,7 @@
+{
+  "healthy" : true,
+  "summary" : "starrocks query healthy",
+  "records" : 0,
+  "smallFiles" : 0,
+  "inProgressFiles" : 0
+}

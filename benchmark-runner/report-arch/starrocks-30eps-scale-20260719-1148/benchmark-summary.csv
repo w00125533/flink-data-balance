@@ -1,0 +1,6 @@
+sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId
+starrocks,2000,30,60000,1,2000,UNSTABLE,0.0,0.0,1.40915621E8,1.40924738E8,251084,0,251148,1286,0.0,KPI availability p95 over threshold,starrocks-30eps-scale-20260719-1148-starrocks-cells2000-chr-eps30
+starrocks,5000,30,150000,1,5000,UNSTABLE,0.0,0.0,5.7637573E7,5.7671788E7,0,0,167689,5656,0.0,watermark lag 330000 ms,starrocks-30eps-scale-20260719-1148-starrocks-cells5000-chr-eps30
+starrocks,10000,30,300000,1,10000,UNSTABLE,0.0,0.0,5.4686667E7,5.4724742E7,139138,0,306611,5621,0.0,source throughput attainment 0.7289118635012475,starrocks-30eps-scale-20260719-1148-starrocks-cells10000-chr-eps30
+starrocks,20000,30,600000,1,20000,UNSTABLE,0.0,0.0,5.0906645E7,5.0959144E7,0,0,200595,8664,0.0,source throughput attainment 0.30659887260385515,starrocks-30eps-scale-20260719-1148-starrocks-cells20000-chr-eps30
+starrocks,40000,30,1200000,1,40000,UNSTABLE,0.0,0.0,4.8983345E7,4.9012173E7,0,0,329738,209115,0.0,source throughput attainment 0.12875596068685563,starrocks-30eps-scale-20260719-1148-starrocks-cells40000-chr-eps30

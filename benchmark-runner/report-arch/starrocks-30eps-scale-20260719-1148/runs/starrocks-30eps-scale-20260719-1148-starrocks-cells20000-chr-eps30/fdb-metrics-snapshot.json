@@ -1,0 +1,320 @@
+{
+  "sourceDelayP95Ms" : 307171,
+  "kpi1mP95Ms" : 0,
+  "kpi5mP95Ms" : 0,
+  "sinkP95Ms" : 200595,
+  "sinkFailures" : 0,
+  "watermarkLagMs" : 360541,
+  "stageLatencies" : [ {
+    "stageId" : "chr-source",
+    "latencyP50Ms" : 306046,
+    "latencyP95Ms" : 307171,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 335547
+  }, {
+    "stageId" : "pm-source",
+    "latencyP50Ms" : 194375,
+    "latencyP95Ms" : 194376,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 329074
+  }, {
+    "stageId" : "cfg-source",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "kafka",
+    "latencyP50Ms" : -1,
+    "latencyP95Ms" : -1,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 342106
+  }, {
+    "stageId" : "enrichment",
+    "latencyP50Ms" : 323391,
+    "latencyP95Ms" : 325673,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 360541
+  }, {
+    "stageId" : "kafka-kpi-1m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "starrocks-kpi-1m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "hive-kpi-1m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "iceberg-kpi-1m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "kafka-kpi-5m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "starrocks-kpi-5m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "hive-kpi-5m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "iceberg-kpi-5m",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "kafka-cell-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "kafka-user-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "kafka-grid-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "starrocks-cell-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "starrocks-user-anomaly",
+    "latencyP50Ms" : 144687,
+    "latencyP95Ms" : 200595,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "starrocks-grid-anomaly",
+    "latencyP50Ms" : 76435,
+    "latencyP95Ms" : 103483,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "hive-cell-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "hive-user-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "hive-grid-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "iceberg-cell-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "iceberg-user-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  }, {
+    "stageId" : "iceberg-grid-anomaly",
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "watermarkLagMs" : 0
+  } ],
+  "sinkLatencies" : [ {
+    "sinkName" : "hive-cell-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "hive-grid-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "hive-kpi-1m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "hive-kpi-5m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "hive-user-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "iceberg-cell-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "iceberg-grid-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "iceberg-kpi-1m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "iceberg-kpi-5m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "iceberg-user-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "kafka-cell-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "kafka-grid-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "kafka-kpi-1m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "kafka-kpi-5m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "kafka-user-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "starrocks-cell-anomaly",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "starrocks-grid-anomaly",
+    "records" : 400,
+    "bytes" : 50000,
+    "latencyP50Ms" : 76435,
+    "latencyP95Ms" : 103483,
+    "latencyP99Ms" : 107815,
+    "failures" : 0
+  }, {
+    "sinkName" : "starrocks-kpi-1m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "starrocks-kpi-5m",
+    "records" : 0,
+    "bytes" : 0,
+    "latencyP50Ms" : 0,
+    "latencyP95Ms" : 0,
+    "latencyP99Ms" : 0,
+    "failures" : 0
+  }, {
+    "sinkName" : "starrocks-user-anomaly",
+    "records" : 68800,
+    "bytes" : 13785042,
+    "latencyP50Ms" : 144687,
+    "latencyP95Ms" : 200595,
+    "latencyP99Ms" : 208203,
+    "failures" : 0
+  } ]
+}

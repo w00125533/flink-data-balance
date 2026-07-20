@@ -1,0 +1,15 @@
+{
+  "present" : true,
+  "generatedRecords" : 5000,
+  "siteCount" : 823,
+  "frequencyBandCount" : 3,
+  "generationDurationMs" : 442,
+  "publishDurationMs" : 414,
+  "totalDurationMs" : 1869,
+  "publishedRecords" : 5000,
+  "publishFailures" : 0,
+  "minLatitude" : 39.70053254767152,
+  "maxLatitude" : 40.19987941175044,
+  "minLongitude" : 116.00009953627394,
+  "maxLongitude" : 116.79953025821733
+}

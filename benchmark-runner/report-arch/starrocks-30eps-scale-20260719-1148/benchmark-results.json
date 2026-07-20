@@ -1,0 +1,3427 @@
+[ {
+  "plan" : {
+    "benchmarkId" : "starrocks-30eps-scale-20260719-1148",
+    "sink" : "STARROCKS",
+    "cellLevel" : 2000,
+    "targetChrEpsPerCell" : 30.0,
+    "targetChrTotalEps" : 60000,
+    "targetPmEpsPerCell" : 1.0,
+    "targetPmTotalEps" : 2000,
+    "runId" : "starrocks-30eps-scale-20260719-1148-starrocks-cells2000-chr-eps30",
+    "runLabel" : "benchmark-starrocks"
+  },
+  "status" : "UNSTABLE",
+  "bottleneckReason" : "KPI availability p95 over threshold",
+  "flink" : {
+    "jobStatus" : "RUNNING",
+    "backpressureRatio" : 0.0,
+    "checkpointDurationMs" : 1286,
+    "consecutiveCheckpointFailures" : 0,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 1.40915621E8,
+    "recordsOutTotal" : 1.40924738E8,
+    "taskManagers" : 1,
+    "slots" : 6,
+    "operators" : [ {
+      "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 4.15486E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 1392000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2963852293169ba90d9d1e7d6308db5c",
+      "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 4000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "name" : "kafka-topics-metrics -> direct-cell-routing",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2.1471946E7,
+      "recordsOutTotal" : 2.1471993E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "587e2160a7da7be6dffb095c19bb2383",
+      "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2.1469301E7,
+      "recordsOutTotal" : 7.6095849E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27faff0413f1d43258d64a27fcca795",
+      "name" : "user-event-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 5.5322539E7,
+      "recordsOutTotal" : 360186.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "21a27b7750c61605250b72fe77f44e62",
+      "name" : "starrocks-user-anomaly -> Sink: user-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 360170.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "41827ced4fb010e085133b31491bf1a7",
+      "name" : "coverage-hole-detector",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2.0770394E7,
+      "recordsOutTotal" : 1985.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6d544ae7c62bcc4682624abd5b31c3f5",
+      "name" : "starrocks-grid-anomaly -> Sink: grid-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1985.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2bfc2be811df7ca0ad7751138e833d00",
+      "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2.0771161E7,
+      "recordsOutTotal" : 10000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27454fb80772a9cd817275c8345e5d8",
+      "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 696000.0,
+      "recordsOutTotal" : 8000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "5474db3e66874410ac8cf53f549da414",
+      "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 20000.0,
+      "recordsOutTotal" : 32000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "name" : "cell-kpi-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 16000.0,
+      "recordsOutTotal" : 125.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "a226beaf34d93a760cfe1441722b59ff",
+      "name" : "starrocks-cell-anomaly -> Sink: cell-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 125.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8000.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "991a9b473ee8274ee414954da0eb89ca",
+      "name" : "starrocks-kpi-5m -> Sink: cell-kpi-5m-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "3ea9740f6668d0df627fd9169230e138",
+      "name" : "starrocks-kpi-1m -> Sink: cell-kpi-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8000.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    } ],
+    "operatorEdges" : [ {
+      "sourceId" : "e27faff0413f1d43258d64a27fcca795",
+      "targetId" : "21a27b7750c61605250b72fe77f44e62"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "e27faff0413f1d43258d64a27fcca795"
+    }, {
+      "sourceId" : "41827ced4fb010e085133b31491bf1a7",
+      "targetId" : "6d544ae7c62bcc4682624abd5b31c3f5"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "41827ced4fb010e085133b31491bf1a7"
+    }, {
+      "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "targetId" : "a226beaf34d93a760cfe1441722b59ff"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "7041e758792c7beb52aa64b46fbb9b3c"
+    }, {
+      "sourceId" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "targetId" : "991a9b473ee8274ee414954da0eb89ca"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "3ea9740f6668d0df627fd9169230e138"
+    }, {
+      "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+    } ],
+    "sourceBacklogRecords" : 0
+  },
+  "fdb" : {
+    "sourceDelayP95Ms" : 6722,
+    "kpi1mP95Ms" : 251084,
+    "kpi5mP95Ms" : 0,
+    "sinkP95Ms" : 251148,
+    "sinkFailures" : 0,
+    "watermarkLagMs" : 131021,
+    "stageLatencies" : [ {
+      "stageId" : "chr-source",
+      "latencyP50Ms" : 25,
+      "latencyP95Ms" : 237,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 20115
+    }, {
+      "stageId" : "pm-source",
+      "latencyP50Ms" : 4716,
+      "latencyP95Ms" : 6722,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 127727
+    }, {
+      "stageId" : "cfg-source",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka",
+      "latencyP50Ms" : -1,
+      "latencyP95Ms" : -1,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 128807
+    }, {
+      "stageId" : "enrichment",
+      "latencyP50Ms" : 74,
+      "latencyP95Ms" : 193,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 129066
+    }, {
+      "stageId" : "kafka-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-1m",
+      "latencyP50Ms" : 131065,
+      "latencyP95Ms" : 131067,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-cell-anomaly",
+      "latencyP50Ms" : 251148,
+      "latencyP95Ms" : 251148,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-user-anomaly",
+      "latencyP50Ms" : 87,
+      "latencyP95Ms" : 186,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kpi-1m",
+      "latencyP50Ms" : 131019,
+      "latencyP95Ms" : 251084,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 131021
+    } ],
+    "sinkLatencies" : [ {
+      "sinkName" : "hive-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-cell-anomaly",
+      "records" : 1,
+      "bytes" : 169,
+      "latencyP50Ms" : 251148,
+      "latencyP95Ms" : 251148,
+      "latencyP99Ms" : 251148,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-grid-anomaly",
+      "records" : 400,
+      "bytes" : 50000,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-1m",
+      "records" : 1300,
+      "bytes" : 154700,
+      "latencyP50Ms" : 131065,
+      "latencyP95Ms" : 131067,
+      "latencyP99Ms" : 131067,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-user-anomaly",
+      "records" : 59700,
+      "bytes" : 11888110,
+      "latencyP50Ms" : 87,
+      "latencyP95Ms" : 186,
+      "latencyP99Ms" : 3538,
+      "failures" : 0
+    } ]
+  },
+  "storage" : {
+    "healthy" : true,
+    "summary" : "starrocks query healthy",
+    "records" : 0,
+    "smallFiles" : 0,
+    "inProgressFiles" : 0
+  },
+  "topology" : {
+    "present" : true,
+    "generatedRecords" : 2000,
+    "siteCount" : 341,
+    "frequencyBandCount" : 3,
+    "generationDurationMs" : 339,
+    "publishDurationMs" : 1176,
+    "totalDurationMs" : 3036,
+    "publishedRecords" : 2000,
+    "publishFailures" : 0,
+    "minLatitude" : 39.70053254767152,
+    "maxLatitude" : 40.19987941175044,
+    "minLongitude" : 116.00009953627394,
+    "maxLongitude" : 116.79636599920558
+  },
+  "source" : {
+    "present" : true,
+    "chrTargetEps" : 60000,
+    "chrPublished" : 21168410,
+    "chrObservedEps" : 59992.489747797226,
+    "chrDurationMs" : 352851,
+    "chrBacklogRecords" : 2650,
+    "chrUndeliveredRecords" : 0,
+    "pmTargetEps" : 2000,
+    "pmPublished" : 710000,
+    "pmObservedEps" : 2005.581731692711,
+    "pmDurationMs" : 354012,
+    "pmBacklogRecords" : 0,
+    "pmUndeliveredRecords" : 0,
+    "cfgTargetEps" : 2000,
+    "cfgPublished" : 2000,
+    "cfgObservedEps" : 6060.60606060606,
+    "cfgDurationMs" : 330,
+    "cfgBacklogRecords" : 0,
+    "cfgUndeliveredRecords" : 0
+  }
+}, {
+  "plan" : {
+    "benchmarkId" : "starrocks-30eps-scale-20260719-1148",
+    "sink" : "STARROCKS",
+    "cellLevel" : 5000,
+    "targetChrEpsPerCell" : 30.0,
+    "targetChrTotalEps" : 150000,
+    "targetPmEpsPerCell" : 1.0,
+    "targetPmTotalEps" : 5000,
+    "runId" : "starrocks-30eps-scale-20260719-1148-starrocks-cells5000-chr-eps30",
+    "runLabel" : "benchmark-starrocks"
+  },
+  "status" : "UNSTABLE",
+  "bottleneckReason" : "watermark lag 330000 ms",
+  "flink" : {
+    "jobStatus" : "RUNNING",
+    "backpressureRatio" : 0.0,
+    "checkpointDurationMs" : 5656,
+    "consecutiveCheckpointFailures" : 0,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 5.7637573E7,
+    "recordsOutTotal" : 5.7671788E7,
+    "taskManagers" : 1,
+    "slots" : 6,
+    "operators" : [ {
+      "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 1.6489514E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 1734744.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2963852293169ba90d9d1e7d6308db5c",
+      "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 10000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "name" : "kafka-topics-metrics -> direct-cell-routing",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 9102482.0,
+      "recordsOutTotal" : 9102482.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "587e2160a7da7be6dffb095c19bb2383",
+      "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 9089307.0,
+      "recordsOutTotal" : 2.9980236E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27faff0413f1d43258d64a27fcca795",
+      "name" : "user-event-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2.1746324E7,
+      "recordsOutTotal" : 347826.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "21a27b7750c61605250b72fe77f44e62",
+      "name" : "starrocks-user-anomaly -> Sink: user-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 347821.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "41827ced4fb010e085133b31491bf1a7",
+      "name" : "coverage-hole-detector",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8232613.0,
+      "recordsOutTotal" : 1986.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6d544ae7c62bcc4682624abd5b31c3f5",
+      "name" : "starrocks-grid-anomaly -> Sink: grid-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1986.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2bfc2be811df7ca0ad7751138e833d00",
+      "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8241302.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27454fb80772a9cd817275c8345e5d8",
+      "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 865738.0,
+      "recordsOutTotal" : 5000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "5474db3e66874410ac8cf53f549da414",
+      "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 10000.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "name" : "cell-kpi-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "a226beaf34d93a760cfe1441722b59ff",
+      "name" : "starrocks-cell-anomaly -> Sink: cell-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "991a9b473ee8274ee414954da0eb89ca",
+      "name" : "starrocks-kpi-5m -> Sink: cell-kpi-5m-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "3ea9740f6668d0df627fd9169230e138",
+      "name" : "starrocks-kpi-1m -> Sink: cell-kpi-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    } ],
+    "operatorEdges" : [ {
+      "sourceId" : "e27faff0413f1d43258d64a27fcca795",
+      "targetId" : "21a27b7750c61605250b72fe77f44e62"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "e27faff0413f1d43258d64a27fcca795"
+    }, {
+      "sourceId" : "41827ced4fb010e085133b31491bf1a7",
+      "targetId" : "6d544ae7c62bcc4682624abd5b31c3f5"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "41827ced4fb010e085133b31491bf1a7"
+    }, {
+      "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "targetId" : "a226beaf34d93a760cfe1441722b59ff"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "7041e758792c7beb52aa64b46fbb9b3c"
+    }, {
+      "sourceId" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "targetId" : "991a9b473ee8274ee414954da0eb89ca"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "3ea9740f6668d0df627fd9169230e138"
+    }, {
+      "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+    } ],
+    "sourceBacklogRecords" : 0
+  },
+  "fdb" : {
+    "sourceDelayP95Ms" : 296727,
+    "kpi1mP95Ms" : 0,
+    "kpi5mP95Ms" : 0,
+    "sinkP95Ms" : 167689,
+    "sinkFailures" : 0,
+    "watermarkLagMs" : 330000,
+    "stageLatencies" : [ {
+      "stageId" : "chr-source",
+      "latencyP50Ms" : 295683,
+      "latencyP95Ms" : 296727,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 235221
+    }, {
+      "stageId" : "pm-source",
+      "latencyP50Ms" : 173943,
+      "latencyP95Ms" : 178200,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 301203
+    }, {
+      "stageId" : "cfg-source",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka",
+      "latencyP50Ms" : -1,
+      "latencyP95Ms" : -1,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 310470
+    }, {
+      "stageId" : "enrichment",
+      "latencyP50Ms" : 276209,
+      "latencyP95Ms" : 300122,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 330000
+    }, {
+      "stageId" : "kafka-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-user-anomaly",
+      "latencyP50Ms" : 137435,
+      "latencyP95Ms" : 167689,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-grid-anomaly",
+      "latencyP50Ms" : 59649,
+      "latencyP95Ms" : 69101,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    } ],
+    "sinkLatencies" : [ {
+      "sinkName" : "hive-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-grid-anomaly",
+      "records" : 500,
+      "bytes" : 62500,
+      "latencyP50Ms" : 59649,
+      "latencyP95Ms" : 69101,
+      "latencyP99Ms" : 69841,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-user-anomaly",
+      "records" : 59900,
+      "bytes" : 11983091,
+      "latencyP50Ms" : 137435,
+      "latencyP95Ms" : 167689,
+      "latencyP99Ms" : 174705,
+      "failures" : 0
+    } ]
+  },
+  "storage" : {
+    "healthy" : true,
+    "summary" : "starrocks query healthy",
+    "records" : 0,
+    "smallFiles" : 0,
+    "inProgressFiles" : 0
+  },
+  "topology" : {
+    "present" : true,
+    "generatedRecords" : 5000,
+    "siteCount" : 823,
+    "frequencyBandCount" : 3,
+    "generationDurationMs" : 442,
+    "publishDurationMs" : 414,
+    "totalDurationMs" : 1869,
+    "publishedRecords" : 5000,
+    "publishFailures" : 0,
+    "minLatitude" : 39.70053254767152,
+    "maxLatitude" : 40.19987941175044,
+    "minLongitude" : 116.00009953627394,
+    "maxLongitude" : 116.79953025821733
+  },
+  "source" : {
+    "present" : true,
+    "chrTargetEps" : 150000,
+    "chrPublished" : 53015987,
+    "chrObservedEps" : 149961.7769354793,
+    "chrDurationMs" : 353530,
+    "chrBacklogRecords" : 7479,
+    "chrUndeliveredRecords" : 6034,
+    "pmTargetEps" : 5000,
+    "pmPublished" : 1775000,
+    "pmObservedEps" : 5013.4586650924875,
+    "pmDurationMs" : 354047,
+    "pmBacklogRecords" : 0,
+    "pmUndeliveredRecords" : 0,
+    "cfgTargetEps" : 5000,
+    "cfgPublished" : 5000,
+    "cfgObservedEps" : 17361.111111111113,
+    "cfgDurationMs" : 288,
+    "cfgBacklogRecords" : 0,
+    "cfgUndeliveredRecords" : 0
+  }
+}, {
+  "plan" : {
+    "benchmarkId" : "starrocks-30eps-scale-20260719-1148",
+    "sink" : "STARROCKS",
+    "cellLevel" : 10000,
+    "targetChrEpsPerCell" : 30.0,
+    "targetChrTotalEps" : 300000,
+    "targetPmEpsPerCell" : 1.0,
+    "targetPmTotalEps" : 10000,
+    "runId" : "starrocks-30eps-scale-20260719-1148-starrocks-cells10000-chr-eps30",
+    "runLabel" : "benchmark-starrocks"
+  },
+  "status" : "UNSTABLE",
+  "bottleneckReason" : "source throughput attainment 0.7289118635012475",
+  "flink" : {
+    "jobStatus" : "RUNNING",
+    "backpressureRatio" : 0.0,
+    "checkpointDurationMs" : 5621,
+    "consecutiveCheckpointFailures" : 0,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 5.4686667E7,
+    "recordsOutTotal" : 5.4724742E7,
+    "taskManagers" : 1,
+    "slots" : 6,
+    "operators" : [ {
+      "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 1.4897836E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 3120780.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2963852293169ba90d9d1e7d6308db5c",
+      "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 20000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "name" : "kafka-topics-metrics -> direct-cell-routing",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 9005656.0,
+      "recordsOutTotal" : 9005725.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "587e2160a7da7be6dffb095c19bb2383",
+      "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8993394.0,
+      "recordsOutTotal" : 2.71319E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27faff0413f1d43258d64a27fcca795",
+      "name" : "user-event-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1.9692773E7,
+      "recordsOutTotal" : 494999.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "21a27b7750c61605250b72fe77f44e62",
+      "name" : "starrocks-user-anomaly -> Sink: user-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 494978.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "41827ced4fb010e085133b31491bf1a7",
+      "name" : "coverage-hole-detector",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 7437331.0,
+      "recordsOutTotal" : 2057.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6d544ae7c62bcc4682624abd5b31c3f5",
+      "name" : "starrocks-grid-anomaly -> Sink: grid-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2057.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2bfc2be811df7ca0ad7751138e833d00",
+      "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 7439836.0,
+      "recordsOutTotal" : 8289.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27454fb80772a9cd817275c8345e5d8",
+      "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1559197.0,
+      "recordsOutTotal" : 10000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "5474db3e66874410ac8cf53f549da414",
+      "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 28289.0,
+      "recordsOutTotal" : 33156.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "name" : "cell-kpi-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 16578.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "a226beaf34d93a760cfe1441722b59ff",
+      "name" : "starrocks-cell-anomaly -> Sink: cell-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8289.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "991a9b473ee8274ee414954da0eb89ca",
+      "name" : "starrocks-kpi-5m -> Sink: cell-kpi-5m-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "3ea9740f6668d0df627fd9169230e138",
+      "name" : "starrocks-kpi-1m -> Sink: cell-kpi-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 8289.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    } ],
+    "operatorEdges" : [ {
+      "sourceId" : "e27faff0413f1d43258d64a27fcca795",
+      "targetId" : "21a27b7750c61605250b72fe77f44e62"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "e27faff0413f1d43258d64a27fcca795"
+    }, {
+      "sourceId" : "41827ced4fb010e085133b31491bf1a7",
+      "targetId" : "6d544ae7c62bcc4682624abd5b31c3f5"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "41827ced4fb010e085133b31491bf1a7"
+    }, {
+      "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "targetId" : "a226beaf34d93a760cfe1441722b59ff"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "7041e758792c7beb52aa64b46fbb9b3c"
+    }, {
+      "sourceId" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "targetId" : "991a9b473ee8274ee414954da0eb89ca"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "3ea9740f6668d0df627fd9169230e138"
+    }, {
+      "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+    } ],
+    "sourceBacklogRecords" : 0
+  },
+  "fdb" : {
+    "sourceDelayP95Ms" : 316640,
+    "kpi1mP95Ms" : 139138,
+    "kpi5mP95Ms" : 0,
+    "sinkP95Ms" : 306611,
+    "sinkFailures" : 0,
+    "watermarkLagMs" : 350574,
+    "stageLatencies" : [ {
+      "stageId" : "chr-source",
+      "latencyP50Ms" : 316640,
+      "latencyP95Ms" : 316640,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 344124
+    }, {
+      "stageId" : "pm-source",
+      "latencyP50Ms" : 189385,
+      "latencyP95Ms" : 190587,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 318028
+    }, {
+      "stageId" : "cfg-source",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka",
+      "latencyP50Ms" : -1,
+      "latencyP95Ms" : -1,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 344133
+    }, {
+      "stageId" : "enrichment",
+      "latencyP50Ms" : 312107,
+      "latencyP95Ms" : 314606,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 350574
+    }, {
+      "stageId" : "kafka-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-1m",
+      "latencyP50Ms" : 139138,
+      "latencyP95Ms" : 139138,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-user-anomaly",
+      "latencyP50Ms" : 280636,
+      "latencyP95Ms" : 306611,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    } ],
+    "sinkLatencies" : [ {
+      "sinkName" : "hive-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-grid-anomaly",
+      "records" : 300,
+      "bytes" : 37500,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-1m",
+      "records" : 1300,
+      "bytes" : 154700,
+      "latencyP50Ms" : 139138,
+      "latencyP95Ms" : 139138,
+      "latencyP99Ms" : 139138,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-user-anomaly",
+      "records" : 85300,
+      "bytes" : 17086063,
+      "latencyP50Ms" : 280636,
+      "latencyP95Ms" : 306611,
+      "latencyP99Ms" : 310669,
+      "failures" : 0
+    } ]
+  },
+  "storage" : {
+    "healthy" : true,
+    "summary" : "starrocks query healthy",
+    "records" : 0,
+    "smallFiles" : 0,
+    "inProgressFiles" : 0
+  },
+  "topology" : {
+    "present" : true,
+    "generatedRecords" : 10000,
+    "siteCount" : 1659,
+    "frequencyBandCount" : 3,
+    "generationDurationMs" : 230,
+    "publishDurationMs" : 399,
+    "totalDurationMs" : 1356,
+    "publishedRecords" : 10000,
+    "publishFailures" : 0,
+    "minLatitude" : 39.7001602244414,
+    "maxLatitude" : 40.19987941175044,
+    "minLongitude" : 116.00009953627394,
+    "maxLongitude" : 116.79953025821733
+  },
+  "source" : {
+    "present" : true,
+    "chrTargetEps" : 300000,
+    "chrPublished" : 76948164,
+    "chrObservedEps" : 218673.55905037426,
+    "chrDurationMs" : 351886,
+    "chrBacklogRecords" : 27634493,
+    "chrUndeliveredRecords" : 983143,
+    "pmTargetEps" : 10000,
+    "pmPublished" : 3550000,
+    "pmObservedEps" : 10022.133387537548,
+    "pmDurationMs" : 354216,
+    "pmBacklogRecords" : 0,
+    "pmUndeliveredRecords" : 0,
+    "cfgTargetEps" : 10000,
+    "cfgPublished" : 10000,
+    "cfgObservedEps" : 62111.801242236026,
+    "cfgDurationMs" : 161,
+    "cfgBacklogRecords" : 0,
+    "cfgUndeliveredRecords" : 0
+  }
+}, {
+  "plan" : {
+    "benchmarkId" : "starrocks-30eps-scale-20260719-1148",
+    "sink" : "STARROCKS",
+    "cellLevel" : 20000,
+    "targetChrEpsPerCell" : 30.0,
+    "targetChrTotalEps" : 600000,
+    "targetPmEpsPerCell" : 1.0,
+    "targetPmTotalEps" : 20000,
+    "runId" : "starrocks-30eps-scale-20260719-1148-starrocks-cells20000-chr-eps30",
+    "runLabel" : "benchmark-starrocks"
+  },
+  "status" : "UNSTABLE",
+  "bottleneckReason" : "source throughput attainment 0.30659887260385515",
+  "flink" : {
+    "jobStatus" : "RUNNING",
+    "backpressureRatio" : 0.0,
+    "checkpointDurationMs" : 8664,
+    "consecutiveCheckpointFailures" : 0,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 5.0906645E7,
+    "recordsOutTotal" : 5.0959144E7,
+    "taskManagers" : 1,
+    "slots" : 6,
+    "operators" : [ {
+      "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 1.2575566E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 5840730.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2963852293169ba90d9d1e7d6308db5c",
+      "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 40000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "name" : "kafka-topics-metrics -> direct-cell-routing",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 9212553.0,
+      "recordsOutTotal" : 9212553.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "587e2160a7da7be6dffb095c19bb2383",
+      "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 9200135.0,
+      "recordsOutTotal" : 2.2887724E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27faff0413f1d43258d64a27fcca795",
+      "name" : "user-event-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1.6599406E7,
+      "recordsOutTotal" : 400207.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "21a27b7750c61605250b72fe77f44e62",
+      "name" : "starrocks-user-anomaly -> Sink: user-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 400169.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "41827ced4fb010e085133b31491bf1a7",
+      "name" : "coverage-hole-detector",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 6271827.0,
+      "recordsOutTotal" : 2364.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6d544ae7c62bcc4682624abd5b31c3f5",
+      "name" : "starrocks-grid-anomaly -> Sink: grid-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2364.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2bfc2be811df7ca0ad7751138e833d00",
+      "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 6280610.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27454fb80772a9cd817275c8345e5d8",
+      "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2919581.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "5474db3e66874410ac8cf53f549da414",
+      "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 20000.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "name" : "cell-kpi-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "a226beaf34d93a760cfe1441722b59ff",
+      "name" : "starrocks-cell-anomaly -> Sink: cell-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "991a9b473ee8274ee414954da0eb89ca",
+      "name" : "starrocks-kpi-5m -> Sink: cell-kpi-5m-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "3ea9740f6668d0df627fd9169230e138",
+      "name" : "starrocks-kpi-1m -> Sink: cell-kpi-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    } ],
+    "operatorEdges" : [ {
+      "sourceId" : "e27faff0413f1d43258d64a27fcca795",
+      "targetId" : "21a27b7750c61605250b72fe77f44e62"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "e27faff0413f1d43258d64a27fcca795"
+    }, {
+      "sourceId" : "41827ced4fb010e085133b31491bf1a7",
+      "targetId" : "6d544ae7c62bcc4682624abd5b31c3f5"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "41827ced4fb010e085133b31491bf1a7"
+    }, {
+      "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "targetId" : "a226beaf34d93a760cfe1441722b59ff"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "7041e758792c7beb52aa64b46fbb9b3c"
+    }, {
+      "sourceId" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "targetId" : "991a9b473ee8274ee414954da0eb89ca"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "3ea9740f6668d0df627fd9169230e138"
+    }, {
+      "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+    } ],
+    "sourceBacklogRecords" : 0
+  },
+  "fdb" : {
+    "sourceDelayP95Ms" : 307171,
+    "kpi1mP95Ms" : 0,
+    "kpi5mP95Ms" : 0,
+    "sinkP95Ms" : 200595,
+    "sinkFailures" : 0,
+    "watermarkLagMs" : 360541,
+    "stageLatencies" : [ {
+      "stageId" : "chr-source",
+      "latencyP50Ms" : 306046,
+      "latencyP95Ms" : 307171,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 335547
+    }, {
+      "stageId" : "pm-source",
+      "latencyP50Ms" : 194375,
+      "latencyP95Ms" : 194376,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 329074
+    }, {
+      "stageId" : "cfg-source",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka",
+      "latencyP50Ms" : -1,
+      "latencyP95Ms" : -1,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 342106
+    }, {
+      "stageId" : "enrichment",
+      "latencyP50Ms" : 323391,
+      "latencyP95Ms" : 325673,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 360541
+    }, {
+      "stageId" : "kafka-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-user-anomaly",
+      "latencyP50Ms" : 144687,
+      "latencyP95Ms" : 200595,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-grid-anomaly",
+      "latencyP50Ms" : 76435,
+      "latencyP95Ms" : 103483,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    } ],
+    "sinkLatencies" : [ {
+      "sinkName" : "hive-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-grid-anomaly",
+      "records" : 400,
+      "bytes" : 50000,
+      "latencyP50Ms" : 76435,
+      "latencyP95Ms" : 103483,
+      "latencyP99Ms" : 107815,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-user-anomaly",
+      "records" : 68800,
+      "bytes" : 13785042,
+      "latencyP50Ms" : 144687,
+      "latencyP95Ms" : 200595,
+      "latencyP99Ms" : 208203,
+      "failures" : 0
+    } ]
+  },
+  "storage" : {
+    "healthy" : true,
+    "summary" : "starrocks query healthy",
+    "records" : 0,
+    "smallFiles" : 0,
+    "inProgressFiles" : 0
+  },
+  "topology" : {
+    "present" : true,
+    "generatedRecords" : 20000,
+    "siteCount" : 3284,
+    "frequencyBandCount" : 3,
+    "generationDurationMs" : 515,
+    "publishDurationMs" : 458,
+    "totalDurationMs" : 1833,
+    "publishedRecords" : 20000,
+    "publishFailures" : 0,
+    "minLatitude" : 39.70008414221738,
+    "maxLatitude" : 40.19987941175044,
+    "minLongitude" : 116.00002958761418,
+    "maxLongitude" : 116.79985419622828
+  },
+  "source" : {
+    "present" : true,
+    "chrTargetEps" : 600000,
+    "chrPublished" : 64463762,
+    "chrObservedEps" : 183959.3235623131,
+    "chrDurationMs" : 350424,
+    "chrBacklogRecords" : 144819929,
+    "chrUndeliveredRecords" : 970709,
+    "pmTargetEps" : 20000,
+    "pmPublished" : 7080000,
+    "pmObservedEps" : 19978.10309604163,
+    "pmDurationMs" : 354388,
+    "pmBacklogRecords" : 0,
+    "pmUndeliveredRecords" : 0,
+    "cfgTargetEps" : 20000,
+    "cfgPublished" : 20000,
+    "cfgObservedEps" : 42283.29809725159,
+    "cfgDurationMs" : 473,
+    "cfgBacklogRecords" : 0,
+    "cfgUndeliveredRecords" : 0
+  }
+}, {
+  "plan" : {
+    "benchmarkId" : "starrocks-30eps-scale-20260719-1148",
+    "sink" : "STARROCKS",
+    "cellLevel" : 40000,
+    "targetChrEpsPerCell" : 30.0,
+    "targetChrTotalEps" : 1200000,
+    "targetPmEpsPerCell" : 1.0,
+    "targetPmTotalEps" : 40000,
+    "runId" : "starrocks-30eps-scale-20260719-1148-starrocks-cells40000-chr-eps30",
+    "runLabel" : "benchmark-starrocks"
+  },
+  "status" : "UNSTABLE",
+  "bottleneckReason" : "source throughput attainment 0.12875596068685563",
+  "flink" : {
+    "jobStatus" : "RUNNING",
+    "backpressureRatio" : 0.0,
+    "checkpointDurationMs" : 209115,
+    "consecutiveCheckpointFailures" : 0,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 4.8983345E7,
+    "recordsOutTotal" : 4.9012173E7,
+    "taskManagers" : 1,
+    "slots" : 6,
+    "operators" : [ {
+      "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 1.0235816E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 9851700.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2963852293169ba90d9d1e7d6308db5c",
+      "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 80000.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "name" : "kafka-topics-metrics -> direct-cell-routing",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1.0068848E7,
+      "recordsOutTotal" : 1.0068952E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "587e2160a7da7be6dffb095c19bb2383",
+      "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1.0058163E7,
+      "recordsOutTotal" : 1.8611923E7,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27faff0413f1d43258d64a27fcca795",
+      "name" : "user-event-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 1.3503462E7,
+      "recordsOutTotal" : 161444.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "21a27b7750c61605250b72fe77f44e62",
+      "name" : "starrocks-user-anomaly -> Sink: user-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 161367.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "41827ced4fb010e085133b31491bf1a7",
+      "name" : "coverage-hole-detector",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 5106612.0,
+      "recordsOutTotal" : 2338.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "6d544ae7c62bcc4682624abd5b31c3f5",
+      "name" : "starrocks-grid-anomaly -> Sink: grid-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 2337.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "2bfc2be811df7ca0ad7751138e833d00",
+      "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 5117512.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "e27454fb80772a9cd817275c8345e5d8",
+      "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 4925044.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "5474db3e66874410ac8cf53f549da414",
+      "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 40000.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "name" : "cell-kpi-anomaly-detect-dedup",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "a226beaf34d93a760cfe1441722b59ff",
+      "name" : "starrocks-cell-anomaly -> Sink: cell-anomaly-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "991a9b473ee8274ee414954da0eb89ca",
+      "name" : "starrocks-kpi-5m -> Sink: cell-kpi-5m-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    }, {
+      "id" : "3ea9740f6668d0df627fd9169230e138",
+      "name" : "starrocks-kpi-1m -> Sink: cell-kpi-starrocks-connector-sink",
+      "parallelism" : 6,
+      "recordsInPerSec" : 0.0,
+      "recordsOutPerSec" : 0.0,
+      "recordsInTotal" : 0.0,
+      "recordsOutTotal" : 0.0,
+      "bytesInPerSec" : 0.0,
+      "bytesOutPerSec" : 0.0,
+      "busyRatio" : 0.0,
+      "idleRatio" : 0.0,
+      "backpressureRatio" : 0.0,
+      "pendingRecords" : 0
+    } ],
+    "operatorEdges" : [ {
+      "sourceId" : "e27faff0413f1d43258d64a27fcca795",
+      "targetId" : "21a27b7750c61605250b72fe77f44e62"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "e27faff0413f1d43258d64a27fcca795"
+    }, {
+      "sourceId" : "41827ced4fb010e085133b31491bf1a7",
+      "targetId" : "6d544ae7c62bcc4682624abd5b31c3f5"
+    }, {
+      "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+      "targetId" : "41827ced4fb010e085133b31491bf1a7"
+    }, {
+      "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+      "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+    }, {
+      "sourceId" : "7041e758792c7beb52aa64b46fbb9b3c",
+      "targetId" : "a226beaf34d93a760cfe1441722b59ff"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "7041e758792c7beb52aa64b46fbb9b3c"
+    }, {
+      "sourceId" : "60057b4af3f90b3c85b29cda0bc7bb48",
+      "targetId" : "991a9b473ee8274ee414954da0eb89ca"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+    }, {
+      "sourceId" : "5474db3e66874410ac8cf53f549da414",
+      "targetId" : "3ea9740f6668d0df627fd9169230e138"
+    }, {
+      "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+      "targetId" : "5474db3e66874410ac8cf53f549da414"
+    }, {
+      "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+      "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+    }, {
+      "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+      "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+    } ],
+    "sourceBacklogRecords" : 0
+  },
+  "fdb" : {
+    "sourceDelayP95Ms" : 333521,
+    "kpi1mP95Ms" : 0,
+    "kpi5mP95Ms" : 0,
+    "sinkP95Ms" : 329738,
+    "sinkFailures" : 0,
+    "watermarkLagMs" : 355936,
+    "stageLatencies" : [ {
+      "stageId" : "chr-source",
+      "latencyP50Ms" : 330858,
+      "latencyP95Ms" : 333521,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 355936
+    }, {
+      "stageId" : "pm-source",
+      "latencyP50Ms" : 205820,
+      "latencyP95Ms" : 208770,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 330216
+    }, {
+      "stageId" : "cfg-source",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka",
+      "latencyP50Ms" : -1,
+      "latencyP95Ms" : -1,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 354656
+    }, {
+      "stageId" : "enrichment",
+      "latencyP50Ms" : 330561,
+      "latencyP95Ms" : 332531,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 354678
+    }, {
+      "stageId" : "kafka-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-1m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-kpi-5m",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "kafka-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-user-anomaly",
+      "latencyP50Ms" : 326706,
+      "latencyP95Ms" : 329738,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "starrocks-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "hive-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-cell-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-user-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    }, {
+      "stageId" : "iceberg-grid-anomaly",
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "watermarkLagMs" : 0
+    } ],
+    "sinkLatencies" : [ {
+      "sinkName" : "hive-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "hive-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "iceberg-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-grid-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "kafka-user-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-cell-anomaly",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-grid-anomaly",
+      "records" : 400,
+      "bytes" : 50000,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-1m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-kpi-5m",
+      "records" : 0,
+      "bytes" : 0,
+      "latencyP50Ms" : 0,
+      "latencyP95Ms" : 0,
+      "latencyP99Ms" : 0,
+      "failures" : 0
+    }, {
+      "sinkName" : "starrocks-user-anomaly",
+      "records" : 26500,
+      "bytes" : 5311743,
+      "latencyP50Ms" : 326706,
+      "latencyP95Ms" : 329738,
+      "latencyP99Ms" : 329828,
+      "failures" : 0
+    } ]
+  },
+  "storage" : {
+    "healthy" : true,
+    "summary" : "starrocks query healthy",
+    "records" : 0,
+    "smallFiles" : 0,
+    "inProgressFiles" : 0
+  },
+  "topology" : {
+    "present" : true,
+    "generatedRecords" : 40000,
+    "siteCount" : 6608,
+    "frequencyBandCount" : 3,
+    "generationDurationMs" : 1001,
+    "publishDurationMs" : 982,
+    "totalDurationMs" : 3808,
+    "publishedRecords" : 40000,
+    "publishFailures" : 0,
+    "minLatitude" : 39.70008414221738,
+    "maxLatitude" : 40.19989488227907,
+    "minLongitude" : 116.00002958761418,
+    "maxLongitude" : 116.79992185426114
+  },
+  "source" : {
+    "present" : true,
+    "chrTargetEps" : 1200000,
+    "chrPublished" : 53591733,
+    "chrObservedEps" : 154507.15282422677,
+    "chrDurationMs" : 346856,
+    "chrBacklogRecords" : 361669238,
+    "chrUndeliveredRecords" : 966229,
+    "pmTargetEps" : 40000,
+    "pmPublished" : 12440000,
+    "pmObservedEps" : 35209.27441723557,
+    "pmDurationMs" : 353316,
+    "pmBacklogRecords" : 0,
+    "pmUndeliveredRecords" : 0,
+    "cfgTargetEps" : 40000,
+    "cfgPublished" : 40000,
+    "cfgObservedEps" : 90497.73755656109,
+    "cfgDurationMs" : 442,
+    "cfgBacklogRecords" : 0,
+    "cfgUndeliveredRecords" : 0
+  }
+} ]
