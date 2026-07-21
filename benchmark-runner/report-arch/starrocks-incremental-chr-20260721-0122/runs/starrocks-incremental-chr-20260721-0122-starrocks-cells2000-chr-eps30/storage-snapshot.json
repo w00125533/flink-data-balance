@@ -1,0 +1,7 @@
+{
+  "healthy" : true,
+  "summary" : "starrocks rows=373332",
+  "records" : 373332,
+  "smallFiles" : 0,
+  "inProgressFiles" : 0
+}

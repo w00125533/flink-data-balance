@@ -1,0 +1,21 @@
+{
+  "present" : true,
+  "chrTargetEps" : 150000,
+  "chrPublished" : 51545975,
+  "chrObservedEps" : 149961.52481031514,
+  "chrDurationMs" : 343728,
+  "chrBacklogRecords" : 11724,
+  "chrUndeliveredRecords" : 1501,
+  "pmTargetEps" : 5000,
+  "pmPublished" : 1735000,
+  "pmObservedEps" : 5013.784294573554,
+  "pmDurationMs" : 346046,
+  "pmBacklogRecords" : 0,
+  "pmUndeliveredRecords" : 0,
+  "cfgTargetEps" : 5000,
+  "cfgPublished" : 5000,
+  "cfgObservedEps" : 9208.103130755064,
+  "cfgDurationMs" : 543,
+  "cfgBacklogRecords" : 0,
+  "cfgUndeliveredRecords" : 0
+}

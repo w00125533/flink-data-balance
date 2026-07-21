@@ -1,0 +1,6 @@
+sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId
+iceberg,2000,30,60000,1,2000,STABLE,0.0,0.0,1.37737088E8,1.37747127E8,0,0,-1,1665,0.0,all thresholds healthy,iceberg-metaspace768-20260721-0232-iceberg-cells2000-chr-eps30
+iceberg,5000,30,150000,1,5000,STABLE,0.0,0.0,1.9012561E8,1.90148969E8,0,0,-1,1918,0.0,all thresholds healthy,iceberg-metaspace768-20260721-0232-iceberg-cells5000-chr-eps30
+iceberg,10000,30,300000,1,10000,UNSTABLE,0.0,0.0,1.70180162E8,1.70208042E8,0,0,-1,3415,0.0,source throughput attainment 0.7968263077152049,iceberg-metaspace768-20260721-0232-iceberg-cells10000-chr-eps30
+iceberg,20000,30,600000,1,20000,UNSTABLE,0.0,0.0,1.58350115E8,1.58373664E8,0,0,-1,6604,0.0,source throughput attainment 0.33710140184209003,iceberg-metaspace768-20260721-0232-iceberg-cells20000-chr-eps30
+iceberg,40000,30,1200000,1,40000,UNSTABLE,0.0,0.0,8.0335075E7,8.038119E7,0,0,-1,6875,0.0,source throughput attainment 0.14094489417965597,iceberg-metaspace768-20260721-0232-iceberg-cells40000-chr-eps30

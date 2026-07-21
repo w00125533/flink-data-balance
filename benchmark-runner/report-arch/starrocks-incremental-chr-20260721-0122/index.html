@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sink Upper-Bound Benchmark</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #1f2937; background: #f7f8fa; }
+    main { max-width: 1180px; margin: 0 auto; padding: 32px 24px; }
+    h1 { font-size: 28px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 28px 0 12px; }
+    .meta { color: #667085; margin-bottom: 24px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 16px 0 24px; }
+    .metric { background: #fff; border: 1px solid #d9dee7; padding: 12px; }
+    .metric .label { color: #667085; font-size: 12px; text-transform: uppercase; }
+    .metric .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .metric .detail { color: #667085; font-size: 12px; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d9dee7; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e6eaf0; text-align: left; font-size: 14px; }
+    th { background: #eef2f6; font-weight: 600; }
+    .status { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
+    .stable { background: #dff5e5; color: #186238; }
+    .unstable { background: #fff1d6; color: #875400; }
+    .failed { background: #fde2e1; color: #b42318; }
+    .recommendations { background: #fff; border: 1px solid #d9dee7; padding: 14px 16px; }
+    a { color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sink Upper-Bound Benchmark</h1>
+    <div class="meta">Benchmark: starrocks-incremental-chr-20260721-0122 | Target: local | Warmup: 60s | Duration: 300s</div>
+    <div class="cards">
+      <div class="metric">
+  <div class="label">Total Runs</div>
+  <div class="value">5</div>
+  <div class="detail">All attempted levels</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Stable Runs</div>
+  <div class="value">2</div>
+  <div class="detail">Healthy through measurement</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Unstable/Failed</div>
+  <div class="value">3</div>
+  <div class="detail">Stopped escalation points</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Best Stable Bound</div>
+  <div class="value">starrocks 5000 cells</div>
+  <div class="detail">Highest stable cell level</div>
+</div>
+
+    </div>
+    <h2>Stable upper bounds</h2>
+    <ul><li>starrocks: 5000 cells</li></ul>
+    <h2>Runs</h2>
+    <table>
+      <thead>
+        <tr><th>Sink</th><th>Cells</th><th>CHR EPS/cell/s</th><th>Global CHR EPS</th><th>Status</th><th>Sampled Avg Out EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Checkpoint</th><th>Backpressure</th><th>Watermark Lag</th><th>Storage</th><th>Reason</th><th>Report</th></tr>
+      </thead>
+      <tbody>
+<tr><td>starrocks</td><td>2000</td><td>30</td><td>60000</td><td><span class="status stable">STABLE</span></td><td>0</td><td>0 ms</td><td>N/A</td><td>1388 ms</td><td>0.00%</td><td>0 ms</td><td>starrocks rows=373332</td><td>all thresholds healthy</td><td><a href="runs/starrocks-incremental-chr-20260721-0122-starrocks-cells2000-chr-eps30/report.html">report</a></td></tr>
+<tr><td>starrocks</td><td>5000</td><td>30</td><td>150000</td><td><span class="status stable">STABLE</span></td><td>0</td><td>0 ms</td><td>N/A</td><td>1805 ms</td><td>0.00%</td><td>0 ms</td><td>starrocks rows=593497</td><td>all thresholds healthy</td><td><a href="runs/starrocks-incremental-chr-20260721-0122-starrocks-cells5000-chr-eps30/report.html">report</a></td></tr>
+<tr><td>starrocks</td><td>10000</td><td>30</td><td>300000</td><td><span class="status unstable">UNSTABLE</span></td><td>0</td><td>0 ms</td><td>N/A</td><td>3973 ms</td><td>0.00%</td><td>0 ms</td><td>starrocks rows=833611</td><td>source throughput attainment 0.8036024749842712</td><td><a href="runs/starrocks-incremental-chr-20260721-0122-starrocks-cells10000-chr-eps30/report.html">report</a></td></tr>
+<tr><td>starrocks</td><td>20000</td><td>30</td><td>600000</td><td><span class="status unstable">UNSTABLE</span></td><td>0</td><td>0 ms</td><td>N/A</td><td>4787 ms</td><td>0.00%</td><td>0 ms</td><td>starrocks rows=1239700</td><td>source throughput attainment 0.367612822189272</td><td><a href="runs/starrocks-incremental-chr-20260721-0122-starrocks-cells20000-chr-eps30/report.html">report</a></td></tr>
+<tr><td>starrocks</td><td>40000</td><td>30</td><td>1200000</td><td><span class="status unstable">UNSTABLE</span></td><td>0</td><td>0 ms</td><td>N/A</td><td>11234 ms</td><td>0.00%</td><td>0 ms</td><td>starrocks rows=696323</td><td>source throughput attainment 0.13109178595854065</td><td><a href="runs/starrocks-incremental-chr-20260721-0122-starrocks-cells40000-chr-eps30/report.html">report</a></td></tr>
+      </tbody>
+    </table>
+    <h2>Recommendations</h2>
+    <div class="recommendations">
+      <p>First bottleneck: starrocks at 10000 cells. source throughput attainment 0.8036024749842712.</p>
+    </div>
+  </main>
+</body>
+</html>

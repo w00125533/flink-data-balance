@@ -1,0 +1,6 @@
+sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId
+starrocks,2000,30,60000,1,2000,STABLE,0.0,0.0,1.40097762E8,1.40102665E8,0,0,-1,1388,0.0,all thresholds healthy,starrocks-incremental-chr-20260721-0122-starrocks-cells2000-chr-eps30
+starrocks,5000,30,150000,1,5000,STABLE,0.0,0.0,1.92920778E8,1.92943219E8,0,0,-1,1805,0.0,all thresholds healthy,starrocks-incremental-chr-20260721-0122-starrocks-cells5000-chr-eps30
+starrocks,10000,30,300000,1,10000,UNSTABLE,0.0,0.0,1.75902547E8,1.759324E8,0,0,-1,3973,0.0,source throughput attainment 0.8036024749842712,starrocks-incremental-chr-20260721-0122-starrocks-cells10000-chr-eps30
+starrocks,20000,30,600000,1,20000,UNSTABLE,0.0,0.0,1.73730063E8,1.73754918E8,0,0,-1,4787,0.0,source throughput attainment 0.367612822189272,starrocks-incremental-chr-20260721-0122-starrocks-cells20000-chr-eps30
+starrocks,40000,30,1200000,1,40000,UNSTABLE,0.0,0.0,1.0888807E8,1.08918488E8,0,0,-1,11234,0.0,source throughput attainment 0.13109178595854065,starrocks-incremental-chr-20260721-0122-starrocks-cells40000-chr-eps30

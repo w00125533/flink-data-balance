@@ -1,0 +1,27 @@
+{
+  "target" : "local",
+  "benchmarkId" : "starrocks-incremental-chr-20260721-0122",
+  "sinks" : [ "STARROCKS" ],
+  "cellLevels" : [ 2000, 5000, 10000, 20000, 40000 ],
+  "chrEpsPerCell" : 30.0,
+  "pmEpsPerCell" : 1.0,
+  "anomalyInjectionRatio" : 0.05,
+  "warmupSec" : 60,
+  "durationSec" : 300,
+  "pollIntervalSec" : 10,
+  "earlyStopOnUnstable" : false,
+  "checkpointIntervalMs" : 30000,
+  "flinkRestUrl" : "http://localhost:8081",
+  "observabilityApiUrl" : "http://localhost:18080",
+  "outputRoot" : "file:///D:/agent-code/flink-data-balance/benchmark-runner/output/benchmark-runs/",
+  "thresholds" : {
+    "maxBackpressureRatio" : 0.2,
+    "maxCheckpointDurationMs" : 120000,
+    "maxConsecutiveCheckpointFailures" : 2,
+    "maxKpiAvailabilityP95Ms" : 180000,
+    "maxSinkP95Ms" : 180000,
+    "maxWatermarkLagMs" : 180000,
+    "minProducerDeliveryRatio" : 0.98,
+    "maxSourceBacklogRecords" : 0
+  }
+}

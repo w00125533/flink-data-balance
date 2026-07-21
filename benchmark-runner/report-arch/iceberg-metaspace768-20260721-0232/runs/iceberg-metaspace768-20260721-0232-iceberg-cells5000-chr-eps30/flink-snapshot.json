@@ -1,0 +1,392 @@
+{
+  "jobStatus" : "RUNNING",
+  "backpressureRatio" : 0.0,
+  "checkpointDurationMs" : 1918,
+  "consecutiveCheckpointFailures" : 1,
+  "recordsInPerSec" : 0.0,
+  "recordsOutPerSec" : 0.0,
+  "recordsInTotal" : 1.9012561E8,
+  "recordsOutTotal" : 1.90148969E8,
+  "taskManagers" : 1,
+  "slots" : 6,
+  "operators" : [ {
+    "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+    "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 5.5596996E7,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+    "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 3300000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "2963852293169ba90d9d1e7d6308db5c",
+    "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 10000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+    "name" : "kafka-topics-metrics -> direct-cell-routing",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 2.944731E7,
+    "recordsOutTotal" : 2.9447438E7,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "587e2160a7da7be6dffb095c19bb2383",
+    "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 2.9435956E7,
+    "recordsOutTotal" : 1.01170487E8,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "dc6560b6bdd302792a35e9b36072a1d9",
+    "name" : "user-event-anomaly-detect-dedup",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 7.3386861E7,
+    "recordsOutTotal" : 580294.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "17f343b8ddf0780ce9bcf8e792df30cd",
+    "name" : "iceberg-user-anomaly -> user-anomaly-iceberg-map -> IcebergStreamWriter",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 580276.0,
+    "recordsOutTotal" : 66.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "08e51bcf07cb4596d89e49d4ccbcb42a",
+    "name" : "IcebergFilesCommitter -> user-anomaly-iceberg-sink: Writer",
+    "parallelism" : 1,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 66.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "41827ced4fb010e085133b31491bf1a7",
+    "name" : "coverage-hole-detector",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 2.7779965E7,
+    "recordsOutTotal" : 3424.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "93e5251a0245517ddb474bc4548b3364",
+    "name" : "iceberg-grid-anomaly -> grid-anomaly-iceberg-map -> IcebergStreamWriter",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 3423.0,
+    "recordsOutTotal" : 66.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "a1090a086254966bd835bbb4a035d204",
+    "name" : "IcebergFilesCommitter -> grid-anomaly-iceberg-sink: Writer",
+    "parallelism" : 1,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 66.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "2bfc2be811df7ca0ad7751138e833d00",
+    "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 2.7796489E7,
+    "recordsOutTotal" : 5000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "e27454fb80772a9cd817275c8345e5d8",
+    "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 1650000.0,
+    "recordsOutTotal" : 15000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "5474db3e66874410ac8cf53f549da414",
+    "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 25000.0,
+    "recordsOutTotal" : 20000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "7041e758792c7beb52aa64b46fbb9b3c",
+    "name" : "cell-kpi-anomaly-detect-dedup",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 10000.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "2db3e32bab15bb12023a1bb0c67735ef",
+    "name" : "iceberg-cell-anomaly -> cell-anomaly-iceberg-map -> IcebergStreamWriter",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 66.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "c47417cc7849f2eb7fa9b9de75dd621e",
+    "name" : "IcebergFilesCommitter -> cell-anomaly-iceberg-sink: Writer",
+    "parallelism" : 1,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 66.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+    "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 5000.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "efd72adfe10398343e61a0d96b83d199",
+    "name" : "iceberg-kpi-5m -> cell-kpi-5m-iceberg-map -> IcebergStreamWriter",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 66.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "7937d65a536ae4eb3a482c72835507dd",
+    "name" : "IcebergFilesCommitter -> cell-kpi-5m-iceberg-sink: Writer",
+    "parallelism" : 1,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 66.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "3ea9740f6668d0df627fd9169230e138",
+    "name" : "iceberg-kpi-1m -> cell-kpi-1m-iceberg-map -> IcebergStreamWriter",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 5000.0,
+    "recordsOutTotal" : 66.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "26acd481238cfc8fea14ca6bf6ae5272",
+    "name" : "IcebergFilesCommitter -> cell-kpi-1m-iceberg-sink: Writer",
+    "parallelism" : 1,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 66.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  } ],
+  "operatorEdges" : [ {
+    "sourceId" : "17f343b8ddf0780ce9bcf8e792df30cd",
+    "targetId" : "08e51bcf07cb4596d89e49d4ccbcb42a"
+  }, {
+    "sourceId" : "dc6560b6bdd302792a35e9b36072a1d9",
+    "targetId" : "17f343b8ddf0780ce9bcf8e792df30cd"
+  }, {
+    "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+    "targetId" : "dc6560b6bdd302792a35e9b36072a1d9"
+  }, {
+    "sourceId" : "93e5251a0245517ddb474bc4548b3364",
+    "targetId" : "a1090a086254966bd835bbb4a035d204"
+  }, {
+    "sourceId" : "41827ced4fb010e085133b31491bf1a7",
+    "targetId" : "93e5251a0245517ddb474bc4548b3364"
+  }, {
+    "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+    "targetId" : "41827ced4fb010e085133b31491bf1a7"
+  }, {
+    "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+    "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+  }, {
+    "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+    "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+  }, {
+    "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+    "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+  }, {
+    "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+    "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+  }, {
+    "sourceId" : "2db3e32bab15bb12023a1bb0c67735ef",
+    "targetId" : "c47417cc7849f2eb7fa9b9de75dd621e"
+  }, {
+    "sourceId" : "7041e758792c7beb52aa64b46fbb9b3c",
+    "targetId" : "2db3e32bab15bb12023a1bb0c67735ef"
+  }, {
+    "sourceId" : "5474db3e66874410ac8cf53f549da414",
+    "targetId" : "7041e758792c7beb52aa64b46fbb9b3c"
+  }, {
+    "sourceId" : "efd72adfe10398343e61a0d96b83d199",
+    "targetId" : "7937d65a536ae4eb3a482c72835507dd"
+  }, {
+    "sourceId" : "60057b4af3f90b3c85b29cda0bc7bb48",
+    "targetId" : "efd72adfe10398343e61a0d96b83d199"
+  }, {
+    "sourceId" : "5474db3e66874410ac8cf53f549da414",
+    "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+  }, {
+    "sourceId" : "3ea9740f6668d0df627fd9169230e138",
+    "targetId" : "26acd481238cfc8fea14ca6bf6ae5272"
+  }, {
+    "sourceId" : "5474db3e66874410ac8cf53f549da414",
+    "targetId" : "3ea9740f6668d0df627fd9169230e138"
+  }, {
+    "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+    "targetId" : "5474db3e66874410ac8cf53f549da414"
+  }, {
+    "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+    "targetId" : "5474db3e66874410ac8cf53f549da414"
+  }, {
+    "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+    "targetId" : "5474db3e66874410ac8cf53f549da414"
+  }, {
+    "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+    "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+  }, {
+    "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+    "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+  } ],
+  "sourceBacklogRecords" : 0
+}

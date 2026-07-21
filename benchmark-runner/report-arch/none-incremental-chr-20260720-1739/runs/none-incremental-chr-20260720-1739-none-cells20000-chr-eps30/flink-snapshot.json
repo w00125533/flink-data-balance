@@ -1,0 +1,222 @@
+{
+  "jobStatus" : "RUNNING",
+  "backpressureRatio" : 0.0,
+  "checkpointDurationMs" : 6753,
+  "consecutiveCheckpointFailures" : 0,
+  "recordsInPerSec" : 0.0,
+  "recordsOutPerSec" : 0.0,
+  "recordsInTotal" : 1.32712572E8,
+  "recordsOutTotal" : 1.32750852E8,
+  "taskManagers" : 1,
+  "slots" : 6,
+  "operators" : [ {
+    "id" : "cbc357ccb763df2852fee8c4fc7d55f2",
+    "name" : "Source: chr-source -> chr-source-metrics -> to-chr-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 3.3704824E7,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+    "name" : "Source: pm-source -> pm-source-metrics -> to-pm-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 1.379329E7,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "2963852293169ba90d9d1e7d6308db5c",
+    "name" : "Source: cfg-source -> cfg-source-metrics -> (to-cfg-env, to-cfg-minute-fact-env)",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 40000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "ec157d9c56975d1702de6c7dcfff36ff",
+    "name" : "kafka-topics-metrics -> direct-cell-routing",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 2.3754435E7,
+    "recordsOutTotal" : 2.375462E7,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "587e2160a7da7be6dffb095c19bb2383",
+    "name" : "enrichment -> (enrichment-metrics -> Flat Map -> user-event-anomaly-evaluations, enrichment-late-sink: Writer -> enrichment-late-sink: Committer)",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 2.3741599E7,
+    "recordsOutTotal" : 6.1398118E7,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "390d248b4f17852c1a660f8778a754c6",
+    "name" : "user-event-anomaly-detect-dedup",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 4.4556214E7,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "41827ced4fb010e085133b31491bf1a7",
+    "name" : "coverage-hole-detector",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 1.6837724E7,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "2bfc2be811df7ca0ad7751138e833d00",
+    "name" : "chr-1m-fact -> to-chr-minute-fact-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 1.6850448E7,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "e27454fb80772a9cd817275c8345e5d8",
+    "name" : "pm-1m-fact -> to-pm-minute-fact-env",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 6892152.0,
+    "recordsOutTotal" : 60000.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "5474db3e66874410ac8cf53f549da414",
+    "name" : "kpi-1m-full-join -> kpi-1m-metrics -> (Flat Map -> cell-kpi-anomaly-evaluations, Timestamps/Watermarks)",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 80000.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "07e4fe8bea413a42eb65679c3184b1f6",
+    "name" : "cell-kpi-anomaly-detect-dedup",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  }, {
+    "id" : "60057b4af3f90b3c85b29cda0bc7bb48",
+    "name" : "kpi-5m-rollup -> kpi-5m-metrics",
+    "parallelism" : 6,
+    "recordsInPerSec" : 0.0,
+    "recordsOutPerSec" : 0.0,
+    "recordsInTotal" : 0.0,
+    "recordsOutTotal" : 0.0,
+    "bytesInPerSec" : 0.0,
+    "bytesOutPerSec" : 0.0,
+    "busyRatio" : 0.0,
+    "idleRatio" : 0.0,
+    "backpressureRatio" : 0.0,
+    "pendingRecords" : 0
+  } ],
+  "operatorEdges" : [ {
+    "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+    "targetId" : "390d248b4f17852c1a660f8778a754c6"
+  }, {
+    "sourceId" : "587e2160a7da7be6dffb095c19bb2383",
+    "targetId" : "41827ced4fb010e085133b31491bf1a7"
+  }, {
+    "sourceId" : "ec157d9c56975d1702de6c7dcfff36ff",
+    "targetId" : "587e2160a7da7be6dffb095c19bb2383"
+  }, {
+    "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+    "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+  }, {
+    "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+    "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+  }, {
+    "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+    "targetId" : "ec157d9c56975d1702de6c7dcfff36ff"
+  }, {
+    "sourceId" : "5474db3e66874410ac8cf53f549da414",
+    "targetId" : "07e4fe8bea413a42eb65679c3184b1f6"
+  }, {
+    "sourceId" : "5474db3e66874410ac8cf53f549da414",
+    "targetId" : "60057b4af3f90b3c85b29cda0bc7bb48"
+  }, {
+    "sourceId" : "2bfc2be811df7ca0ad7751138e833d00",
+    "targetId" : "5474db3e66874410ac8cf53f549da414"
+  }, {
+    "sourceId" : "e27454fb80772a9cd817275c8345e5d8",
+    "targetId" : "5474db3e66874410ac8cf53f549da414"
+  }, {
+    "sourceId" : "2963852293169ba90d9d1e7d6308db5c",
+    "targetId" : "5474db3e66874410ac8cf53f549da414"
+  }, {
+    "sourceId" : "cbc357ccb763df2852fee8c4fc7d55f2",
+    "targetId" : "2bfc2be811df7ca0ad7751138e833d00"
+  }, {
+    "sourceId" : "6cdc5bb954874d922eaee11a8e7b5dd5",
+    "targetId" : "e27454fb80772a9cd817275c8345e5d8"
+  } ],
+  "sourceBacklogRecords" : 0
+}

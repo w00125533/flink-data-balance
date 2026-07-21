@@ -1,0 +1,6 @@
+sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId
+none,2000,30,60000,1,2000,STABLE,0.0,0.0,1.41640053E8,1.41648506E8,0,0,-1,525,0.0,all thresholds healthy,none-incremental-chr-20260720-1739-none-cells2000-chr-eps30
+none,5000,30,150000,1,5000,STABLE,0.0,0.0,1.97417805E8,1.97442025E8,0,0,-1,2037,0.0,all thresholds healthy,none-incremental-chr-20260720-1739-none-cells5000-chr-eps30
+none,10000,30,300000,1,10000,STABLE,0.0,0.0,1.68270287E8,1.68294038E8,0,0,-1,4201,0.0,all thresholds healthy,none-incremental-chr-20260720-1739-none-cells10000-chr-eps30
+none,20000,30,600000,1,20000,UNSTABLE,0.0,0.0,1.32712572E8,1.32750852E8,0,0,-1,6753,0.0,source throughput attainment 0.5684032651009491,none-incremental-chr-20260720-1739-none-cells20000-chr-eps30
+none,40000,30,1200000,1,40000,UNSTABLE,0.0,0.0,9.451336E7,9.4546862E7,0,0,-1,10991,0.0,source throughput attainment 0.24617492150017414,none-incremental-chr-20260720-1739-none-cells40000-chr-eps30

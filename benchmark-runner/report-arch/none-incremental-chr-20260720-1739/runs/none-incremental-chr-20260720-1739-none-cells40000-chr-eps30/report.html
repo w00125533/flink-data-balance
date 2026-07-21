@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>none-incremental-chr-20260720-1739-none-cells40000-chr-eps30</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #1f2937; background: #f7f8fa; }
+    main { max-width: 1120px; margin: 0 auto; padding: 32px 24px; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 24px 0 10px; }
+    .meta { color: #667085; margin: 0 0 18px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 16px 0 22px; }
+    .metric { background: #fff; border: 1px solid #d9dee7; padding: 12px; }
+    .metric .label { color: #667085; font-size: 12px; text-transform: uppercase; }
+    .metric .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .metric .detail { color: #667085; font-size: 12px; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d9dee7; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid #e6eaf0; text-align: left; font-size: 13px; }
+    th { background: #eef2f6; font-weight: 600; }
+    .status { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
+    .stable { background: #dff5e5; color: #186238; }
+    .unstable { background: #fff1d6; color: #875400; }
+    .failed { background: #fde2e1; color: #b42318; }
+    .health { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; }
+    .health-ok { background: #dff5e5; color: #186238; }
+    .health-warn { background: #fff1d6; color: #875400; }
+    .health-fail { background: #fde2e1; color: #b42318; }
+    .health-na { background: #eef2f6; color: #475467; }
+    .raw-links { display: flex; flex-wrap: wrap; gap: 10px; }
+    .raw-links a { background: #fff; border: 1px solid #d9dee7; padding: 8px 10px; color: #1d4ed8; }
+    .flow-wrap { overflow-x: auto; background: #fff; border: 1px solid #d9dee7; padding: 12px; }
+    .operator-flow { min-width: 100%; }
+    .flow-node { cursor: pointer; }
+    .flow-node rect { fill: #ffffff; stroke: #8ea1bd; stroke-width: 1.4; }
+    .flow-node text { fill: #1f2937; font-size: 12px; }
+    .flow-node.active rect { fill: #e8f1ff; stroke: #1d4ed8; stroke-width: 2.2; }
+    .flow-edge { stroke: #9aa8bb; stroke-width: 1.4; }
+    .flow-edge.active { stroke: #1d4ed8; stroke-width: 2.4; }
+    tr.active-row td { background: #e8f1ff; }
+    a { color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <main>
+    <a href="../../index.html">Back to benchmark</a>
+    <h1>benchmark-none</h1>
+    <p class="meta">Benchmark none-incremental-chr-20260720-1739 | Target local | Sink none | Cells 40000 | CHR EPS 30 records/cell/s</p>
+    <p><span class="status unstable">UNSTABLE</span> source throughput attainment 0.24617492150017414</p>
+    <div class="cards">
+      <div class="metric">
+  <div class="label">Status</div>
+  <div class="value">UNSTABLE</div>
+  <div class="detail">source throughput attainment 0.24617492150017414</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Sampled Avg Out EPS</div>
+  <div class="value">0</div>
+  <div class="detail">Flink sampled window avg records/s</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Checkpoint</div>
+  <div class="value">10991 ms</div>
+  <div class="detail">Failures 0</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Backpressure</div>
+  <div class="value">0.00%</div>
+  <div class="detail">Job-level ratio</div>
+</div>
+
+      <div class="metric">
+  <div class="label">KPI 1m P95</div>
+  <div class="value">0 ms</div>
+  <div class="detail">KPI availability</div>
+</div>
+
+      <div class="metric">
+  <div class="label">Sink P95</div>
+  <div class="value">N/A</div>
+  <div class="detail">Failures 0</div>
+</div>
+
+    </div>
+    <h2>Run Summary</h2>
+    <table><tbody><tr><th>Benchmark</th><td>none-incremental-chr-20260720-1739</td></tr><tr><th>Target</th><td>local</td></tr><tr><th>Run ID</th><td>none-incremental-chr-20260720-1739-none-cells40000-chr-eps30</td></tr><tr><th>Run Label</th><td>benchmark-none</td></tr><tr><th>Sink</th><td>none</td></tr><tr><th>Cell Level</th><td>40000</td></tr><tr><th>Target CHR EPS</th><td>30 records/cell/s</td></tr><tr><th>Global CHR EPS</th><td>1200000 records/s</td></tr><tr><th>Target PM EPS</th><td>1 records/cell/s</td></tr><tr><th>Global PM EPS</th><td>40000 records/s</td></tr><tr><th>Status</th><td>UNSTABLE</td></tr><tr><th>Reason</th><td>source throughput attainment 0.24617492150017414</td></tr><tr><th>Source Throughput Attainment</th><td>24.62%</td></tr><tr><th>Source Backlog</th><td>313332270 CHR records</td></tr><tr><th>Checkpoint Interval</th><td>30000 ms</td></tr><tr><th>Checkpoint Duration</th><td>10991 ms</td></tr><tr><th>Checkpoint Failures</th><td>0</td></tr></tbody></table>
+    <h2>Stability Gates</h2>
+    <table>
+  <thead><tr><th>Metric</th><th>Observed</th><th>Threshold</th><th>Health</th></tr></thead>
+  <tbody><tr><td>Flink Job Status</td><td>RUNNING</td><td>RUNNING</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Source Metrics</td><td>present</td><td>present</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>CHR Source Metrics</td><td>present</td><td>present</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Source Throughput Attainment</td><td>24.62%</td><td>&gt;= 98.00%</td><td><span class="health health-warn">UNSTABLE</span></td></tr><tr><td>Source Operator Backlog</td><td>0 records</td><td>&lt;= 0 records</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Backpressure Ratio</td><td>0.00%</td><td>&lt;= 20.00%</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Consecutive Checkpoint Failures</td><td>0 failures</td><td>&lt; 2 failures</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Checkpoint Duration</td><td>10991 ms</td><td>&lt;= 120000 ms</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>KPI Availability P95</td><td>0 ms</td><td>&lt;= 180000 ms</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Sink P95</td><td>N/A</td><td>&lt;= 180000 ms</td><td><span class="health health-na">N/A</span></td></tr><tr><td>Sink Failures</td><td>0 failures</td><td>&lt;= 0 failures</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Watermark Lag</td><td>0 ms</td><td>&lt;= 180000 ms</td><td><span class="health health-ok">HEALTHY</span></td></tr><tr><td>Storage Health</td><td>healthy</td><td>healthy</td><td><span class="health health-ok">HEALTHY</span></td></tr></tbody>
+</table>
+
+    <h2>Source Density</h2>
+    <table>
+  <thead>
+    <tr><th>Source</th><th>Total</th><th>Records/s</th><th>Total/cell</th><th>Records/s/cell</th></tr>
+  </thead>
+  <tbody>
+    <tr><th>CHR total</th><td>102641058</td><td>295409.91</td><td>2566.03</td><td>7.39</td></tr>
+    <tr><th>PM total</th><td>14160000</td><td>40018.77</td><td>354.00</td><td>1.00</td></tr>
+    <tr><th>CFG total</th><td>40000</td><td>61823.80</td><td>1.00</td><td>N/A (one-time init)</td></tr>
+  </tbody>
+</table>
+
+    <h2>Run Notes</h2>
+    <table><tbody><tr><th>Topology Generation Duration</th><td>Only local topology object generation time; Kafka publish and total duration are listed separately.</td></tr><tr><th>Terminal Sink Records Out</th><td>Flink terminal sink operators commonly show Records Out Total as 0; use Records In Total and Sink &amp; Storage records for write volume.</td></tr><tr><th>KPI 5m Output</th><td>KPI 5m needs a 5-minute event-time window plus watermark progress; short or early-stopped runs may show zero rows.</td></tr><tr><th>Anomaly Output</th><td>Rules emit only after consecutive abnormal evaluations; zero rows means no activation or no committed sink rows in this run.</td></tr></tbody></table>
+    <h2>Topology Generation</h2>
+    <table><tbody><tr><th>Generated Records</th><td>40000</td></tr><tr><th>Site Count</th><td>6608</td></tr><tr><th>Frequency Bands</th><td>3</td></tr><tr><th>Topology Generation Duration</th><td>563 ms</td></tr><tr><th>Kafka Publish Duration</th><td>625 ms</td></tr><tr><th>Total Duration</th><td>1989 ms</td></tr><tr><th>Published Topology Records</th><td>40000</td></tr><tr><th>Publish Failures</th><td>0</td></tr><tr><th>Latitude Range</th><td>39.700084..40.199895</td></tr><tr><th>Longitude Range</th><td>116.000030..116.799922</td></tr></tbody></table>
+    <h2>Flink Resources</h2>
+    <table><tbody><tr><th>Job Status</th><td>RUNNING</td></tr><tr><th>TaskManagers</th><td>1</td></tr><tr><th>Slots</th><td>6</td></tr><tr><th>Sampled Avg Records In/s</th><td>0</td></tr><tr><th>Sampled Avg Records Out/s</th><td>0</td></tr><tr><th>Operator Aggregate Records In Total</th><td>94513360</td></tr><tr><th>Operator Aggregate Records Out Total</th><td>94546862</td></tr><tr><th>Backpressure</th><td>0.00%</td></tr><tr><th>Checkpoint Duration</th><td>10991 ms</td></tr><tr><th>Checkpoint Failures</th><td>0</td></tr></tbody></table>
+    <h2>Operator Flow</h2>
+    <div class="flow-wrap">
+  <svg class="operator-flow" viewBox="0 0 1040 540" role="img" aria-label="Flink operator flow">
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#9aa8bb"></path>
+      </marker>
+    </defs>
+    <line class="flow-edge" data-source-id="587e2160a7da7be6dffb095c19bb2383" data-target-id="390d248b4f17852c1a660f8778a754c6" x1="750" y1="64" x2="810" y2="64" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="587e2160a7da7be6dffb095c19bb2383" data-target-id="41827ced4fb010e085133b31491bf1a7" x1="750" y1="64" x2="810" y2="174" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="ec157d9c56975d1702de6c7dcfff36ff" data-target-id="587e2160a7da7be6dffb095c19bb2383" x1="490" y1="64" x2="550" y2="64" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="cbc357ccb763df2852fee8c4fc7d55f2" data-target-id="ec157d9c56975d1702de6c7dcfff36ff" x1="230" y1="64" x2="290" y2="64" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="6cdc5bb954874d922eaee11a8e7b5dd5" data-target-id="ec157d9c56975d1702de6c7dcfff36ff" x1="230" y1="174" x2="290" y2="64" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="2963852293169ba90d9d1e7d6308db5c" data-target-id="ec157d9c56975d1702de6c7dcfff36ff" x1="230" y1="284" x2="290" y2="64" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="5474db3e66874410ac8cf53f549da414" data-target-id="07e4fe8bea413a42eb65679c3184b1f6" x1="750" y1="174" x2="810" y2="284" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="5474db3e66874410ac8cf53f549da414" data-target-id="60057b4af3f90b3c85b29cda0bc7bb48" x1="750" y1="174" x2="810" y2="394" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="2bfc2be811df7ca0ad7751138e833d00" data-target-id="5474db3e66874410ac8cf53f549da414" x1="490" y1="174" x2="550" y2="174" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="e27454fb80772a9cd817275c8345e5d8" data-target-id="5474db3e66874410ac8cf53f549da414" x1="490" y1="284" x2="550" y2="174" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="2963852293169ba90d9d1e7d6308db5c" data-target-id="5474db3e66874410ac8cf53f549da414" x1="230" y1="284" x2="550" y2="174" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="cbc357ccb763df2852fee8c4fc7d55f2" data-target-id="2bfc2be811df7ca0ad7751138e833d00" x1="230" y1="64" x2="290" y2="174" marker-end="url(#arrow)"></line><line class="flow-edge" data-source-id="6cdc5bb954874d922eaee11a8e7b5dd5" data-target-id="e27454fb80772a9cd817275c8345e5d8" x1="230" y1="174" x2="290" y2="284" marker-end="url(#arrow)"></line>
+    <g class="flow-node" data-operator-id="cbc357ccb763df2852fee8c4fc7d55f2" transform="translate(40,30)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">Source: chr-source -&gt; chr-s...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="6cdc5bb954874d922eaee11a8e7b5dd5" transform="translate(40,140)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">Source: pm-source -&gt; pm-sou...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="2963852293169ba90d9d1e7d6308db5c" transform="translate(40,250)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">Source: cfg-source -&gt; cfg-s...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="ec157d9c56975d1702de6c7dcfff36ff" transform="translate(300,30)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">kafka-topics-metrics -&gt; dir...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="587e2160a7da7be6dffb095c19bb2383" transform="translate(560,30)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">enrichment -&gt; (enrichment-m...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="390d248b4f17852c1a660f8778a754c6" transform="translate(820,30)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">user-event-anomaly-detect-d...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="41827ced4fb010e085133b31491bf1a7" transform="translate(820,140)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">coverage-hole-detector</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="2bfc2be811df7ca0ad7751138e833d00" transform="translate(300,140)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">chr-1m-fact -&gt; to-chr-minut...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="e27454fb80772a9cd817275c8345e5d8" transform="translate(300,250)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">pm-1m-fact -&gt; to-pm-minute-...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="5474db3e66874410ac8cf53f549da414" transform="translate(560,140)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">kpi-1m-full-join -&gt; kpi-1m-...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="07e4fe8bea413a42eb65679c3184b1f6" transform="translate(820,250)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">cell-kpi-anomaly-detect-ded...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g><g class="flow-node" data-operator-id="60057b4af3f90b3c85b29cda0bc7bb48" transform="translate(820,360)"><rect width="180" height="68" rx="4"></rect><text x="10" y="22">kpi-5m-rollup -&gt; kpi-5m-met...</text><text x="10" y="43">p=6 out/s=0</text><text x="10" y="60">bp=0.00%</text></g>
+  </svg>
+</div>
+
+    <h2>Operator Throughput</h2>
+    <table>
+  <thead><tr><th>Operator</th><th>Parallelism</th><th>Sampled Avg Records In/s</th><th>Sampled Avg Records Out/s</th><th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th><th>Busy</th><th>Idle</th><th>Backpressure</th></tr></thead>
+  <tbody><tr id="operator-row-cbc357ccb763df2852fee8c4fc7d55f2" data-operator-id="cbc357ccb763df2852fee8c4fc7d55f2"><td>Source: chr-source -&gt; chr-source-metrics -&gt; to-chr-env</td><td>6</td><td>0</td><td>0</td><td>0</td><td>18849054</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-6cdc5bb954874d922eaee11a8e7b5dd5" data-operator-id="6cdc5bb954874d922eaee11a8e7b5dd5"><td>Source: pm-source -&gt; pm-source-metrics -&gt; to-pm-env</td><td>6</td><td>0</td><td>0</td><td>0</td><td>21192336</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-2963852293169ba90d9d1e7d6308db5c" data-operator-id="2963852293169ba90d9d1e7d6308db5c"><td>Source: cfg-source -&gt; cfg-source-metrics -&gt; (to-cfg-env, to-cfg-minute-fact-env)</td><td>6</td><td>0</td><td>0</td><td>0</td><td>80000</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-ec157d9c56975d1702de6c7dcfff36ff" data-operator-id="ec157d9c56975d1702de6c7dcfff36ff"><td>kafka-topics-metrics -&gt; direct-cell-routing</td><td>6</td><td>0</td><td>0</td><td>20045013</td><td>20044919</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-587e2160a7da7be6dffb095c19bb2383" data-operator-id="587e2160a7da7be6dffb095c19bb2383"><td>enrichment -&gt; (enrichment-metrics -&gt; Flat Map -&gt; user-event-anomaly-evaluations, enrichment-late-sink: Writer -&gt; enrichment-late-sink: Committer)</td><td>6</td><td>0</td><td>0</td><td>20032071</td><td>34300553</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-390d248b4f17852c1a660f8778a754c6" data-operator-id="390d248b4f17852c1a660f8778a754c6"><td>user-event-anomaly-detect-dedup</td><td>6</td><td>0</td><td>0</td><td>24885393</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-41827ced4fb010e085133b31491bf1a7" data-operator-id="41827ced4fb010e085133b31491bf1a7"><td>coverage-hole-detector</td><td>6</td><td>0</td><td>0</td><td>9411721</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-2bfc2be811df7ca0ad7751138e833d00" data-operator-id="2bfc2be811df7ca0ad7751138e833d00"><td>chr-1m-fact -&gt; to-chr-minute-fact-env</td><td>6</td><td>0</td><td>0</td><td>9423803</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-e27454fb80772a9cd817275c8345e5d8" data-operator-id="e27454fb80772a9cd817275c8345e5d8"><td>pm-1m-fact -&gt; to-pm-minute-fact-env</td><td>6</td><td>0</td><td>0</td><td>10595359</td><td>80000</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-5474db3e66874410ac8cf53f549da414" data-operator-id="5474db3e66874410ac8cf53f549da414"><td>kpi-1m-full-join -&gt; kpi-1m-metrics -&gt; (Flat Map -&gt; cell-kpi-anomaly-evaluations, Timestamps/Watermarks)</td><td>6</td><td>0</td><td>0</td><td>120000</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-07e4fe8bea413a42eb65679c3184b1f6" data-operator-id="07e4fe8bea413a42eb65679c3184b1f6"><td>cell-kpi-anomaly-detect-dedup</td><td>6</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr id="operator-row-60057b4af3f90b3c85b29cda0bc7bb48" data-operator-id="60057b4af3f90b3c85b29cda0bc7bb48"><td>kpi-5m-rollup -&gt; kpi-5m-metrics</td><td>6</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr></tbody>
+</table>
+
+    <h2>Latency</h2>
+    <table>
+  <thead><tr><th>Stage</th><th>P50</th><th>P95</th><th>P99</th><th>Watermark Lag</th></tr></thead>
+  <tbody><tr><td>chr-source</td><td>0 ms</td><td>0 ms</td><td>N/A</td><td>0 ms</td></tr><tr><td>pm-source</td><td>0 ms</td><td>0 ms</td><td>N/A</td><td>0 ms</td></tr><tr><td>cfg-source</td><td>0 ms</td><td>0 ms</td><td>N/A</td><td>0 ms</td></tr><tr><td>enrichment</td><td>0 ms</td><td>0 ms</td><td>N/A</td><td>0 ms</td></tr></tbody>
+</table>
+
+    <h2>Sink &amp; Storage</h2>
+    <table>
+  <thead><tr><th>Area</th><th>Value</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Sink P95</td><td>N/A</td><td>0 failures</td></tr>
+    <tr><td>Storage Health</td><td>healthy</td><td>no business sink</td></tr>
+    <tr><td>Storage Records</td><td>0</td><td>Small files 0, in-progress 0</td></tr>
+  </tbody>
+</table>
+
+    <h2>Raw Artifacts</h2>
+    <div class="raw-links">
+      <a href="run.json">run.json</a>
+      <a href="flink-snapshot.json">flink-snapshot.json</a>
+      <a href="fdb-metrics-snapshot.json">fdb-metrics-snapshot.json</a>
+      <a href="storage-snapshot.json">storage-snapshot.json</a>
+      <a href="source-metrics.json">source-metrics.json</a>
+      <a href="topology-metrics.json">topology-metrics.json</a>
+    </div>
+    <script>
+      function highlightOperator(id) {
+        document.querySelectorAll('.flow-node').forEach(function(node) {
+          node.classList.toggle('active', node.dataset.operatorId === id);
+        });
+        document.querySelectorAll('.flow-edge').forEach(function(edge) {
+          edge.classList.toggle('active', edge.dataset.sourceId === id || edge.dataset.targetId === id);
+        });
+        document.querySelectorAll('tr[data-operator-id]').forEach(function(row) {
+          row.classList.toggle('active-row', row.dataset.operatorId === id);
+        });
+      }
+      document.querySelectorAll('.flow-node, tr[data-operator-id]').forEach(function(item) {
+        item.addEventListener('click', function() {
+          highlightOperator(item.dataset.operatorId);
+        });
+      });
+    </script>
+  </main>
+</body>
+</html>
