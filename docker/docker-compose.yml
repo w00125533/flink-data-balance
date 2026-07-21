@@ -108,7 +108,7 @@ services:
     command: taskmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - "FLINK_PROPERTIES=taskmanager.memory.process.size: ${FDB_FLINK_TASKMANAGER_MEMORY:-4096m}\ntaskmanager.numberOfTaskSlots: ${FDB_FLINK_TASKMANAGER_SLOTS:-4}\ntaskmanager.memory.managed.fraction: ${FDB_FLINK_TASKMANAGER_MANAGED_FRACTION:-0.25}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}\nheartbeat.timeout: ${FDB_FLINK_HEARTBEAT_TIMEOUT_MS:-50000}\nheartbeat.interval: ${FDB_FLINK_HEARTBEAT_INTERVAL_MS:-10000}\npekko.ask.timeout: ${FDB_FLINK_PEKKO_ASK_TIMEOUT:-60s}"
+      - "FLINK_PROPERTIES=taskmanager.memory.process.size: ${FDB_FLINK_TASKMANAGER_MEMORY:-4096m}\ntaskmanager.memory.jvm-metaspace.size: ${FDB_FLINK_TASKMANAGER_METASPACE:-512m}\ntaskmanager.numberOfTaskSlots: ${FDB_FLINK_TASKMANAGER_SLOTS:-4}\ntaskmanager.memory.managed.fraction: ${FDB_FLINK_TASKMANAGER_MANAGED_FRACTION:-0.25}\nmetrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory\nmetrics.reporter.prom.port: 9249\nstate.checkpoints.num-retained: ${FDB_FLINK_RETAINED_CHECKPOINTS:-2}\nheartbeat.timeout: ${FDB_FLINK_HEARTBEAT_TIMEOUT_MS:-50000}\nheartbeat.interval: ${FDB_FLINK_HEARTBEAT_INTERVAL_MS:-10000}\npekko.ask.timeout: ${FDB_FLINK_PEKKO_ASK_TIMEOUT:-60s}"
       - FDB_KAFKA_BOOTSTRAP=${FDB_KAFKA_BOOTSTRAP:-kafka:9092}
       - FDB_KAFKA_FETCH_MAX_BYTES=${FDB_KAFKA_FETCH_MAX_BYTES:-}
       - FDB_KAFKA_MAX_PARTITION_FETCH_BYTES=${FDB_KAFKA_MAX_PARTITION_FETCH_BYTES:-}

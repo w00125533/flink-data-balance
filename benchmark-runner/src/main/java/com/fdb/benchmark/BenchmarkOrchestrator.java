@@ -85,8 +85,7 @@ public final class BenchmarkOrchestrator {
     RunObservation observation = clients.observe(plan);
     observations.add(observation);
     BenchmarkRunResult last = decisionEngine.decide(plan, observation);
-    if (config.durationSec() <= 0
-        || (config.earlyStopOnUnstable() && last.status() != BenchmarkStatus.STABLE)) {
+    if (config.durationSec() <= 0 || shouldStopCurrentRun(last)) {
       return decisionEngine.decide(plan, measurementWindow(observations));
     }
     while (System.currentTimeMillis() < deadline) {
@@ -98,11 +97,16 @@ public final class BenchmarkOrchestrator {
       observation = clients.observe(plan);
       observations.add(observation);
       last = decisionEngine.decide(plan, observation);
-      if (config.earlyStopOnUnstable() && last.status() != BenchmarkStatus.STABLE) {
+      if (shouldStopCurrentRun(last)) {
         return decisionEngine.decide(plan, measurementWindow(observations));
       }
     }
     return decisionEngine.decide(plan, measurementWindow(observations));
+  }
+
+  private boolean shouldStopCurrentRun(BenchmarkRunResult result) {
+    return result.status() == BenchmarkStatus.FAILED
+        || (config.earlyStopOnUnstable() && result.status() != BenchmarkStatus.STABLE);
   }
 
   private static RunObservation measurementWindow(List<RunObservation> observations) {

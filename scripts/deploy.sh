@@ -111,7 +111,7 @@ write_current_run_env() {
 
 local_wait_for_job_terminal() {
   local job_id=$1
-  local wait_sec="${FDB_FLINK_CANCEL_WAIT_SEC:-120}"
+  local wait_sec="${FDB_FLINK_CANCEL_WAIT_SEC:-300}"
   local rest_url="${FDB_FLINK_REST_URL:-http://localhost:8081}"
 
   if [[ "$wait_sec" == "0" ]]; then
@@ -160,6 +160,34 @@ local_wait_for_flink_slots() {
 
   warn "timed out waiting for Flink slots to become available"
   return 1
+}
+
+local_flink_taskmanager_count() {
+  local rest_url="${FDB_FLINK_REST_URL:-http://localhost:8081}"
+  local body
+
+  if body="$(curl -fsS "${rest_url}/overview" 2>/dev/null)"; then
+    printf '%s\n' "$body" | sed -nE 's/.*"taskmanagers"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1
+  else
+    printf '0\n'
+  fi
+}
+
+local_ensure_flink_slots_for_submit() {
+  local taskmanagers
+
+  if local_wait_for_flink_slots; then
+    return 0
+  fi
+
+  taskmanagers="$(local_flink_taskmanager_count)"
+  if [[ "${taskmanagers:-0}" -gt 0 ]]; then
+    return 1
+  fi
+
+  warn "no Flink TaskManager is registered; recreating local TaskManager before submit"
+  docker compose -f docker/docker-compose.yml --profile e2e up -d --force-recreate --no-deps taskmanager
+  local_wait_for_flink_slots
 }
 
 current_run_id() {
@@ -760,6 +788,8 @@ local_submit() {
     -e "FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS}"
   )
 
+  local_ensure_flink_slots_for_submit || die "Flink slots are not available for local submit"
+
   log "recreating observability-api with run context: ${FDB_RUN_ID}"
   docker compose -f docker/docker-compose.yml --profile e2e up -d --no-deps --force-recreate observability-api
 
@@ -820,9 +850,6 @@ local_stop() {
   fi
   if [[ "$stop_status" -eq 0 ]]; then
     local_wait_for_job_terminal "$job_id" || stop_status=$?
-  fi
-  if [[ "$stop_status" -eq 0 ]]; then
-    local_wait_for_flink_slots || stop_status=$?
   fi
 
   if [[ "${FDB_REPORT_ON_STOP:-false}" == "true" ]]; then
@@ -1716,6 +1743,9 @@ external_submit() {
   fi
   if [[ -n "${FDB_FLINK_TASKMANAGER_MEMORY:-}" ]]; then
     flink_args+=(-D "taskmanager.memory.process.size=${FDB_FLINK_TASKMANAGER_MEMORY}")
+  fi
+  if [[ -n "${FDB_FLINK_TASKMANAGER_METASPACE:-}" ]]; then
+    flink_args+=(-D "taskmanager.memory.jvm-metaspace.size=${FDB_FLINK_TASKMANAGER_METASPACE}")
   fi
   if [[ -n "${FDB_FLINK_TASKMANAGER_SLOTS:-}" ]]; then
     flink_args+=(-D "taskmanager.numberOfTaskSlots=${FDB_FLINK_TASKMANAGER_SLOTS}")

@@ -72,6 +72,33 @@ class BenchmarkOrchestratorTest {
   }
 
   @Test
+  void stops_current_run_immediately_when_flink_job_is_failed_even_when_early_stop_is_disabled() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_DURATION_SEC", "1",
+        "FDB_BENCHMARK_POLL_INTERVAL_SEC", "1",
+        "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", "false"));
+    FakeObservationSource observations = new FakeObservationSource(List.of(
+        healthy().withFlink(healthy().flink().withJobStatus("RESTARTING")),
+        healthy().withFlink(healthy().flink().withJobStatus("RESTARTING"))));
+
+    List<BenchmarkRunResult> results = new BenchmarkOrchestrator(
+        config,
+        new RecordingDeploy(),
+        new RecordingSimulators(),
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).status()).isEqualTo(BenchmarkStatus.FAILED);
+    assertThat(results.get(0).bottleneckReason()).isEqualTo("Flink job status RESTARTING");
+    assertThat(observations.observationCount()).isEqualTo(1);
+  }
+
+  @Test
   void submits_job_before_starting_simulators() throws Exception {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-a",
@@ -228,6 +255,10 @@ class BenchmarkOrchestratorTest {
     @Override
     public RunObservation observe(BenchmarkRunPlan plan) {
       return observations.get(index++);
+    }
+
+    int observationCount() {
+      return index;
     }
   }
 }

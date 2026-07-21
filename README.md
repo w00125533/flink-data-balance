@@ -316,11 +316,13 @@ subtask 缓冲上限，避免多个 StarRocks sink 并行写入时默认 90MB �
 TaskManager 内存峰值过高。
 
 The local Flink containers also set explicit memory defaults:
-`FDB_FLINK_TASKMANAGER_MEMORY=4096m`, `FDB_FLINK_TASKMANAGER_SLOTS=4`,
-`FDB_FLINK_JOBMANAGER_MEMORY=1600m` and `FDB_FLINK_RETAINED_CHECKPOINTS=2`.
+`FDB_FLINK_TASKMANAGER_MEMORY=4096m`, `FDB_FLINK_TASKMANAGER_METASPACE=512m`,
+`FDB_FLINK_TASKMANAGER_SLOTS=4`, `FDB_FLINK_JOBMANAGER_MEMORY=1600m` and
+`FDB_FLINK_RETAINED_CHECKPOINTS=2`.
 These values keep the Iceberg/Parquet writers away from the small image defaults
-that can trigger `Java heap space` during longer smoke runs. For external YARN,
-the same knobs are propagated as Flink `-D` arguments by `external-yarn submit`.
+that can trigger heap or Metaspace pressure during longer smoke runs. For
+external YARN, the same knobs are propagated as Flink `-D` arguments by
+`external-yarn submit`.
 
 ### Status And Pruning
 

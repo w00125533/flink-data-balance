@@ -17,6 +17,8 @@ FAKE_DOCKER_LOG="$TEST_TMP_DIR/docker.log"
 export FAKE_DOCKER_LOG
 FAKE_CURL_LOG="$TEST_TMP_DIR/curl.log"
 export FAKE_CURL_LOG
+FAKE_FLINK_RECOVERED_FILE="$TEST_TMP_DIR/flink-recovered"
+export FAKE_FLINK_RECOVERED_FILE
 FAKE_JAVA_LOG="$TEST_TMP_DIR/java.log"
 export FAKE_JAVA_LOG
 cat > "$FAKE_BIN_DIR/docker" <<'SH'
@@ -33,6 +35,10 @@ if [[ "${1:-}" == "compose" ]]; then
     fi
   done
   if [[ "$*" == *" up -d --no-deps --force-recreate observability-api"* ]]; then
+    exit 0
+  fi
+  if [[ "$*" == *" up -d "* && "$*" == *" taskmanager"* ]]; then
+    touch "${FAKE_FLINK_RECOVERED_FILE:?}"
     exit 0
   fi
   if [[ "$*" == *" exec -T starrocks-fe mysql "* ]]; then
@@ -156,7 +162,24 @@ if [[ "$*" == *"/jobs/"* && "$*" != *"-X PATCH"* ]]; then
   exit 0
 fi
 if [[ "$*" == *"/overview"* ]]; then
-  echo '{"taskmanagers":1,"slots-available":4}'
+  case "${FAKE_FLINK_OVERVIEW_MODE:-ready}" in
+    no-taskmanager)
+      echo '{"taskmanagers":0,"slots-available":0}'
+      ;;
+    busy)
+      echo '{"taskmanagers":1,"slots-available":0}'
+      ;;
+    recover-after-taskmanager-up)
+      if [[ -f "${FAKE_FLINK_RECOVERED_FILE:?}" ]]; then
+        echo '{"taskmanagers":1,"slots-available":4}'
+      else
+        echo '{"taskmanagers":0,"slots-available":0}'
+      fi
+      ;;
+    *)
+      echo '{"taskmanagers":1,"slots-available":4}'
+      ;;
+  esac
   exit 0
 fi
 echo '{"ok":true}'
@@ -341,10 +364,36 @@ run_expect_success "first local submit generates run id" env \
   FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-1.env" \
   bash "$submit_repo/scripts/deploy.sh" local submit
 first_run_id="$(awk -F= '/^FDB_RUN_ID=/ {print $2}' "$submit_repo/logs/local-current-1.env")"
+grep -F "http://localhost:8081/overview" "$FAKE_CURL_LOG" >/dev/null \
+  || fail "local submit should wait for Flink slots before submitting"
 [[ -f "$submit_repo/logs/local-flink-submit.out" ]] \
   || fail "local submit should write submit log under logs/"
 [[ ! -f "$submit_repo/logs-local-flink-submit.out" ]] \
   || fail "local submit should not write submit log in repo root"
+
+: > "$FAKE_DOCKER_LOG"
+rm -f "$FAKE_FLINK_RECOVERED_FILE"
+run_expect_success "local submit recovers missing taskmanager" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FAKE_FLINK_OVERVIEW_MODE=recover-after-taskmanager-up \
+  FDB_FLINK_READY_WAIT_SEC=1 \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-recovered.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+grep -F "up -d --force-recreate --no-deps taskmanager" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "local submit should recreate TaskManager when none is registered"
+
+: > "$FAKE_DOCKER_LOG"
+run_expect_failure "local submit does not restart busy taskmanager" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FAKE_FLINK_OVERVIEW_MODE=busy \
+  FDB_FLINK_READY_WAIT_SEC=1 \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-busy.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+if grep -F "up -d --force-recreate --no-deps taskmanager" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "local submit should not restart TaskManager when slots are occupied"
+fi
 
 run_expect_success "second local submit generates distinct run id" env \
   PATH="$fixed_date_bin:$PATH" \
@@ -382,6 +431,9 @@ FDB_ENV_FILE="$report_env" FDB_LOCAL_STATE_FILE="$report_state" \
   run_expect_success "local stop uses REST cancel first" bash scripts/deploy.sh local stop
 grep -F -- "-X PATCH http://env-file-flink/jobs/local-stop-job?mode=cancel" "$FAKE_CURL_LOG" >/dev/null \
   || fail "local stop should cancel through Flink REST before Docker CLI"
+if grep -F "http://env-file-flink/overview" "$FAKE_CURL_LOG" >/dev/null; then
+  fail "local stop should not wait for Flink slots after cancel"
+fi
 
 : > "$FAKE_CURL_LOG"
 FDB_ENV_FILE="$report_env" FDB_LOCAL_STATE_FILE="$report_state" FDB_REPORT_ON_STOP=true \
