@@ -919,6 +919,10 @@ local smoke 的 topology/simulator 日志使用 `logs/topology.log`、
 `logs/cfg.log`、`logs/pm.log`、`logs/chr.log`；benchmark runner 拉起的
 Java 子进程 stdout/stderr 使用 `logs/benchmark-*.out|err`。
 
+本地 `submit` 在提交前要求 Flink 可用 slot 数不少于 `FDB_FLINK_PARALLELISM`。
+如果 TaskManager 因手动重建或默认 compose 配置回落导致 slot 不足，脚本会在
+source 数据开始发布前失败，避免把资源错配误判为 sink 压测结果。
+
 `index.html` is the primary delivery artifact. It includes benchmark
 configuration, stable upper-bound cards per sink, the `sink x cellLevel` matrix,
 failure points, cross-sink metric comparisons, global recommendations, per-sink
@@ -1108,7 +1112,9 @@ cleanup.policy=compact
 | `FDB_FLINK_CHECKPOINT_INTERVAL_MS` | `30000` | checkpoint 间隔；Hive/Iceberg result sink 不应超过 180000ms |
 | `FDB_DYNAMIC_BALANCING_ENABLED` | `false` | 是否启用动态均衡 |
 | `FDB_VBUCKET_COUNT` | `1024` | 动态均衡启用时的虚拟分片数 |
-| `FDB_JOIN_ALLOWED_LATENESS_MS` | `120000` | CHR/PM Full JOIN 等待时间 |
+| `FDB_CHR_WATERMARK_OUT_OF_ORDER_MS` | `2000` | CHR source watermark 最大乱序等待 |
+| `FDB_PM_WATERMARK_OUT_OF_ORDER_MS` | `2000` | PM source watermark 最大乱序等待 |
+| `FDB_KPI_JOIN_WAIT_MS` | `10000` | CHR/PM/CFG 1 分钟 KPI 拼接在窗口结束后的等待时间 |
 | `FDB_RESULT_SINK` | `starrocks` | 业务结果 sink：`starrocks` / `iceberg` / `hive` / `kafka` / `none` |
 | `FDB_DLQ_ENABLED` | `true` | 是否启用 DLQ 兜底 topic |
 | `FDB_METRICS_ENABLED` | `true` | 是否启用 Flink metrics probe 上报 |
@@ -1123,15 +1129,28 @@ cleanup.policy=compact
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | 压测异常注入比例；5% cell 和 5% user 进入确定性异常 cohort |
 | `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` | `0.98` | producer 实际交付率低于目标 EPS 的比例阈值时，本轮 unstable |
 | `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS` | `0` | source backlog 容忍阈值；持续增长或超过阈值时，本轮 unstable |
-| `FDB_BENCHMARK_WARMUP_SEC` | `60` | 单轮 submit 后、正式计量前的预热秒数 |
-| `FDB_BENCHMARK_DURATION_SEC` | `300` | 单轮计量秒数，结束后由 runner 判定 stable/unstable/failed |
-| `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | runner 采样 Flink REST、Observability API 和存储探测的周期 |
+| `FDB_BENCHMARK_WARMUP_SEC` | `60` | 单轮 submit 后、启动 simulator 前的 Flink 作业预热秒数 |
+| `FDB_BENCHMARK_DURATION_SEC` | `300` | 兼容旧配置；未设置 `FDB_BENCHMARK_SIMULATION_DURATION_SEC` 时作为模拟器输出时长 |
+| `FDB_BENCHMARK_SIMULATION_DURATION_SEC` | `FDB_BENCHMARK_DURATION_SEC` | 单轮 simulator 在源端真实发数循环内固定输出数据的秒数，例如 `300` 表示输出 5 分钟 Simulation 数据量后自行退出 |
+| `FDB_BENCHMARK_DRAIN_TIMEOUT_SEC` | `300` | simulator 自行退出后继续等待窗口物化、sink/checkpoint 追平的最长秒数 |
+| `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | runner 在 drain 阶段采样 Flink REST、Observability API 和存储探测的周期 |
+| `FDB_BENCHMARK_PROBE_COMMAND_TIMEOUT_SEC` | `FDB_HDFS_PROBE_TIMEOUT_SEC` 或 `20` | storage probe 外部命令的 Java 侧总超时；只影响观测路径，不改变 deploy/submit 超时 |
+| `FDB_LOCAL_FLINK_SUBMIT_TIMEOUT_SEC` | `120` | 本地 `flink run` 命令超时 |
+| `FDB_LOCAL_FLINK_SUBMIT_LATE_WAIT_SEC` | `30` | 本地 submit 命令超时后，继续等待迟到 JobID 的秒数 |
+| `FDB_LOCAL_FLINK_SUBMIT_RETRY_ON_UNKNOWN` | `0` | 默认不重试“未拿到 JobID 的未知提交结果”，避免同一轮压测重复提交多个 Flink 作业；确认首次未到达 JobManager 时才设为 `1` |
+| `FDB_LOCAL_FLINK_REST_TIMEOUT_SEC` | `10` | 本地 submit 阶段通过 Flink REST 发现迟到 JobID 的单次请求超时 |
+| `FDB_TOPOLOGY_METADATA_TIMEOUT_MS` | `120000` | topology publisher 在发送前等待 Kafka topic metadata 可见的最长时间 |
+| `FDB_TOPOLOGY_PRODUCER_MAX_BLOCK_MS` | `15000` | topology 发布使用的 Kafka producer `max.block.ms`，避免 metadata 卡顿拖住整轮压测 |
+| `FDB_TOPOLOGY_PRODUCER_REQUEST_TIMEOUT_MS` | `15000` | topology 发布使用的 Kafka producer request timeout |
+| `FDB_TOPOLOGY_PRODUCER_DELIVERY_TIMEOUT_MS` | `30000` | topology 发布使用的 Kafka producer delivery timeout |
 | `FDB_BENCHMARK_MAX_BACKPRESSURE_RATIO` | `0.2` | 持续反压阈值，超过则当前档位 unstable |
 | `FDB_BENCHMARK_MAX_CHECKPOINT_DURATION_MS` | `120000` | checkpoint duration 阈值 |
 | `FDB_BENCHMARK_MAX_CONSECUTIVE_CHECKPOINT_FAILURES` | `2` | 连续 checkpoint 失败阈值 |
 | `FDB_BENCHMARK_MAX_KPI_AVAILABILITY_P95_MS` | `180000` | KPI 1m/5m 出数 p95 延迟阈值 |
 | `FDB_BENCHMARK_MAX_SINK_P95_MS` | `180000` | 当前 sink p95 延迟阈值 |
 | `FDB_BENCHMARK_MAX_WATERMARK_LAG_MS` | `180000` | watermark lag 阈值 |
+| `FDB_RATE_MAX_OUT_OF_ORDER_LAG_MS` | `2000` | CHR simulator 最大乱序上限；超过 2s 的配置会被截断 |
+| `FDB_PM_MAX_OUT_OF_ORDER_LAG_MS` | `2000` | PM simulator windowEnd 最大落后上限；超过 2s 的配置会被截断 |
 | `FDB_RUN_ID` | 自动生成 | 当前压测 run 标识 |
 | `FDB_RUN_LABEL` | 空 | 当前压测 run 可读标签 |
 | `FDB_ANOMALY_CELL_CONSECUTIVE_MINUTES` | `3` | 小区 KPI 连续异常分钟数 |
@@ -1432,12 +1451,21 @@ DLQ：
   CHR 目标输出记录数；Global CHR EPS 由 `cellLevel * Target CHR EPS` 计算。
 - CHR 模拟器必须按目标全局 EPS 做每秒节奏控制；producer 实际交付率低于阈值，
   或 Kafka/Flink source backlog 持续增长时，本轮判定为 `unstable`。
+- 单轮压测按固定 Simulation 数据量运行。runner 在 submit 后先按
+  `FDB_BENCHMARK_WARMUP_SEC` 预热 Flink 作业，再启动 topology/simulator；
+  simulator 以源端真实发数循环为起点，运行 `FDB_BENCHMARK_SIMULATION_DURATION_SEC`
+  后自行退出；runner 等待 simulator 退出后进入 drain 阶段，继续观测直到
+  CHR 1m、PM 1m、KPI 1m 的窗口物化 metrics 达到预期
+  closed minutes，或超过 `FDB_BENCHMARK_DRAIN_TIMEOUT_SEC`。
+- CHR/PM 模拟器最大乱序默认并封顶为 2 秒；Flink CHR/PM watermark 默认 2 秒；
+  KPI 1m Full Join 默认在分钟结束后等待 10 秒，减少非业务乱序带来的等待噪声。
 - 压测异常注入默认 `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO=0.05`，5% cell
   和 5% user 进入确定性异常 cohort，连续产生可被现有规则检测到的异常信号。
 - 单轮报告必须展示 CHR/PM/CFG 的 total、records/s、total/cell、records/s/cell。
-- Latency 表拆分为 source delay、KPI availability delay、sink commit 或
-  visibility delay，并单独展示 watermark lag/backlog。无样本时 p50/p95/p99
-  显示 `N/A`，不能显示 `0 ms`。
+- Latency 表拆分为 source delay、KPI availability delay、业务 sink 分支 latency，
+  并单独展示 checkpoint duration、watermark lag/backlog。Iceberg/Hive 的真实
+  connector commit 与 checkpoint commit 绑定，报告不再使用 Storage Visibility P95
+  作为稳定性指标。
 - 运行态判断优先使用 Flink REST API，结合 Observability API 的业务语义
   metrics 和 Kafka/StarRocks/Hive/Iceberg storage probes。
 - 稳定性判定输出 `stable`、`unstable`、`failed` 三类状态；上一档
@@ -1453,6 +1481,13 @@ DLQ：
   subtask 最新样本后再聚合，records/bytes/failures 求和，p50/p95/p99 取可用
   最大值；缺失时延显示 `N/A`，默认 `unknown` 占位指标不进入 benchmark
   单轮 latency/sink 明细。`critical` 状态优先于 `healthy` 聚合输出。
+- CHR 1m、PM 1m、KPI 1m 在窗口输出后额外发布 `window-materialization`
+  metrics，dataset 分别为 `chr-1m`、`pm-1m`、`kpi-1m`，`windowKind` 携带
+  `MIN_1@<windowEndTs>`。探针看到下一个窗口时发布上一个窗口的最终计数，
+  并通过每 2 秒低频调度刷新有变化的当前窗口计数，关闭时再 flush 最新计数，
+  避免按每条记录高频发布观测指标。benchmark-runner
+  使用这些样本统计真实 closed minute 数，不再用 Flink operator 累计
+  `recordsOutTotal / cellLevel` 粗略推断。
 - StarRocks storage probe 必须查询业务结果表行数并在报告中显示为
   `Storage Rows`；Hive/Iceberg/Kafka 的 storage probe 保持文件或 topic 口径。
 - CFG 为一次性初始化源，`Source Density` 的 `records/s/cell` 显示 `N/A`，

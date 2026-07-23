@@ -22,6 +22,9 @@ class ObservabilityClientTest {
             """
                 [{
                   "sinkName":"starrocks-kpi-1m",
+                  "sinkType":"starrocks",
+                  "dataset":"kpi_1m",
+                  "windowKind":"MIN_1",
                   "records":100,
                   "bytes":4096,
                   "latencyP50Ms":50000,
@@ -43,6 +46,9 @@ class ObservabilityClientTest {
     assertThat(snapshot.stageLatencies().get(0).latencyP99Ms()).isEqualTo(90_000);
     assertThat(snapshot.sinkLatencies()).singleElement().satisfies(sink -> {
       assertThat(sink.sinkName()).isEqualTo("starrocks-kpi-1m");
+      assertThat(sink.sinkType()).isEqualTo("starrocks");
+      assertThat(sink.dataset()).isEqualTo("kpi_1m");
+      assertThat(sink.windowKind()).isEqualTo("MIN_1");
       assertThat(sink.records()).isEqualTo(100);
       assertThat(sink.bytes()).isEqualTo(4096);
       assertThat(sink.latencyP50Ms()).isEqualTo(50_000);
@@ -68,6 +74,33 @@ class ObservabilityClientTest {
     assertThat(snapshot.watermarkLagMs()).isZero();
     assertThat(snapshot.stageLatencies()).isEmpty();
     assertThat(snapshot.sinkLatencies()).isEmpty();
+  }
+
+  @Test
+  void excludes_window_materialization_samples_from_business_sink_p95() {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/status", "[]",
+        "/api/results/sink-latency",
+            """
+                [{
+                  "sinkName":"window-chr-1m",
+                  "sinkType":"window-materialization",
+                  "dataset":"chr-1m",
+                  "windowKind":"MIN_1@60000",
+                  "records":1000,
+                  "latencyP95Ms":0,
+                  "failureCount":0
+                }]
+                """));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.sinkLatencies()).singleElement().satisfies(sink -> {
+      assertThat(sink.sinkType()).isEqualTo("window-materialization");
+      assertThat(sink.dataset()).isEqualTo("chr-1m");
+    });
+    assertThat(snapshot.sinkP95Ms()).isEqualTo(-1);
+    assertThat(snapshot.sinkFailures()).isZero();
   }
 
   @Test

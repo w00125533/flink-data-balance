@@ -30,4 +30,8 @@ public record BenchmarkRunResult(
       TopologyMetricsSnapshot topology) {
     this(plan, status, bottleneckReason, flink, fdb, storage, topology, SourceMetricsSnapshot.empty());
   }
+
+  public BenchmarkRunResult withStorage(StorageSnapshot value) {
+    return new BenchmarkRunResult(plan, status, bottleneckReason, flink, fdb, value, topology, source);
+  }
 }

@@ -34,6 +34,10 @@ final class SimulatorConfig {
             ? "topology" : config.getString("kafka.topologyTopic");
     }
 
+    int topologyTargetCells() {
+        return Math.max(0, config.getInt("topology.target.cells", 0));
+    }
+
     long getLong(String key, long defaultValue) { return config.getLong(key, defaultValue); }
     double getDouble(String key, double defaultValue) { return config.getDouble(key, defaultValue); }
 }

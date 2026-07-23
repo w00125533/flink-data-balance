@@ -131,10 +131,13 @@ bash scripts/benchmark.sh local --env benchmark-runner/conf/.env.benchmark-starr
 
 The runner expands a `sink x cellLevel` matrix. For each run it sets a distinct
 `FDB_RUN_ID`, `FDB_RUN_LABEL` and `FDB_RESULT_SINK`, calls the target-specific
-`scripts/deploy.sh <target> prepare/submit/stop`, starts the local topology and
-simulator processes with `FDB_SITES_COUNT`, `FDB_RATE_EPS` and
-`FDB_PM_EPS_PER_CELL`, observes Flink REST plus the observability API, and stops
-higher pressure levels for a sink after the first unstable or failed run.
+`scripts/deploy.sh <target> prepare/submit/stop`, warms up the submitted Flink
+job, starts the local topology and simulator processes with `FDB_SITES_COUNT`,
+`FDB_RATE_EPS` and `FDB_PM_EPS_PER_CELL`, lets simulators publish the configured
+simulation volume, then stops simulators and continues observing Flink REST plus
+the observability API until 1-minute windows materialize or the drain timeout is
+reached. Higher pressure levels for a sink are skipped after the first unstable
+or failed run.
 
 `FDB_CHR_PRODUCER_THREADS` controls CHR producer worker threads inside the same
 simulator process. `FDB_RATE_EPS` remains the global CHR target EPS; worker
@@ -144,7 +147,8 @@ threads split that target evenly and each worker uses its own Kafka producer.
 下，通过 `--env <file>` 参数注入；`FDB_ENV_FILE` 仍可用，但命令行里的
 `--env` 优先。少量临时覆盖项可通过重复的 `--set KEY=VALUE` 注入，覆盖 env
 文件中的同名变量，适合临时调整 `FDB_BENCHMARK_CELL_LEVELS`、
-`FDB_BENCHMARK_DURATION_SEC`、`FDB_BENCHMARK_CHR_EPS_PER_CELL` 等压测参数。
+`FDB_BENCHMARK_SIMULATION_DURATION_SEC`、`FDB_BENCHMARK_DRAIN_TIMEOUT_SEC`、
+`FDB_BENCHMARK_CHR_EPS_PER_CELL` 等压测参数。
 
 `cellLevel` 表示本轮目标生成小区数，不再乘站点数或每站小区估算。
 `Target CHR EPS = FDB_BENCHMARK_CHR_EPS_PER_CELL`，表示每小区每秒 CHR 目标输出记录数。
@@ -165,6 +169,9 @@ to `logs/local-current.env` or `logs/external-yarn-current.env`. You can also se
 `FDB_RUN_ID` manually in the env file or command environment when rerunning a
 known benchmark label. In benchmark-runner mode, the per-run id is generated
 from the benchmark id, sink, cell count and CHR EPS per cell.
+Local submit waits until available Flink slots are at least
+`FDB_FLINK_PARALLELISM`; this catches TaskManager/default-compose mismatches
+before the benchmark starts publishing source data.
 运行过程中的本地日志统一写入仓库根目录 `logs/`，包括 Flink submit 输出、
 topology-service/simulator 输出以及 benchmark runner 拉起的子进程 stdout/stderr。
 
@@ -221,9 +228,20 @@ Benchmark-specific environment variables:
 | `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒生成的 PM 条数；Global PM EPS = `cellLevel * FDB_BENCHMARK_PM_EPS_PER_CELL` |
 | `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | Ratio of generated cells/users assigned to deterministic anomaly cohorts; anomalous CHR records also converge to stable geohash6 hotspots for grid coverage-hole output |
-| `FDB_BENCHMARK_WARMUP_SEC` | `60` | Warmup time after submit and before measurement |
-| `FDB_BENCHMARK_DURATION_SEC` | `300` | Measurement time before stop/report |
-| `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | Intended observation poll interval for benchmark sampling |
+| `FDB_BENCHMARK_WARMUP_SEC` | `60` | Flink job warmup time after submit and before simulator startup |
+| `FDB_BENCHMARK_DURATION_SEC` | `300` | Backward-compatible default for simulation duration when `FDB_BENCHMARK_SIMULATION_DURATION_SEC` is not set |
+| `FDB_BENCHMARK_SIMULATION_DURATION_SEC` | `FDB_BENCHMARK_DURATION_SEC` | Simulator data generation duration counted inside the source process; for example `300` means publish 5 minutes of source pressure before the simulator self-exits |
+| `FDB_BENCHMARK_DRAIN_TIMEOUT_SEC` | `300` | Maximum wait after simulators self-exit, used to let event-time windows emit and sinks/checkpoints catch up |
+| `FDB_BENCHMARK_POLL_INTERVAL_SEC` | `10` | Observation poll interval during drain sampling |
+| `FDB_BENCHMARK_PROBE_COMMAND_TIMEOUT_SEC` | `FDB_HDFS_PROBE_TIMEOUT_SEC` or `20` | Java-side command timeout for storage probes only; deploy/submit commands keep their normal timeout |
+| `FDB_LOCAL_FLINK_SUBMIT_TIMEOUT_SEC` | `120` | Local `flink run` command timeout |
+| `FDB_LOCAL_FLINK_SUBMIT_LATE_WAIT_SEC` | `30` | Wait time used to discover a JobID after a timed-out local submit command |
+| `FDB_LOCAL_FLINK_SUBMIT_RETRY_ON_UNKNOWN` | `0` | When `0`, a local submit timeout without JobID is not retried to avoid duplicate Flink jobs; set `1` only when you know the first attempt did not reach JobManager |
+| `FDB_LOCAL_FLINK_REST_TIMEOUT_SEC` | `10` | Timeout for local submit REST discovery calls to Flink |
+| `FDB_TOPOLOGY_METADATA_TIMEOUT_MS` | `120000` | Topology publisher waits up to this time for Kafka topic metadata before sending baseline topology |
+| `FDB_TOPOLOGY_PRODUCER_MAX_BLOCK_MS` | `15000` | Kafka producer max block time for topology publishing; keeps metadata stalls bounded |
+| `FDB_TOPOLOGY_PRODUCER_REQUEST_TIMEOUT_MS` | `15000` | Kafka producer request timeout for topology publishing |
+| `FDB_TOPOLOGY_PRODUCER_DELIVERY_TIMEOUT_MS` | `30000` | Kafka producer delivery timeout for topology publishing |
 | `FDB_BENCHMARK_ID` | generated | Output directory name for the benchmark batch |
 | `FDB_BENCHMARK_MAX_BACKPRESSURE_RATIO` | `0.2` | Marks a run unstable when Flink backpressure ratio exceeds this value |
 | `FDB_BENCHMARK_MAX_CHECKPOINT_DURATION_MS` | `120000` | Marks a run unstable when checkpoint duration exceeds this value |
@@ -233,6 +251,11 @@ Benchmark-specific environment variables:
 | `FDB_BENCHMARK_MAX_WATERMARK_LAG_MS` | `180000` | Marks a run unstable when watermark lag exceeds this value |
 | `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` | `0.98` | Marks a run unstable when source throughput attainment falls below this ratio |
 | `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS` | `0` | Marks a run unstable when source backlog exceeds this record threshold |
+| `FDB_RATE_MAX_OUT_OF_ORDER_LAG_MS` | `2000` | CHR simulator event-time out-of-order lag upper bound; values above 2s are capped |
+| `FDB_PM_MAX_OUT_OF_ORDER_LAG_MS` | `2000` | PM simulator window-end lag upper bound; values above 2s are capped |
+| `FDB_CHR_WATERMARK_OUT_OF_ORDER_MS` | `2000` | Flink CHR watermark bounded out-of-orderness |
+| `FDB_PM_WATERMARK_OUT_OF_ORDER_MS` | `2000` | Flink PM watermark bounded out-of-orderness |
+| `FDB_KPI_JOIN_WAIT_MS` | `10000` | KPI 1m CHR/PM/CFG join wait after minute end |
 
 ## 实时观测控制台
 
@@ -261,6 +284,7 @@ Flink/source stages -> fdb-stage-metrics topic -> observability-api /metrics -> 
 
 The Flink job emits samples for `chr-source`, `pm-source`, `cfg-source`, `kafka`,
 `enrichment`, `kpi-1m`, `kpi-5m` and the sink probe stages
+`window-chr-1m`, `window-pm-1m`, `window-kpi-1m`,
 `kafka-kpi-1m`, `starrocks-kpi-1m`, `hive-kpi-1m`, `iceberg-kpi-1m`,
 `kafka-kpi-5m`, `starrocks-kpi-5m`, `hive-kpi-5m`, `iceberg-kpi-5m`,
 `kafka-cell-anomaly`,

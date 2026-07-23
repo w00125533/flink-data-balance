@@ -36,11 +36,32 @@ class BenchmarkConfigTest {
   }
 
   @Test
-  void parses_early_stop_override() {
-    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
-        "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", "false"));
+    void parses_early_stop_override() {
+        BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+            "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", "false"));
 
-    assertThat(config.earlyStopOnUnstable()).isFalse();
+        assertThat(config.earlyStopOnUnstable()).isFalse();
+    }
+
+  @Test
+  void parses_fixed_simulation_duration_and_drain_timeout() {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_DURATION_SEC", "120",
+        "FDB_BENCHMARK_SIMULATION_DURATION_SEC", "300",
+        "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", "180"));
+
+    assertThat(config.durationSec()).isEqualTo(120);
+    assertThat(config.simulationDurationSec()).isEqualTo(300);
+    assertThat(config.drainTimeoutSec()).isEqualTo(180);
+  }
+
+  @Test
+  void simulation_duration_defaults_to_measurement_duration() {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_DURATION_SEC", "240"));
+
+    assertThat(config.simulationDurationSec()).isEqualTo(240);
+    assertThat(config.drainTimeoutSec()).isEqualTo(300);
   }
 
   @Test

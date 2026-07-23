@@ -11,6 +11,7 @@ import com.fdb.common.avro.PmStat;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Properties;
 
@@ -79,6 +80,47 @@ class FlinkJobMainTest {
         assertThat(FlinkJobMain.resolveCheckpointIntervalMs(
             Map.of("FDB_FLINK_CHECKPOINT_INTERVAL_MS", "0"), new Properties()))
             .isEqualTo(30_000L);
+    }
+
+    @Test
+    void resolve_chr_and_pm_watermark_out_of_orderness_defaults_to_two_seconds() {
+        assertThat(FlinkJobMain.resolveChrWatermarkOutOfOrderness(Map.of(), new Properties()))
+            .isEqualTo(Duration.ofSeconds(2));
+        assertThat(FlinkJobMain.resolvePmWatermarkOutOfOrderness(Map.of(), new Properties()))
+            .isEqualTo(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void resolve_watermark_out_of_orderness_prefers_environment_and_falls_back_for_invalid_values() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.chr.watermark.out.of.order.ms", "1500");
+        properties.setProperty("fdb.pm.watermark.out.of.order.ms", "1600");
+
+        assertThat(FlinkJobMain.resolveChrWatermarkOutOfOrderness(
+            Map.of("FDB_CHR_WATERMARK_OUT_OF_ORDER_MS", "1000"), properties))
+            .isEqualTo(Duration.ofSeconds(1));
+        assertThat(FlinkJobMain.resolvePmWatermarkOutOfOrderness(
+            Map.of("FDB_PM_WATERMARK_OUT_OF_ORDER_MS", "nope"), properties))
+            .isEqualTo(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void resolve_kpi_join_wait_defaults_to_ten_seconds() {
+        assertThat(FlinkJobMain.resolveKpiJoinWait(Map.of(), new Properties()))
+            .isEqualTo(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void resolve_kpi_join_wait_prefers_environment_and_falls_back_for_invalid_values() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.kpi.join.wait.ms", "20000");
+
+        assertThat(FlinkJobMain.resolveKpiJoinWait(
+            Map.of("FDB_KPI_JOIN_WAIT_MS", "15000"), properties))
+            .isEqualTo(Duration.ofSeconds(15));
+        assertThat(FlinkJobMain.resolveKpiJoinWait(
+            Map.of("FDB_KPI_JOIN_WAIT_MS", "-1"), properties))
+            .isEqualTo(Duration.ofSeconds(10));
     }
 
     @Test

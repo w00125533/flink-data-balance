@@ -21,6 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class TopologyClient implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(TopologyClient.class);
+    private static final long READY_QUIET_MS = 1000L;
 
     private final KafkaConsumer<String, TopologyRecord> consumer;
     private final Map<String, List<TopologyRecord>> siteToCells = new ConcurrentHashMap<>();
@@ -77,16 +78,36 @@ public class TopologyClient implements AutoCloseable {
     public int getCellCount() { return cellsById.size(); }
 
     public boolean isReady() {
-        return !cellsById.isEmpty() && System.currentTimeMillis() - lastRecordAt >= 1000;
+        return isReady(0);
+    }
+
+    public boolean isReady(int expectedCells) {
+        return isReady(cellsById.size(), lastRecordAt, System.currentTimeMillis(), expectedCells);
+    }
+
+    static boolean isReady(int loadedCells, long lastRecordAtMs, long nowMs, int expectedCells) {
+        if (loadedCells <= 0 || lastRecordAtMs <= 0) {
+            return false;
+        }
+        if (expectedCells > 0 && loadedCells < expectedCells) {
+            return false;
+        }
+        return nowMs - lastRecordAtMs >= READY_QUIET_MS;
     }
 
     public void awaitReady(Duration timeout) throws InterruptedException {
+        awaitReady(timeout, 0);
+    }
+
+    public void awaitReady(Duration timeout, int expectedCells) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
         while (System.currentTimeMillis() < deadline) {
-            if (isReady()) return;
+            if (isReady(expectedCells)) return;
             Thread.sleep(100);
         }
-        throw new IllegalStateException("Timeout waiting for topology data");
+        String expected = expectedCells > 0 ? "/" + expectedCells : "";
+        throw new IllegalStateException(
+            "Timeout waiting for topology data: loaded " + cellsById.size() + expected + " cells");
     }
 
     @Override

@@ -28,6 +28,13 @@ class PmSimulatorTest {
         assertThat(stat.getAvgLatencyMs()).isGreaterThan(200.0f);
     }
 
+    @Test
+    void caps_pm_window_end_lag_to_configured_out_of_order_bound() {
+        assertThat(PmSimulator.boundedWindowEnd(101_000L, 2_000L)).isEqualTo(100_000L);
+        assertThat(PmSimulator.boundedWindowEnd(109_000L, 2_000L)).isEqualTo(107_000L);
+        assertThat(109_000L - PmSimulator.boundedWindowEnd(109_000L, 2_000L)).isLessThanOrEqualTo(2_000L);
+    }
+
     private static TopologyRecord cell(String cellId) {
         return TopologyRecord.newBuilder()
             .setSiteId("site-a")

@@ -10,12 +10,14 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class KafkaPublisher<T extends SpecificRecord> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaPublisher.class);
+    private static final Duration CLOSE_TIMEOUT = Duration.ofSeconds(5);
 
     private final Sender<T> producer;
     private final String topic;
@@ -77,8 +79,12 @@ public class KafkaPublisher<T extends SpecificRecord> implements AutoCloseable {
 
         void flush();
 
+        void close(Duration timeout);
+
         @Override
-        void close();
+        default void close() {
+            close(CLOSE_TIMEOUT);
+        }
     }
 
     private record KafkaProducerSender<T extends SpecificRecord>(
@@ -94,8 +100,8 @@ public class KafkaPublisher<T extends SpecificRecord> implements AutoCloseable {
         }
 
         @Override
-        public void close() {
-            producer.close();
+        public void close(Duration timeout) {
+            producer.close(timeout);
         }
     }
 
@@ -105,6 +111,6 @@ public class KafkaPublisher<T extends SpecificRecord> implements AutoCloseable {
 
     @Override
     public void close() {
-        producer.close();
+        producer.close(CLOSE_TIMEOUT);
     }
 }

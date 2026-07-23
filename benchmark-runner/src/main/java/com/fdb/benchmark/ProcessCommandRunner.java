@@ -27,13 +27,13 @@ public final class ProcessCommandRunner implements CommandRunner {
     try {
       long timeoutSec = commandTimeoutSec(env);
       if (!process.waitFor(timeoutSec, TimeUnit.SECONDS)) {
-        process.destroyForcibly();
+        destroyProcessTree(process);
         process.waitFor();
         throw new IOException("command timed out after " + timeoutSec + "s: " + String.join(" ", command));
       }
       exitCode = process.exitValue();
     } catch (InterruptedException e) {
-      process.destroyForcibly();
+      destroyProcessTree(process);
       throw e;
     }
     return new CommandResult(exitCode, stdout.join(), stderr.join());
@@ -63,6 +63,12 @@ public final class ProcessCommandRunner implements CommandRunner {
     } catch (NumberFormatException e) {
       return DEFAULT_COMMAND_TIMEOUT_SEC;
     }
+  }
+
+  private static void destroyProcessTree(Process process) {
+    ProcessHandle handle = process.toHandle();
+    handle.descendants().forEach(ProcessHandle::destroyForcibly);
+    handle.destroyForcibly();
   }
 
   private static CompletableFuture<String> readAsync(InputStream input) {

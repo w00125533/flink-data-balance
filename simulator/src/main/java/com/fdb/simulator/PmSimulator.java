@@ -13,6 +13,7 @@ import java.util.Random;
 public class PmSimulator {
 
     private static final Logger log = LoggerFactory.getLogger(PmSimulator.class);
+    private static final long DEFAULT_MAX_OUT_OF_ORDER_LAG_MS = 2_000L;
 
     private final String configPath;
     private final Random rng = new Random(43);
@@ -28,7 +29,7 @@ public class PmSimulator {
 
         TopologyClient topology = new TopologyClient(bootstrap, "sim-pm");
         topology.start(config.topologyTopic());
-        topology.awaitReady(Duration.ofSeconds(30));
+        topology.awaitReady(Duration.ofSeconds(30), config.topologyTargetCells());
 
         List<TopologyRecord> cells = topology.getAllCells();
         log.info("Loaded {} cells from topology for PM simulator", cells.size());
@@ -44,50 +45,70 @@ public class PmSimulator {
         long targetEps = targetEpsForCellRate(cells.size(), epsPerCell);
         long publishIntervalMs = publishIntervalMs(epsPerCell);
         double anomalyInjectionRatio = anomalyInjectionRatio(config);
+        long maxOutOfOrderLagMs = maxOutOfOrderLagMs(config);
+        long simulationDurationSec = config.getLong("simulation.duration.sec", 0);
         try (KafkaPublisher<PmStat> publisher = new KafkaPublisher<>(bootstrap, topic, PmStat.class)) {
             long metricsStartMs = System.currentTimeMillis();
             long nextPublishAtMs = metricsStartMs;
-            while (!Thread.currentThread().isInterrupted()) {
-                long wallNow = System.currentTimeMillis();
-                long windowEnd = alignTo10s(wallNow);
-                long windowStart = windowEnd - 10_000;
-                int published = 0;
-                long activeUsers = 0;
-                double prbUsageDl = 0.0;
+            if (summaryEnabled) {
+                log.info(SummarySwitch.format("sim-pm", "simulation_duration_sec", simulationDurationSec));
+            }
+            try {
+                while (!Thread.currentThread().isInterrupted()
+                    && SimulationRuntime.shouldContinue(metricsStartMs, System.currentTimeMillis(),
+                        simulationDurationSec)) {
+                    long wallNow = System.currentTimeMillis();
+                    long windowEnd = boundedWindowEnd(wallNow, maxOutOfOrderLagMs);
+                    long windowStart = windowEnd - 10_000;
+                    int published = 0;
+                    long activeUsers = 0;
+                    double prbUsageDl = 0.0;
 
-                for (TopologyRecord cell : cells) {
-                    PmStat stat = generatePmStat(cell, windowStart, windowEnd, anomalyInjectionRatio);
-                    publisher.publish(cell.getSiteId().toString(), stat);
-                    published++;
-                    if (summaryEnabled) {
-                        activeUsers += stat.getActiveUsers();
-                        prbUsageDl += stat.getPrbUsageDl();
+                    for (TopologyRecord cell : cells) {
+                        PmStat stat = generatePmStat(cell, windowStart, windowEnd, anomalyInjectionRatio);
+                        publisher.publish(cell.getSiteId().toString(), stat);
+                        published++;
+                        if (summaryEnabled) {
+                            activeUsers += stat.getActiveUsers();
+                            prbUsageDl += stat.getPrbUsageDl();
+                        }
+                    }
+
+                    publisher.flush();
+                    writeSourceMetrics(sourceMetrics, targetEps, metricsStartMs, System.currentTimeMillis(),
+                        simulationDurationSec, publisher);
+                    if (summaryEnabled && published > 0) {
+                        log.info(SummarySwitch.format("sim-pm", "records_published_last_window", published));
+                        log.info(SummarySwitch.format("sim-pm", "avg_active_users_last_window", activeUsers / published));
+                        log.info(SummarySwitch.format("sim-pm", "avg_prb_usage_dl_last_window",
+                            String.format("%.3f", prbUsageDl / published)));
+                        log.info(SummarySwitch.format("sim-pm", "window_ts", windowStart + ".." + windowEnd));
+                    }
+
+                    nextPublishAtMs += publishIntervalMs;
+                    long sleepMs = nextPublishAtMs - System.currentTimeMillis();
+                    if (sleepMs > 0) {
+                        Thread.sleep(sleepMs);
+                    } else {
+                        nextPublishAtMs = System.currentTimeMillis();
                     }
                 }
-
+            } finally {
                 publisher.flush();
-                long durationMs = Math.max(0L, System.currentTimeMillis() - metricsStartMs);
-                long delivered = publisher.deliveredRecords();
-                double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
-                sourceMetrics.write("pm", targetEps, delivered, observedEps, durationMs, 0L,
-                    publisher.undeliveredRecords());
-                if (summaryEnabled && published > 0) {
-                    log.info(SummarySwitch.format("sim-pm", "records_published_last_window", published));
-                    log.info(SummarySwitch.format("sim-pm", "avg_active_users_last_window", activeUsers / published));
-                    log.info(SummarySwitch.format("sim-pm", "avg_prb_usage_dl_last_window",
-                        String.format("%.3f", prbUsageDl / published)));
-                    log.info(SummarySwitch.format("sim-pm", "window_ts", windowStart + ".." + windowEnd));
-                }
-
-                nextPublishAtMs += publishIntervalMs;
-                long sleepMs = nextPublishAtMs - System.currentTimeMillis();
-                if (sleepMs > 0) {
-                    Thread.sleep(sleepMs);
-                } else {
-                    nextPublishAtMs = System.currentTimeMillis();
-                }
+                writeSourceMetrics(sourceMetrics, targetEps, metricsStartMs, System.currentTimeMillis(),
+                    simulationDurationSec, publisher);
             }
         }
+    }
+
+    private static void writeSourceMetrics(SourceMetricsWriter sourceMetrics, long targetEps, long startTime,
+                                           long metricsNow, long simulationDurationSec,
+                                           KafkaPublisher<PmStat> publisher) {
+        long durationMs = SimulationRuntime.metricDurationMs(startTime, metricsNow, simulationDurationSec);
+        long delivered = publisher.deliveredRecords();
+        double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
+        sourceMetrics.write("pm", targetEps, delivered, observedEps, durationMs, 0L,
+            publisher.undeliveredRecords());
     }
 
     PmStat generatePmStat(TopologyRecord cell, long windowStart, long windowEnd,
@@ -151,6 +172,13 @@ public class PmSimulator {
         return (ts / 10_000) * 10_000;
     }
 
+    static long boundedWindowEnd(long wallNow, long maxOutOfOrderLagMs) {
+        long effectiveMaxLag = validateMaxOutOfOrderLagMs(maxOutOfOrderLagMs);
+        long aligned = alignTo10s(wallNow);
+        long lowerBound = wallNow - effectiveMaxLag;
+        return Math.min(wallNow, Math.max(aligned, lowerBound));
+    }
+
     static long targetEpsForWindow(int cellCount) {
         return cellCount <= 0 ? 0L : Math.max(1L, Math.round(cellCount / 10.0d));
     }
@@ -168,6 +196,18 @@ public class PmSimulator {
 
     static double pmEpsPerCell(SimulatorConfig config) {
         return validatePmEpsPerCell(config.getDouble("pm.eps.per.cell", 0.1d));
+    }
+
+    static long maxOutOfOrderLagMs(SimulatorConfig config) {
+        return validateMaxOutOfOrderLagMs(config.getLong(
+            "pm.max.out.of.order.lag.ms", DEFAULT_MAX_OUT_OF_ORDER_LAG_MS));
+    }
+
+    static long validateMaxOutOfOrderLagMs(long configuredLagMs) {
+        if (configuredLagMs <= 0L) {
+            return DEFAULT_MAX_OUT_OF_ORDER_LAG_MS;
+        }
+        return Math.min(configuredLagMs, DEFAULT_MAX_OUT_OF_ORDER_LAG_MS);
     }
 
     static double validatePmEpsPerCell(double epsPerCell) {

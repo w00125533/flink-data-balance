@@ -12,10 +12,14 @@ public final class IcebergStorageProbe implements StorageProbe {
   @Override
   public StorageSnapshot snapshot() throws Exception {
     CommandResult result = commandRunner.run(List.of("bash", "-lc",
-        "set -o pipefail; if command -v hdfs >/dev/null 2>&1; then "
-            + "hdfs dfs -fs ${FDB_HDFS_URI:-hdfs://namenode:8020} "
+        "set -o pipefail; probe_timeout=${FDB_HDFS_PROBE_TIMEOUT_SEC:-10}; "
+            + "run_with_timeout() { if command -v timeout >/dev/null 2>&1; then "
+            + "timeout \"$probe_timeout\" \"$@\"; else \"$@\"; fi; }; "
+            + "if command -v hdfs >/dev/null 2>&1; then "
+            + "run_with_timeout hdfs dfs -fs ${FDB_HDFS_URI:-hdfs://namenode:8020} "
             + "-find ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg} -name '*.inprogress*'; "
-            + "else MSYS_NO_PATHCONV=1 docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1} "
+            + "else export MSYS_NO_PATHCONV=1; "
+            + "run_with_timeout docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1} "
             + "${FDB_LOCAL_HDFS_BIN:-/opt/hadoop-3.2.1/bin/hdfs} dfs "
             + "-fs ${FDB_HDFS_URI:-hdfs://namenode:8020} "
             + "-find ${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg} -name '*.inprogress*'; fi | wc -l"));

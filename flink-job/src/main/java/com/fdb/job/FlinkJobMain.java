@@ -19,6 +19,7 @@ import com.fdb.job.kpi.PmMinuteFactWindowFunction;
 import com.fdb.job.metrics.StageMetricsProbe;
 import com.fdb.job.metrics.LatencyTimestampExtractor;
 import com.fdb.job.metrics.MetricRuntimeConfig;
+import com.fdb.job.metrics.WindowMaterializationProbe;
 import com.fdb.job.model.ChrMinuteFact;
 import com.fdb.job.model.EnrichedChr;
 import com.fdb.job.model.InputEnvelope;
@@ -73,6 +74,9 @@ public class FlinkJobMain {
         String groupId = "fdb-flink-job";
         IcebergConfig icebergConfig = resolveIcebergConfig(envVars, systemProperties);
         Properties kafkaConsumerProperties = resolveKafkaConsumerProperties(envVars, systemProperties);
+        Duration chrWatermarkOutOfOrderness = resolveChrWatermarkOutOfOrderness(envVars, systemProperties);
+        Duration pmWatermarkOutOfOrderness = resolvePmWatermarkOutOfOrderness(envVars, systemProperties);
+        Duration kpiJoinWait = resolveKpiJoinWait(envVars, systemProperties);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(effectiveCheckpointIntervalMs(
@@ -114,7 +118,7 @@ public class FlinkJobMain {
             .build();
 
         DataStream<ChrEvent> chrStream = env.fromSource(chrSource,
-            WatermarkStrategy.<ChrEvent>forBoundedOutOfOrderness(Duration.ofSeconds(20))
+            WatermarkStrategy.<ChrEvent>forBoundedOutOfOrderness(chrWatermarkOutOfOrderness)
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((event, ts) -> event.getEventTs()),
             "chr-source")
@@ -123,7 +127,7 @@ public class FlinkJobMain {
             .name("chr-source-metrics");
 
         DataStream<PmStat> pmStream = env.fromSource(pmSource,
-            WatermarkStrategy.<PmStat>forBoundedOutOfOrderness(Duration.ofMinutes(2))
+            WatermarkStrategy.<PmStat>forBoundedOutOfOrderness(pmWatermarkOutOfOrderness)
                 .withIdleness(Duration.ofMinutes(1))
                 .withTimestampAssigner((pm, ts) -> pmEventTimestamp(pm)),
             "pm-source")
@@ -213,13 +217,21 @@ public class FlinkJobMain {
                 new GenericTypeInfo<>(ChrMinuteFactAccumulator.class),
                 new GenericTypeInfo<>(ChrMinuteFactAccumulator.class),
                 new GenericTypeInfo<>(ChrMinuteFact.class))
-            .name("chr-1m-fact");
+            .name("chr-1m-fact")
+            .process(windowMaterializationProbe(
+                "window-chr-1m", "CHR 1m Materialization", "chr-1m", "MIN_1",
+                fact -> fact.minuteTs() + 60_000L, metricConfig))
+            .name("window-chr-1m-materialization");
 
         DataStream<PmMinuteFact> pmMinuteFacts = pmStream
             .keyBy(pm -> pm.getCellId().toString())
             .window(TumblingEventTimeWindows.of(Time.minutes(1)))
             .process(new PmMinuteFactWindowFunction(), new GenericTypeInfo<>(PmMinuteFact.class))
-            .name("pm-1m-fact");
+            .name("pm-1m-fact")
+            .process(windowMaterializationProbe(
+                "window-pm-1m", "PM 1m Materialization", "pm-1m", "MIN_1",
+                fact -> fact.minuteTs() + 60_000L, metricConfig))
+            .name("window-pm-1m-materialization");
 
         DataStream<MinuteFactEnvelope> chrFactEnv = chrMinuteFacts
             .process(new ProcessFunction<ChrMinuteFact, MinuteFactEnvelope>() {
@@ -248,9 +260,13 @@ public class FlinkJobMain {
 
         DataStream<CellKpi> cellKpi1m = chrFactEnv.union(pmFactEnv, cfgMinuteEnv)
             .keyBy(MinuteFactEnvelope::cellId)
-            .process(new MinuteKpiJoinFunction(Duration.ofMinutes(2)), new GenericTypeInfo<>(CellKpi.class))
+            .process(new MinuteKpiJoinFunction(kpiJoinWait), new GenericTypeInfo<>(CellKpi.class))
             .name("kpi-1m-full-join")
             .uid("kpi-1m-full-join")
+            .process(windowMaterializationProbe(
+                "window-kpi-1m", "KPI 1m Materialization", "kpi-1m", "MIN_1",
+                CellKpi::getWindowEndTs, metricConfig))
+            .name("window-kpi-1m-materialization")
             .process(stageMetricsProbe("kpi-1m", "KPI 1m Full Join", "healthy", resultSinkConfig, metricConfig,
                 CellKpi::getWindowEndTs))
             .name("kpi-1m-metrics");
@@ -450,6 +466,39 @@ public class FlinkJobMain {
         }
     }
 
+    static Duration resolveChrWatermarkOutOfOrderness(Map<String, String> env, Properties properties) {
+        return resolvePositiveDuration(env, properties,
+            "FDB_CHR_WATERMARK_OUT_OF_ORDER_MS", "fdb.chr.watermark.out.of.order.ms", 2_000L);
+    }
+
+    static Duration resolvePmWatermarkOutOfOrderness(Map<String, String> env, Properties properties) {
+        return resolvePositiveDuration(env, properties,
+            "FDB_PM_WATERMARK_OUT_OF_ORDER_MS", "fdb.pm.watermark.out.of.order.ms", 2_000L);
+    }
+
+    static Duration resolveKpiJoinWait(Map<String, String> env, Properties properties) {
+        return resolvePositiveDuration(env, properties,
+            "FDB_KPI_JOIN_WAIT_MS", "fdb.kpi.join.wait.ms", 10_000L);
+    }
+
+    private static Duration resolvePositiveDuration(Map<String, String> env, Properties properties,
+                                                    String envKey, String propertyKey, long defaultMs) {
+        String configured = env.get(envKey);
+        if (configured == null || configured.isBlank()) {
+            configured = properties.getProperty(propertyKey);
+        }
+        if (configured == null || configured.isBlank()) {
+            return Duration.ofMillis(defaultMs);
+        }
+        try {
+            long millis = Long.parseLong(configured.trim());
+            return millis > 0 ? Duration.ofMillis(millis) : Duration.ofMillis(defaultMs);
+        } catch (NumberFormatException e) {
+            log.warn("Invalid duration {}='{}', falling back to {} ms", envKey, configured, defaultMs);
+            return Duration.ofMillis(defaultMs);
+        }
+    }
+
     static long effectiveCheckpointIntervalMs(ResultSinkType resultSink, long configuredIntervalMs) {
         return ResultSinkConfig.effectiveCheckpointIntervalMs(resultSink, configuredIntervalMs);
     }
@@ -480,5 +529,16 @@ public class FlinkJobMain {
                 "Invalid PM windowStartTs/windowEndTs: " + windowStartTs + ".." + windowEndTs);
         }
         return Math.subtractExact(windowEndTs, 1L);
+    }
+
+    static <T> WindowMaterializationProbe<T> windowMaterializationProbe(
+        String stageId,
+        String displayName,
+        String dataset,
+        String windowKind,
+        WindowMaterializationProbe.WindowEndTimestampExtractor<T> windowEndTimestampExtractor,
+        MetricRuntimeConfig metricConfig) {
+        return new WindowMaterializationProbe<>(
+            stageId, displayName, dataset, windowKind, windowEndTimestampExtractor, metricConfig);
     }
 }

@@ -19,6 +19,8 @@ FAKE_CURL_LOG="$TEST_TMP_DIR/curl.log"
 export FAKE_CURL_LOG
 FAKE_FLINK_RECOVERED_FILE="$TEST_TMP_DIR/flink-recovered"
 export FAKE_FLINK_RECOVERED_FILE
+FAKE_FLINK_RUN_COUNT_FILE="$TEST_TMP_DIR/flink-run-count"
+export FAKE_FLINK_RUN_COUNT_FILE
 FAKE_JAVA_LOG="$TEST_TMP_DIR/java.log"
 export FAKE_JAVA_LOG
 cat > "$FAKE_BIN_DIR/docker" <<'SH'
@@ -49,6 +51,25 @@ if [[ "${1:-}" == "compose" ]]; then
     if [[ "$*" == *" kafka-topics "*" --list"* ]]; then
       exit 0
     fi
+    if [[ "$*" == *" kafka-topics "*" --describe"* ]]; then
+      cat <<'OUT'
+Topic: chr-events	TopicId: fake	PartitionCount: 64	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: pm-stats	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cfg-config	TopicId: fake	PartitionCount: 8	ReplicationFactor: 1	Configs: cleanup.policy=compact
+Topic: topology	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=compact
+Topic: fdb-stage-metrics	TopicId: fake	PartitionCount: 1	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cell-anomaly-events	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: user-anomaly-events	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: grid-anomaly-events	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cell-kpi-1m	TopicId: fake	PartitionCount: 8	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cell-kpi-5m	TopicId: fake	PartitionCount: 8	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: chr-dlq	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: pm-dlq	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cfg-dlq	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: enrichment-late	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+OUT
+      exit 0
+    fi
     if [[ "$*" == *" kafka-topics "*" --delete"* ]]; then
       exit 0
     fi
@@ -56,6 +77,10 @@ if [[ "${1:-}" == "compose" ]]; then
       exit 0
     fi
     if [[ "$*" == *" kafka-configs "* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-producer-perf-test "* ]]; then
+      echo "1 records sent, 1.0 records/sec"
       exit 0
     fi
   fi
@@ -83,6 +108,10 @@ OUT
       printf '%s\n' "$*" >> "${FAKE_RM_LOG:?}"
       exit 0
     fi
+    if [[ "${FAKE_HDFS_MKDIR_SLEEP_SEC:-0}" != "0" && "$*" == *" -mkdir -p "* && "$*" == *" /warehouse/iceberg/iceberg_db/user_anomaly_events"* ]]; then
+      sleep "${FAKE_HDFS_MKDIR_SLEEP_SEC:?}"
+      exit 124
+    fi
     if [[ "$*" == *" -mkdir -p "* || "$*" == *" -chmod -R "* ]]; then
       exit 0
     fi
@@ -92,6 +121,18 @@ fi
 if [[ "${1:-}" == "exec" ]]; then
   if [[ "$*" == *" fdb-flink-jobmanager "* ]]; then
     if [[ "$*" == *" flink run "* ]]; then
+      run_count=0
+      if [[ -f "${FAKE_FLINK_RUN_COUNT_FILE:?}" ]]; then
+        run_count="$(cat "${FAKE_FLINK_RUN_COUNT_FILE:?}")"
+      fi
+      run_count=$((run_count + 1))
+      printf '%s\n' "$run_count" > "${FAKE_FLINK_RUN_COUNT_FILE:?}"
+      if [[ "${FAKE_FLINK_RUN_FAIL_FIRST:-0}" == "1" && "$run_count" == "1" ]]; then
+        exit 124
+      fi
+      if [[ "${FAKE_FLINK_RUN_SUPPRESS_JOB_ID:-0}" == "1" ]]; then
+        exit 0
+      fi
       echo "JobID local-job-${RANDOM}"
       exit 0
     fi
@@ -109,6 +150,25 @@ if [[ "${1:-}" == "exec" ]]; then
     if [[ "$*" == *" kafka-topics "*" --list"* ]]; then
       exit 0
     fi
+    if [[ "$*" == *" kafka-topics "*" --describe"* ]]; then
+      cat <<'OUT'
+Topic: chr-events	TopicId: fake	PartitionCount: 64	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: pm-stats	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cfg-config	TopicId: fake	PartitionCount: 8	ReplicationFactor: 1	Configs: cleanup.policy=compact
+Topic: topology	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=compact
+Topic: fdb-stage-metrics	TopicId: fake	PartitionCount: 1	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cell-anomaly-events	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: user-anomaly-events	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: grid-anomaly-events	TopicId: fake	PartitionCount: 16	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cell-kpi-1m	TopicId: fake	PartitionCount: 8	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cell-kpi-5m	TopicId: fake	PartitionCount: 8	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: chr-dlq	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: pm-dlq	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: cfg-dlq	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+Topic: enrichment-late	TopicId: fake	PartitionCount: 4	ReplicationFactor: 1	Configs: cleanup.policy=delete
+OUT
+      exit 0
+    fi
     if [[ "$*" == *" kafka-topics "*" --delete"* ]]; then
       exit 0
     fi
@@ -116,6 +176,10 @@ if [[ "${1:-}" == "exec" ]]; then
       exit 0
     fi
     if [[ "$*" == *" kafka-configs "* ]]; then
+      exit 0
+    fi
+    if [[ "$*" == *" kafka-producer-perf-test "* ]]; then
+      echo "1 records sent, 1.0 records/sec"
       exit 0
     fi
   fi
@@ -157,7 +221,7 @@ cat > "$FAKE_BIN_DIR/curl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_CURL_LOG:?}"
-if [[ "$*" == *"/jobs/"* && "$*" != *"-X PATCH"* ]]; then
+if [[ "$*" == *"/jobs/"* && "$*" != *"/jobs/overview"* && "$*" != *"-X PATCH"* ]]; then
   echo '{"state":"CANCELED"}'
   exit 0
 fi
@@ -175,6 +239,9 @@ if [[ "$*" == *"/overview"* ]]; then
       else
         echo '{"taskmanagers":0,"slots-available":0}'
       fi
+      ;;
+    active-job)
+      echo '{"taskmanagers":1,"slots-available":4,"jobs":[{"jid":"rest-active-job","state":"RUNNING"}]}'
       ;;
     *)
       echo '{"taskmanagers":1,"slots-available":4}'
@@ -323,11 +390,31 @@ grep -F "[OK] local benchmark data prepared" "$OUT_FILE" \
   || fail "local prepare should complete data reset"
 grep -F "com.fdb.benchmark.KafkaTopicResetTool" "$FAKE_JAVA_LOG" >/dev/null \
   || fail "local prepare should prefer Kafka AdminClient reset"
-if grep -F "exec shared-data-infra-kafka-1 kafka-topics" "$FAKE_DOCKER_LOG" >/dev/null; then
-  fail "local prepare should not use Kafka docker exec when AdminClient reset is available"
+grep -F "kafka-producer-perf-test" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "local prepare should probe Kafka idempotent producer readiness"
+if grep -F "exec shared-data-infra-kafka-1 kafka-topics" "$FAKE_DOCKER_LOG" | grep -F -- "--delete" >/dev/null; then
+  fail "local prepare should not delete Kafka topics through docker exec when AdminClient reset is available"
 fi
 grep -F "/warehouse/fdb/cell_kpi" "$FAKE_RM_LOG" \
   || fail "local prepare should reset HDFS KPI output"
+
+: > "$FAKE_DOCKER_LOG"
+start_seconds=$SECONDS
+FDB_ENV_FILE="$missing_local_env" \
+  FDB_RESULT_SINK=iceberg \
+  FDB_SHARED_HDFS_EXEC_TIMEOUT_SEC=1 \
+  FAKE_HDFS_MKDIR_SLEEP_SEC=20 \
+  run_expect_success "local prepare bounds shared HDFS exec" env \
+    FDB_ENV_FILE="$missing_local_env" \
+    FDB_RESULT_SINK=iceberg \
+    FDB_SHARED_HDFS_EXEC_TIMEOUT_SEC=1 \
+    FAKE_HDFS_MKDIR_SLEEP_SEC=20 \
+    bash scripts/deploy.sh local prepare
+elapsed_seconds=$((SECONDS - start_seconds))
+[[ "$elapsed_seconds" -lt 15 ]] \
+  || fail "local prepare should not wait indefinitely for shared HDFS compose exec; elapsed=${elapsed_seconds}s"
+grep -F "exec shared-data-infra-namenode-1" "$FAKE_DOCKER_LOG" >/dev/null \
+  || fail "local prepare should fall back to direct HDFS docker exec after compose timeout"
 
 run_expect_success "local check missing default env file" \
   env -u FDB_ENV_FILE bash -c 'cd "$1" && bash scripts/deploy.sh local check' bash "$tmp_repo"
@@ -371,6 +458,50 @@ grep -F "http://localhost:8081/overview" "$FAKE_CURL_LOG" >/dev/null \
 [[ ! -f "$submit_repo/logs-local-flink-submit.out" ]] \
   || fail "local submit should not write submit log in repo root"
 
+run_expect_success "local submit recovers job id from REST when submit output omits it" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FAKE_FLINK_RUN_SUPPRESS_JOB_ID=1 \
+  FAKE_FLINK_OVERVIEW_MODE=active-job \
+  FDB_LOCAL_FLINK_SUBMIT_LATE_WAIT_SEC=1 \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-rest-job.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+rest_job_id="$(awk -F= '/^FDB_LOCAL_FLINK_JOB_ID=/ {gsub(/'\''/, "", $2); print $2}' "$submit_repo/logs/local-current-rest-job.env")"
+[[ "$rest_job_id" == "rest-active-job" ]] \
+  || fail "local submit should write REST-discovered Flink job id when submit output omits it"
+
+: > "$FAKE_DOCKER_LOG"
+rm -f "$FAKE_FLINK_RUN_COUNT_FILE"
+run_expect_failure "local submit does not retry unknown submit by default" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FAKE_FLINK_RUN_FAIL_FIRST=1 \
+  FDB_LOCAL_FLINK_SUBMIT_LATE_WAIT_SEC=1 \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-no-retry.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+no_retry_count="$(cat "$FAKE_FLINK_RUN_COUNT_FILE")"
+[[ "$no_retry_count" == "1" ]] \
+  || fail "local submit should not retry unknown submit status by default"
+grep -F "not retrying unknown submit status" "$ERR_FILE" >/dev/null \
+  || fail "local submit should explain why unknown submit status is not retried"
+
+: > "$FAKE_DOCKER_LOG"
+rm -f "$FAKE_FLINK_RUN_COUNT_FILE"
+run_expect_success "local submit retries command without recreating runtime" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FAKE_FLINK_RUN_FAIL_FIRST=1 \
+  FDB_LOCAL_FLINK_SUBMIT_RETRY_ON_UNKNOWN=1 \
+  FDB_LOCAL_FLINK_SUBMIT_LATE_WAIT_SEC=1 \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-retry.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+retry_job_id="$(awk -F= '/^FDB_LOCAL_FLINK_JOB_ID=/ {gsub(/'\''/, "", $2); print $2}' "$submit_repo/logs/local-current-retry.env")"
+[[ "$retry_job_id" == local-job-* ]] \
+  || fail "local submit should write Flink job id after lightweight retry"
+if grep -F "up -d --force-recreate --no-deps jobmanager taskmanager" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "local submit should not recreate Flink runtime for a submit retry by default"
+fi
+
 : > "$FAKE_DOCKER_LOG"
 rm -f "$FAKE_FLINK_RECOVERED_FILE"
 run_expect_success "local submit recovers missing taskmanager" env \
@@ -393,6 +524,20 @@ run_expect_failure "local submit does not restart busy taskmanager" env \
   bash "$submit_repo/scripts/deploy.sh" local submit
 if grep -F "up -d --force-recreate --no-deps taskmanager" "$FAKE_DOCKER_LOG" >/dev/null; then
   fail "local submit should not restart TaskManager when slots are occupied"
+fi
+
+: > "$FAKE_DOCKER_LOG"
+run_expect_failure "local submit requires enough slots for configured parallelism" env \
+  PATH="$fixed_date_bin:$PATH" \
+  FDB_FLINK_PARALLELISM=6 \
+  FDB_FLINK_READY_WAIT_SEC=1 \
+  FDB_ENV_FILE="$submit_repo/missing.env" \
+  FDB_LOCAL_STATE_FILE="$submit_repo/logs/local-current-insufficient-slots.env" \
+  bash "$submit_repo/scripts/deploy.sh" local submit
+grep -F "required=6" "$ERR_FILE" >/dev/null \
+  || fail "local submit should report required slot count"
+if grep -F "flink run" "$FAKE_DOCKER_LOG" >/dev/null; then
+  fail "local submit should not run Flink when available slots are below configured parallelism"
 fi
 
 run_expect_success "second local submit generates distinct run id" env \
@@ -431,6 +576,8 @@ FDB_ENV_FILE="$report_env" FDB_LOCAL_STATE_FILE="$report_state" \
   run_expect_success "local stop uses REST cancel first" bash scripts/deploy.sh local stop
 grep -F -- "-X PATCH http://env-file-flink/jobs/local-stop-job?mode=cancel" "$FAKE_CURL_LOG" >/dev/null \
   || fail "local stop should cancel through Flink REST before Docker CLI"
+grep -F -- "--max-time 10" "$FAKE_CURL_LOG" >/dev/null \
+  || fail "local stop REST cancel should have a bounded curl timeout"
 if grep -F "http://env-file-flink/overview" "$FAKE_CURL_LOG" >/dev/null; then
   fail "local stop should not wait for Flink slots after cancel"
 fi

@@ -68,14 +68,19 @@ public final class ObservabilityClient {
         }
         sinkLatencies.add(new SinkLatencySnapshot(
             sink.path("sinkName").asText(sink.path("sink").asText("")),
+            sink.path("sinkType").asText(""),
+            sink.path("dataset").asText(""),
+            sink.path("windowKind").asText(""),
             records,
             bytes,
             latencyP50Ms,
             latencyP95Ms,
             latencyP99Ms,
             failures));
-        sinkP95Ms = maxAvailable(sinkP95Ms, latencyP95Ms);
-        sinkFailures += failures;
+        if (!"window-materialization".equalsIgnoreCase(sink.path("sinkType").asText(""))) {
+          sinkP95Ms = maxAvailable(sinkP95Ms, latencyP95Ms);
+          sinkFailures += failures;
+        }
       }
     }
     return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures,

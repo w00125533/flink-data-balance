@@ -149,6 +149,130 @@ class BenchmarkOrchestratorTest {
   }
 
   @Test
+  void stops_simulators_after_fixed_generation_before_drain_observation() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_SIMULATION_DURATION_SEC", "0",
+        "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", "0"));
+    List<String> events = new ArrayList<>();
+    RecordingDeploy deploy = new RecordingDeploy(events);
+    RecordingSimulators simulators = new RecordingSimulators(events);
+    FakeObservationSource observations = new FakeObservationSource(List.of(healthy()), events);
+
+    new BenchmarkOrchestrator(
+        config,
+        deploy,
+        simulators,
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(events).containsSubsequence(
+        "start:1000:30000",
+        "stop",
+        "observe:bench-a-none-cells1000-chr-eps30",
+        "stop:bench-a-none-cells1000-chr-eps30");
+  }
+
+  @Test
+  void refreshes_business_sink_storage_after_cleanup() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "starrocks",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_SIMULATION_DURATION_SEC", "0",
+        "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", "0",
+        "FDB_BENCHMARK_POLL_INTERVAL_SEC", "0"));
+    List<String> events = new ArrayList<>();
+    RunObservation beforeCleanup = healthy().withStorage(new StorageSnapshot(true, "starrocks rows=0", 0, 0, 0));
+    RunObservation afterCleanup = healthy().withStorage(new StorageSnapshot(true, "starrocks rows=10000", 10_000, 0, 0));
+    FakeObservationSource observations = new FakeObservationSource(List.of(beforeCleanup, afterCleanup), events);
+
+    List<BenchmarkRunResult> results = new BenchmarkOrchestrator(
+        config,
+        new RecordingDeploy(events),
+        new RecordingSimulators(events),
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).storage().records()).isEqualTo(10_000);
+    assertThat(results.get(0).storage().summary()).isEqualTo("starrocks rows=10000");
+    assertThat(events).containsSubsequence(
+        "observe:bench-a-starrocks-cells1000-chr-eps30",
+        "stop:bench-a-starrocks-cells1000-chr-eps30",
+        "observe:bench-a-starrocks-cells1000-chr-eps30");
+  }
+
+  @Test
+  void refreshes_business_sink_storage_without_full_observation_after_cleanup() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "starrocks",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_SIMULATION_DURATION_SEC", "0",
+        "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", "0"));
+    List<String> events = new ArrayList<>();
+    RunObservation beforeCleanup = healthy().withStorage(new StorageSnapshot(true, "starrocks rows=0", 0, 0, 0));
+    FakeObservationSource observations = new FakeObservationSource(
+        List.of(beforeCleanup),
+        events,
+        List.of(
+            new StorageSnapshot(true, "starrocks rows=0", 0, 0, 0),
+            new StorageSnapshot(true, "starrocks rows=10000", 10_000, 0, 0)),
+        1);
+
+    List<BenchmarkRunResult> results = new BenchmarkOrchestrator(
+        config,
+        new RecordingDeploy(events),
+        new RecordingSimulators(events),
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).storage().records()).isEqualTo(10_000);
+    assertThat(events).containsSubsequence(
+        "observe:bench-a-starrocks-cells1000-chr-eps30",
+        "stop:bench-a-starrocks-cells1000-chr-eps30",
+        "storage:bench-a-starrocks-cells1000-chr-eps30",
+        "storage:bench-a-starrocks-cells1000-chr-eps30");
+    assertThat(observations.observationCount()).isEqualTo(1);
+  }
+
+  @Test
+  void waits_for_simulators_to_self_complete_before_drain_observation() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_SIMULATION_DURATION_SEC", "300",
+        "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", "60"));
+    List<String> events = new ArrayList<>();
+    RecordingDeploy deploy = new RecordingDeploy(events);
+    RecordingSimulators simulators = new RecordingSimulators(events);
+    FakeObservationSource observations = new FakeObservationSource(List.of(healthy()), events);
+
+    new BenchmarkOrchestrator(
+        config,
+        deploy,
+        simulators,
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(events).containsSubsequence(
+        "start:1000:30000",
+        "await:360",
+        "observe:bench-a-none-cells1000-chr-eps30",
+        "stop:bench-a-none-cells1000-chr-eps30");
+    assertThat(events).doesNotContainSubsequence("start:1000:30000", "stop", "observe:bench-a-none-cells1000-chr-eps30");
+  }
+
+  @Test
   void records_submit_failure_as_failed_run_and_stops_next_levels_for_sink() throws Exception {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-a",
@@ -238,6 +362,12 @@ class BenchmarkOrchestratorTest {
     }
 
     @Override
+    public void awaitCompletion(long timeoutSec) {
+      actions.add("await:" + timeoutSec);
+      events.add("await:" + timeoutSec);
+    }
+
+    @Override
     public void stop() {
       actions.add("stop");
       events.add("stop");
@@ -246,15 +376,47 @@ class BenchmarkOrchestratorTest {
 
   static final class FakeObservationSource implements BenchmarkClients {
     private final List<RunObservation> observations;
+    private final List<String> events;
+    private final List<StorageSnapshot> storageSnapshots;
+    private final int failObserveAfter;
     private int index;
+    private int storageIndex;
 
     FakeObservationSource(List<RunObservation> observations) {
+      this(observations, new ArrayList<>());
+    }
+
+    FakeObservationSource(List<RunObservation> observations, List<String> events) {
+      this(observations, events, List.of(), Integer.MAX_VALUE);
+    }
+
+    FakeObservationSource(
+        List<RunObservation> observations,
+        List<String> events,
+        List<StorageSnapshot> storageSnapshots,
+        int failObserveAfter) {
       this.observations = observations;
+      this.events = events;
+      this.storageSnapshots = storageSnapshots;
+      this.failObserveAfter = failObserveAfter;
     }
 
     @Override
     public RunObservation observe(BenchmarkRunPlan plan) {
+      events.add("observe:" + plan.runId());
+      if (index >= failObserveAfter) {
+        throw new IllegalStateException("full observation unavailable");
+      }
       return observations.get(index++);
+    }
+
+    @Override
+    public StorageSnapshot observeStorage(BenchmarkRunPlan plan) {
+      events.add("storage:" + plan.runId());
+      if (storageIndex < storageSnapshots.size()) {
+        return storageSnapshots.get(storageIndex++);
+      }
+      return observe(plan).storage();
     }
 
     int observationCount() {

@@ -13,6 +13,9 @@ public final class BenchmarkDecisionEngine {
     StorageSnapshot storage = observation.storage();
     SourceMetricsSnapshot source = observation.source();
 
+    if ("UNKNOWN".equalsIgnoreCase(flink.jobStatus())) {
+      return result(plan, BenchmarkStatus.UNSTABLE, "Flink job status UNKNOWN", observation);
+    }
     if (!"RUNNING".equalsIgnoreCase(flink.jobStatus())) {
       return result(plan, BenchmarkStatus.FAILED, "Flink job status " + flink.jobStatus(), observation);
     }
@@ -21,6 +24,10 @@ public final class BenchmarkDecisionEngine {
     }
     if (!source.hasChrMetrics()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "CHR source metrics missing", observation);
+    }
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, fdb);
+    if (windows.applicable() && !windows.healthy()) {
+      return result(plan, BenchmarkStatus.UNSTABLE, windows.bottleneckReason(), observation);
     }
     if (source.producerDeliveryRatio() < thresholds.minProducerDeliveryRatio()) {
       return result(plan, BenchmarkStatus.UNSTABLE,

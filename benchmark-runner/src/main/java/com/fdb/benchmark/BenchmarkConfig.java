@@ -21,6 +21,8 @@ public record BenchmarkConfig(
     double anomalyInjectionRatio,
     long warmupSec,
     long durationSec,
+    long simulationDurationSec,
+    long drainTimeoutSec,
     long pollIntervalSec,
     boolean earlyStopOnUnstable,
     long checkpointIntervalMs,
@@ -46,6 +48,7 @@ public record BenchmarkConfig(
     List<Integer> cellLevels = parseCellLevels(valueOrDefault(env, "FDB_BENCHMARK_CELL_LEVELS",
         "10000 20000 40000"));
     String defaultId = "benchmark-" + BENCHMARK_ID_FORMATTER.format(Instant.now(clock));
+    long durationSec = BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DURATION_SEC", 300);
     return new BenchmarkConfig(
         target,
         sanitize(valueOrDefault(env, "FDB_BENCHMARK_ID", defaultId)),
@@ -55,7 +58,9 @@ public record BenchmarkConfig(
         finitePositiveDouble(env, "FDB_BENCHMARK_PM_EPS_PER_CELL", 1.0),
         boundedRatio(env, "FDB_BENCHMARK_ANOMALY_INJECTION_RATIO", 0.05),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_WARMUP_SEC", 60),
-        BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DURATION_SEC", 300),
+        durationSec,
+        BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_SIMULATION_DURATION_SEC", durationSec),
+        BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", 300),
         BenchmarkThresholds.longValue(env, "FDB_BENCHMARK_POLL_INTERVAL_SEC", 10),
         booleanValue(env, "FDB_BENCHMARK_EARLY_STOP_ON_UNSTABLE", true),
         positiveLong(env, "FDB_FLINK_CHECKPOINT_INTERVAL_MS", 30_000),

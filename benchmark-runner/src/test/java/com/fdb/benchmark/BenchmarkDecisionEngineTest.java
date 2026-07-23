@@ -2,6 +2,7 @@ package com.fdb.benchmark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class BenchmarkDecisionEngineTest {
@@ -17,6 +18,16 @@ class BenchmarkDecisionEngineTest {
 
     assertThat(result.status()).isEqualTo(BenchmarkStatus.FAILED);
     assertThat(result.bottleneckReason()).contains("Flink job status FAILED");
+  }
+
+  @Test
+  void unknown_job_status_marks_run_unstable() {
+    RunObservation observation = healthy().withFlink(healthy().flink().withJobStatus("UNKNOWN"));
+
+    BenchmarkRunResult result = engine.decide(plan(), observation);
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason()).contains("Flink job status UNKNOWN");
   }
 
   @Test
@@ -71,6 +82,39 @@ class BenchmarkDecisionEngineTest {
 
     assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
     assertThat(result.bottleneckReason()).contains("max source operator backlog").contains("42");
+  }
+
+  @Test
+  void long_run_without_chr_minute_window_output_marks_unstable() {
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300_000, 90_000_000, 300_000.0, 343_000, 0, 0,
+        10_000, 3_430_000, 10_000.0, 343_000, 0, 0,
+        10_000, 10_000, 0.0, 0, 0, 0);
+    FlinkSnapshot flink = new FlinkSnapshot("RUNNING", 0, 30_000, 0, 310_000, 310_000,
+        126_000_000, 126_000_000, 1, 6, List.of(
+            new FlinkOperatorSnapshot("chr-1m", "chr-1m-fact -> to-chr-minute-fact-env", 6,
+                50_000, 0, 17_422_480, 0, 8_192, 0, 0.2, 0.8, 0.0),
+            new FlinkOperatorSnapshot("pm-1m", "pm-1m-fact -> to-pm-minute-fact-env", 6,
+                10_000, 10_000, 3_260_000, 40_000, 8_192, 2_048, 0.2, 0.8, 0.0),
+            new FlinkOperatorSnapshot("kpi-1m", "kpi-1m-full-join -> kpi-1m-metrics", 6,
+                10_000, 0, 50_000, 0, 8_192, 0, 0.2, 0.8, 0.0)));
+
+    BenchmarkRunResult result = engine.decide(plan10000(), healthy()
+        .withSource(source)
+        .withFlink(flink)
+        .withFdb(new FdbMetricsSnapshot(2_000, 40_000, 45_000, 5_000, 0, 20_000,
+            List.of(), List.of(
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@60000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@120000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@180000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@240000", 10_000)))));
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason())
+        .contains("1m window materialization")
+        .contains("expected >= 4")
+        .contains("CHR=0")
+        .contains("PM=4")
+        .contains("KPI=0");
   }
 
   @Test
@@ -129,6 +173,11 @@ class BenchmarkDecisionEngineTest {
         0.3, 300, 0.1, 100, "bench-a-none-cells1000-chr-eps0.3", "benchmark-none");
   }
 
+  private static BenchmarkRunPlan plan10000() {
+    return new BenchmarkRunPlan("bench-a", BenchmarkSink.HIVE, 10_000,
+        30, 300_000, 1, 10_000, "bench-a-hive-cells10000-chr-eps30", "benchmark-hive");
+  }
+
   private static RunObservation healthy() {
     return new RunObservation(
         new FlinkSnapshot("RUNNING", 0.05, 30_000, 0, 10_000, 9_900, 4, 4),
@@ -140,5 +189,11 @@ class BenchmarkDecisionEngineTest {
     return new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 0, 0,
         100, 1000, 100.0, 10_000, 0, 0,
         250, 1000, 250.0, 4_000, 0, 0);
+  }
+
+  private static SinkLatencySnapshot windowMaterialization(
+      String sinkName, String dataset, String windowKind, long records) {
+    return new SinkLatencySnapshot(
+        sinkName, "window-materialization", dataset, windowKind, records, 0, 0, 0, 0, 0);
   }
 }

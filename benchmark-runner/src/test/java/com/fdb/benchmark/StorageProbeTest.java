@@ -45,16 +45,28 @@ class StorageProbeTest {
   }
 
   @Test
-  void starrocks_probe_uses_host_tcp_before_container_fallback() throws Exception {
+  void starrocks_probe_executes_container_query_without_nested_shell_command_string() throws Exception {
     CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "starrocks tcp open", ""));
 
     StorageProbe.forSink(BenchmarkSink.STARROCKS, runner).snapshot();
 
     assertThat(runner.shell())
-        .contains("/dev/tcp/${FDB_STARROCKS_HOST:-127.0.0.1}/${FDB_STARROCKS_QUERY_PORT:-9030}")
-        .containsSubsequence(
-            "FDB_STARROCKS_QUERY_PORT",
-            "docker exec ${FDB_SHARED_STARROCKS_FE_CONTAINER:-shared-data-infra-starrocks-fe-1}");
+        .doesNotContain("container_mysql=")
+        .doesNotContain("bash -lc \"$container_mysql\"")
+        .contains("container_output=$(timeout $probe_timeout docker exec")
+        .contains("docker exec ${FDB_SHARED_STARROCKS_FE_CONTAINER:-shared-data-infra-starrocks-fe-1}");
+  }
+
+  @Test
+  void starrocks_probe_falls_back_to_container_when_host_query_returns_zero_rows() throws Exception {
+    CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
+
+    StorageProbe.forSink(BenchmarkSink.STARROCKS, runner).snapshot();
+
+    assertThat(runner.shell())
+        .contains("host_rows")
+        .contains("$host_rows != 0")
+        .contains("container_output=$(timeout $probe_timeout docker exec");
   }
 
   @Test
@@ -83,12 +95,25 @@ class StorageProbeTest {
   }
 
   @Test
+  void starrocks_probe_bounds_query_time() throws Exception {
+    CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
+
+    StorageProbe.forSink(BenchmarkSink.STARROCKS, runner).snapshot();
+
+    assertThat(runner.shell())
+        .contains("probe_timeout=${FDB_STARROCKS_PROBE_TIMEOUT_SEC:-10}")
+        .contains("timeout $probe_timeout");
+  }
+
+  @Test
   void hive_probe_has_hdfs_container_fallback_for_local_benchmark() throws Exception {
     CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
 
     StorageProbe.forSink(BenchmarkSink.HIVE, runner).snapshot();
 
-    assertThat(runner.shell()).contains("MSYS_NO_PATHCONV=1 docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1}");
+    assertThat(runner.shell())
+        .contains("export MSYS_NO_PATHCONV=1")
+        .contains("run_with_timeout docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1}");
   }
 
   @Test
@@ -104,12 +129,25 @@ class StorageProbeTest {
   }
 
   @Test
+  void hive_probe_bounds_hdfs_find_time() throws Exception {
+    CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
+
+    StorageProbe.forSink(BenchmarkSink.HIVE, runner).snapshot();
+
+    assertThat(runner.shell())
+        .contains("probe_timeout=${FDB_HDFS_PROBE_TIMEOUT_SEC:-10}")
+        .contains("timeout \"$probe_timeout\"");
+  }
+
+  @Test
   void iceberg_probe_has_hdfs_container_fallback_for_local_benchmark() throws Exception {
     CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
 
     StorageProbe.forSink(BenchmarkSink.ICEBERG, runner).snapshot();
 
-    assertThat(runner.shell()).contains("MSYS_NO_PATHCONV=1 docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1}");
+    assertThat(runner.shell())
+        .contains("export MSYS_NO_PATHCONV=1")
+        .contains("run_with_timeout docker exec ${FDB_SHARED_HDFS_CONTAINER:-shared-data-infra-namenode-1}");
   }
 
   @Test
@@ -122,6 +160,17 @@ class StorageProbeTest {
     assertThat(snapshot.healthy()).isTrue();
     assertThat(snapshot.inProgressFiles()).isEqualTo(3);
     assertThat(snapshot.summary()).contains("iceberg in-progress files=3");
+  }
+
+  @Test
+  void iceberg_probe_bounds_hdfs_find_time() throws Exception {
+    CapturingCommandRunner runner = new CapturingCommandRunner(new CommandResult(0, "0", ""));
+
+    StorageProbe.forSink(BenchmarkSink.ICEBERG, runner).snapshot();
+
+    assertThat(runner.shell())
+        .contains("probe_timeout=${FDB_HDFS_PROBE_TIMEOUT_SEC:-10}")
+        .contains("timeout \"$probe_timeout\"");
   }
 
   private static final class CapturingCommandRunner implements CommandRunner {

@@ -26,6 +26,7 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.errors.UnknownServerException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,29 @@ class KafkaTopicResetToolTest {
     assertThatCode(() -> KafkaTopicResetTool.reset(admin.proxy(), specs, Duration.ofSeconds(3)))
         .doesNotThrowAnyException();
     assertThat(admin.createCalls()).isGreaterThanOrEqualTo(2);
+  }
+
+  @Test
+  void reset_retries_transient_unknown_server_failure_during_delete() {
+    var specs = List.of(new KafkaTopicResetTool.TopicSpec(
+        "chr-events", 64, Map.of("cleanup.policy", "delete")));
+    var admin = new TransientDeleteFailureAdmin(Set.of("chr-events"));
+
+    assertThatCode(() -> KafkaTopicResetTool.reset(admin.proxy(), specs, Duration.ofSeconds(3)))
+        .doesNotThrowAnyException();
+    assertThat(admin.deleteCalls()).isGreaterThanOrEqualTo(2);
+  }
+
+  @Test
+  void reset_treats_slow_delete_future_as_retryable_and_checks_topic_visibility() {
+    var specs = List.of(new KafkaTopicResetTool.TopicSpec(
+        "chr-events", 64, Map.of("cleanup.policy", "delete")));
+    var admin = new SlowDeleteFutureAdmin(Set.of("chr-events"));
+
+    assertThatCode(() -> KafkaTopicResetTool.reset(admin.proxy(), specs, Duration.ofSeconds(1)))
+        .doesNotThrowAnyException();
+    assertThat(admin.deleteCalls()).isEqualTo(1);
+    assertThat(admin.createCalls()).isEqualTo(1);
   }
 
   private static KafkaTopicResetTool.TopicSpec spec(
@@ -198,6 +222,198 @@ class KafkaTopicResetToolTest {
     }
   }
 
+  private static final class TransientDeleteFailureAdmin implements InvocationHandler {
+    private final Set<String> visibleTopics = new LinkedHashSet<>();
+    private int deleteCalls;
+
+    private TransientDeleteFailureAdmin(Set<String> initialTopics) {
+      visibleTopics.addAll(initialTopics);
+    }
+
+    private Admin proxy() {
+      return (Admin) Proxy.newProxyInstance(
+          Admin.class.getClassLoader(),
+          new Class<?>[] {Admin.class},
+          this);
+    }
+
+    private int deleteCalls() {
+      return deleteCalls;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+      return switch (method.getName()) {
+        case "deleteTopics" -> deleteTopics(args[0]);
+        case "listTopics" -> listTopics();
+        case "createTopics" -> createTopics(args[0]);
+        case "incrementalAlterConfigs" -> alterConfigs(args[0]);
+        case "close" -> null;
+        case "toString" -> "TransientDeleteFailureAdmin";
+        case "hashCode" -> System.identityHashCode(proxy);
+        case "equals" -> proxy == args[0];
+        default -> throw new UnsupportedOperationException(method.toString());
+      };
+    }
+
+    private DeleteTopicsResult deleteTopics(Object namesArg) throws Exception {
+      deleteCalls++;
+      @SuppressWarnings("unchecked")
+      Collection<String> names = (Collection<String>) namesArg;
+      Map<String, KafkaFuture<Void>> futures = new LinkedHashMap<>();
+      for (String name : names) {
+        if (deleteCalls == 1) {
+          futures.put(name, failed(new UnknownServerException("transient broker-side delete failure")));
+        } else {
+          visibleTopics.remove(name);
+          futures.put(name, completedVoid());
+        }
+      }
+      Method factory = DeleteTopicsResult.class.getDeclaredMethod("ofTopicNames", Map.class);
+      factory.setAccessible(true);
+      return (DeleteTopicsResult) factory.invoke(null, futures);
+    }
+
+    private ListTopicsResult listTopics() throws Exception {
+      Map<String, TopicListing> listings = new LinkedHashMap<>();
+      for (String topic : visibleTopics) {
+        listings.put(topic, new TopicListing(topic, false));
+      }
+      Constructor<ListTopicsResult> constructor =
+          ListTopicsResult.class.getDeclaredConstructor(KafkaFuture.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance(completed(listings));
+    }
+
+    private CreateTopicsResult createTopics(Object topicsArg) throws Exception {
+      @SuppressWarnings("unchecked")
+      Collection<NewTopic> topics = (Collection<NewTopic>) topicsArg;
+      Map<String, KafkaFuture<CreateTopicsResult.TopicMetadataAndConfig>> futures =
+          new LinkedHashMap<>();
+      for (NewTopic topic : topics) {
+        visibleTopics.add(topic.name());
+        futures.put(topic.name(), completed(new CreateTopicsResult.TopicMetadataAndConfig(
+            Uuid.randomUuid(), topic.numPartitions(), 1, new Config(List.of()))));
+      }
+      Constructor<CreateTopicsResult> constructor =
+          CreateTopicsResult.class.getDeclaredConstructor(Map.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance(futures);
+    }
+
+    private AlterConfigsResult alterConfigs(Object configsArg) throws Exception {
+      @SuppressWarnings("unchecked")
+      Map<ConfigResource, ?> configs = (Map<ConfigResource, ?>) configsArg;
+      Map<ConfigResource, KafkaFuture<Void>> futures = new LinkedHashMap<>();
+      for (ConfigResource resource : configs.keySet()) {
+        futures.put(resource, visibleTopics.contains(resource.name())
+            ? completedVoid()
+            : failed(new UnknownTopicOrPartitionException("missing " + resource.name())));
+      }
+      Constructor<AlterConfigsResult> constructor =
+          AlterConfigsResult.class.getDeclaredConstructor(Map.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance(futures);
+    }
+  }
+
+  private static final class SlowDeleteFutureAdmin implements InvocationHandler {
+    private final Set<String> visibleTopics = new LinkedHashSet<>();
+    private int deleteCalls;
+    private int createCalls;
+
+    private SlowDeleteFutureAdmin(Set<String> initialTopics) {
+      visibleTopics.addAll(initialTopics);
+    }
+
+    private Admin proxy() {
+      return (Admin) Proxy.newProxyInstance(
+          Admin.class.getClassLoader(),
+          new Class<?>[] {Admin.class},
+          this);
+    }
+
+    private int deleteCalls() {
+      return deleteCalls;
+    }
+
+    private int createCalls() {
+      return createCalls;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+      return switch (method.getName()) {
+        case "deleteTopics" -> deleteTopics(args[0]);
+        case "listTopics" -> listTopics();
+        case "createTopics" -> createTopics(args[0]);
+        case "incrementalAlterConfigs" -> alterConfigs(args[0]);
+        case "close" -> null;
+        case "toString" -> "SlowDeleteFutureAdmin";
+        case "hashCode" -> System.identityHashCode(proxy);
+        case "equals" -> proxy == args[0];
+        default -> throw new UnsupportedOperationException(method.toString());
+      };
+    }
+
+    private DeleteTopicsResult deleteTopics(Object namesArg) throws Exception {
+      deleteCalls++;
+      @SuppressWarnings("unchecked")
+      Collection<String> names = (Collection<String>) namesArg;
+      Map<String, KafkaFuture<Void>> futures = new LinkedHashMap<>();
+      for (String name : names) {
+        visibleTopics.remove(name);
+        futures.put(name, pending());
+      }
+      Method factory = DeleteTopicsResult.class.getDeclaredMethod("ofTopicNames", Map.class);
+      factory.setAccessible(true);
+      return (DeleteTopicsResult) factory.invoke(null, futures);
+    }
+
+    private ListTopicsResult listTopics() throws Exception {
+      Map<String, TopicListing> listings = new LinkedHashMap<>();
+      for (String topic : visibleTopics) {
+        listings.put(topic, new TopicListing(topic, false));
+      }
+      Constructor<ListTopicsResult> constructor =
+          ListTopicsResult.class.getDeclaredConstructor(KafkaFuture.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance(completed(listings));
+    }
+
+    private CreateTopicsResult createTopics(Object topicsArg) throws Exception {
+      createCalls++;
+      @SuppressWarnings("unchecked")
+      Collection<NewTopic> topics = (Collection<NewTopic>) topicsArg;
+      Map<String, KafkaFuture<CreateTopicsResult.TopicMetadataAndConfig>> futures =
+          new LinkedHashMap<>();
+      for (NewTopic topic : topics) {
+        visibleTopics.add(topic.name());
+        futures.put(topic.name(), completed(new CreateTopicsResult.TopicMetadataAndConfig(
+            Uuid.randomUuid(), topic.numPartitions(), 1, new Config(List.of()))));
+      }
+      Constructor<CreateTopicsResult> constructor =
+          CreateTopicsResult.class.getDeclaredConstructor(Map.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance(futures);
+    }
+
+    private AlterConfigsResult alterConfigs(Object configsArg) throws Exception {
+      @SuppressWarnings("unchecked")
+      Map<ConfigResource, ?> configs = (Map<ConfigResource, ?>) configsArg;
+      Map<ConfigResource, KafkaFuture<Void>> futures = new LinkedHashMap<>();
+      for (ConfigResource resource : configs.keySet()) {
+        futures.put(resource, visibleTopics.contains(resource.name())
+            ? completedVoid()
+            : failed(new UnknownTopicOrPartitionException("missing " + resource.name())));
+      }
+      Constructor<AlterConfigsResult> constructor =
+          AlterConfigsResult.class.getDeclaredConstructor(Map.class);
+      constructor.setAccessible(true);
+      return constructor.newInstance(futures);
+    }
+  }
+
   private static KafkaFuture<Void> completedVoid() {
     return completed(null);
   }
@@ -212,5 +428,9 @@ class KafkaTopicResetToolTest {
     KafkaFutureImpl<T> future = new KafkaFutureImpl<>();
     future.completeExceptionally(error);
     return future;
+  }
+
+  private static <T> KafkaFuture<T> pending() {
+    return new KafkaFutureImpl<>();
   }
 }

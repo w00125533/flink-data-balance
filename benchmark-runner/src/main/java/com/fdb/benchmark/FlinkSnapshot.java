@@ -174,9 +174,27 @@ public record FlinkSnapshot(
           averagePositive(samples.stream().mapToDouble(FlinkOperatorSnapshot::idleRatio).toArray(),
               last.idleRatio()),
           maxDoubleOperator(samples, FlinkOperatorSnapshot::backpressureRatio),
-          samples.stream().mapToLong(FlinkOperatorSnapshot::pendingRecords).max().orElse(last.pendingRecords())));
+          samples.stream().mapToLong(FlinkOperatorSnapshot::pendingRecords).max().orElse(last.pendingRecords()),
+          last.currentInputWatermarkMs(),
+          last.currentOutputWatermarkMs(),
+          maxLongOperator(samples, FlinkOperatorSnapshot::flinkMarkerP95Ms),
+          maxMarkerLatencies(samples)));
     }
     return List.copyOf(operators);
+  }
+
+  private static List<FlinkMarkerLatencySnapshot> maxMarkerLatencies(List<FlinkOperatorSnapshot> samples) {
+    Map<String, FlinkMarkerLatencySnapshot> byEdge = new LinkedHashMap<>();
+    for (FlinkOperatorSnapshot sample : samples) {
+      for (FlinkMarkerLatencySnapshot marker : sample.flinkMarkerLatencies()) {
+        String key = marker.sourceOperatorId() + "\u0000" + marker.targetOperatorId();
+        FlinkMarkerLatencySnapshot existing = byEdge.get(key);
+        if (existing == null || marker.p95Ms() > existing.p95Ms()) {
+          byEdge.put(key, marker);
+        }
+      }
+    }
+    return List.copyOf(byEdge.values());
   }
 
   private static double averagePositive(double[] values, double fallback) {
@@ -199,6 +217,11 @@ public record FlinkSnapshot(
   private static double maxDoubleOperator(List<FlinkOperatorSnapshot> snapshots,
       java.util.function.ToDoubleFunction<FlinkOperatorSnapshot> value) {
     return snapshots.stream().mapToDouble(value).max().orElse(0.0d);
+  }
+
+  private static long maxLongOperator(List<FlinkOperatorSnapshot> snapshots,
+      java.util.function.ToLongFunction<FlinkOperatorSnapshot> value) {
+    return snapshots.stream().mapToLong(value).max().orElse(-1L);
   }
 
   private static long maxLong(List<FlinkSnapshot> snapshots, java.util.function.ToLongFunction<FlinkSnapshot> value) {

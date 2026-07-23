@@ -50,7 +50,7 @@ class FlinkRestClientTest {
                   "inputs":[{"id":"v1"}]
                 }]}}
                 """,
-        "/jobs/job-a/vertices/v1/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords",
+        "/jobs/job-a/vertices/v1/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords,currentInputWatermark,currentOutputWatermark",
             """
                 [
                   {"id":"numRecordsInPerSecond","value":"120.5"},
@@ -60,10 +60,12 @@ class FlinkRestClientTest {
                   {"id":"busyTimeMsPerSecond","value":"800"},
                   {"id":"idleTimeMsPerSecond","value":"175"},
                   {"id":"backPressuredTimeMsPerSecond","value":"25"},
-                  {"id":"pendingRecords","value":"42"}
+                  {"id":"pendingRecords","value":"42"},
+                  {"id":"currentInputWatermark","value":"178000"},
+                  {"id":"currentOutputWatermark","value":"179000"}
                 ]
                 """,
-        "/jobs/job-a/vertices/v2/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords",
+        "/jobs/job-a/vertices/v2/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords,currentInputWatermark,currentOutputWatermark",
             """
                 [
                   {"id":"numRecordsInPerSecond","value":"118.25"},
@@ -73,7 +75,9 @@ class FlinkRestClientTest {
                   {"id":"busyTimeMsPerSecond","value":"500"},
                   {"id":"idleTimeMsPerSecond","value":"475"},
                   {"id":"backPressuredTimeMsPerSecond","value":"25"},
-                  {"id":"pendingRecords","value":"7"}
+                  {"id":"pendingRecords","value":"7"},
+                  {"id":"currentInputWatermark","value":"179000"},
+                  {"id":"currentOutputWatermark","value":"180000"}
                 ]
                 """));
 
@@ -102,10 +106,132 @@ class FlinkRestClientTest {
       assertThat(operator.bytesInPerSec()).isEqualTo(2048);
       assertThat(operator.bytesOutPerSec()).isEqualTo(1024);
       assertThat(operator.pendingRecords()).isEqualTo(42);
+      assertThat(operator.currentInputWatermarkMs()).isEqualTo(178000);
+      assertThat(operator.currentOutputWatermarkMs()).isEqualTo(179000);
       assertThat(operator.busyRatio()).isCloseTo(0.8, within(0.0001));
       assertThat(operator.idleRatio()).isCloseTo(0.175, within(0.0001));
       assertThat(operator.backpressureRatio()).isCloseTo(0.025, within(0.0001));
     });
+  }
+
+  @Test
+  void reads_operator_latency_marker_p95_when_exposed_by_flink_metrics() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
+        "/jobs/job-a/checkpoints", "{}",
+        "/taskmanagers", "{\"taskmanagers\":[]}",
+        "/jobs/job-a",
+            """
+                {"vertices":[{
+                  "id":"v1",
+                  "name":"kpi-1m-full-join",
+                  "parallelism":2,
+                  "metrics":{}
+                }]}
+                """,
+        metricPath("job-a", "v1"),
+            """
+                [
+                  {"id":"numRecordsInPerSecond","value":"100"}
+                ]
+                """,
+        "/jobs/job-a/vertices/v1/metrics",
+            """
+                [
+                  {"id":"latency.source_id.operator_id.latency_p95","value":"37"},
+                  {"id":"latency.source_id.operator_id.latency_p99","value":"52"}
+                ]
+                """));
+
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
+
+    assertThat(snapshot.operators()).hasSize(1);
+    assertThat(snapshot.operators().get(0).flinkMarkerP95Ms()).isEqualTo(37);
+  }
+
+  @Test
+  void reads_operator_latency_marker_p95_by_input_edge_when_exposed_by_flink_metrics() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
+        "/jobs/job-a/checkpoints", "{}",
+        "/taskmanagers", "{\"taskmanagers\":[]}",
+        "/jobs/job-a",
+            """
+                {"vertices":[
+                  {"id":"chr-source","name":"Source: chr-source","parallelism":1,"metrics":{}},
+                  {"id":"pm-source","name":"Source: pm-source","parallelism":1,"metrics":{}},
+                  {"id":"kpi-join","name":"kpi-1m-full-join","parallelism":2,"metrics":{}}
+                ],
+                "plan":{"nodes":[
+                  {"id":"chr-source"},
+                  {"id":"pm-source"},
+                  {"id":"kpi-join","inputs":[{"id":"chr-source"},{"id":"pm-source"}]}
+                ]}}
+                """,
+        metricPath("job-a", "chr-source"), "[]",
+        metricPath("job-a", "pm-source"), "[]",
+        metricPath("job-a", "kpi-join"), "[]",
+        "/jobs/job-a/vertices/chr-source/metrics", "[]",
+        "/jobs/job-a/vertices/pm-source/metrics", "[]",
+        "/jobs/job-a/vertices/kpi-join/metrics",
+            """
+                [
+                  {"id":"latency.chr-source.kpi-join.latency_p95","value":"230"},
+                  {"id":"latency.pm-source.kpi-join.latency_p95","value":"18"}
+                ]
+                """));
+
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
+
+    assertThat(snapshot.operators()).hasSize(3);
+    assertThat(snapshot.operators().get(2).flinkMarkerP95Ms()).isEqualTo(230);
+    assertThat(snapshot.operators().get(2).flinkMarkerLatencies()).containsExactly(
+        new FlinkMarkerLatencySnapshot("chr-source", "kpi-join", 230,
+            "latency.chr-source.kpi-join.latency_p95"),
+        new FlinkMarkerLatencySnapshot("pm-source", "kpi-join", 18,
+            "latency.pm-source.kpi-join.latency_p95"));
+  }
+
+  @Test
+  void reads_operator_latency_marker_values_after_listing_marker_metric_ids() throws Exception {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
+        "/jobs/job-a/checkpoints", "{}",
+        "/taskmanagers", "{\"taskmanagers\":[]}",
+        "/jobs/job-a",
+            """
+                {"vertices":[
+                  {"id":"chr-source","name":"Source: chr-source","parallelism":1,"metrics":{}},
+                  {"id":"kpi-join","name":"kpi-1m-full-join","parallelism":2,"metrics":{}}
+                ],
+                "plan":{"nodes":[
+                  {"id":"chr-source"},
+                  {"id":"kpi-join","inputs":[{"id":"chr-source"}]}
+                ]}}
+                """,
+        metricPath("job-a", "chr-source"), "[]",
+        metricPath("job-a", "kpi-join"), "[]",
+        "/jobs/job-a/vertices/chr-source/metrics", "[]",
+        "/jobs/job-a/vertices/kpi-join/metrics",
+            """
+                [
+                  {"id":"latency.chr-source.kpi-join.latency_p95"},
+                  {"id":"latency.chr-source.kpi-join.latency_p99"}
+                ]
+                """,
+        "/jobs/job-a/vertices/kpi-join/metrics?get=latency.chr-source.kpi-join.latency_p95",
+            """
+                [
+                  {"id":"latency.chr-source.kpi-join.latency_p95","value":"145"}
+                ]
+                """));
+
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), http).snapshot();
+
+    assertThat(snapshot.operators().get(1).flinkMarkerP95Ms()).isEqualTo(145);
+    assertThat(snapshot.operators().get(1).flinkMarkerLatencies()).containsExactly(
+        new FlinkMarkerLatencySnapshot("chr-source", "kpi-join", 145,
+            "latency.chr-source.kpi-join.latency_p95"));
   }
 
   @Test
@@ -188,6 +314,18 @@ class FlinkRestClientTest {
   }
 
   @Test
+  void unavailable_jobs_overview_returns_unknown_snapshot() throws Exception {
+    FlinkSnapshot snapshot = new FlinkRestClient(URI.create("http://flink:8081"), uri -> {
+      throw new java.net.http.HttpTimeoutException("request timed out");
+    }).snapshot();
+
+    assertThat(snapshot.jobStatus()).isEqualTo("UNKNOWN");
+    assertThat(snapshot.operators()).isEmpty();
+    assertThat(snapshot.recordsInTotal()).isZero();
+    assertThat(snapshot.recordsOutTotal()).isZero();
+  }
+
+  @Test
   void source_backlog_records_is_zero_when_no_operator_name_contains_source() throws Exception {
     FakeHttpGateway http = new FakeHttpGateway(Map.of(
         "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
@@ -228,6 +366,7 @@ class FlinkRestClientTest {
   private static String metricPath(String jobId, String vertexId) {
     return "/jobs/" + jobId + "/vertices/" + vertexId
         + "/metrics?get=numRecordsInPerSecond,numRecordsOutPerSecond,numBytesInPerSecond,numBytesOutPerSecond,"
-        + "busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords";
+        + "busyTimeMsPerSecond,idleTimeMsPerSecond,backPressuredTimeMsPerSecond,pendingRecords,"
+        + "currentInputWatermark,currentOutputWatermark";
   }
 }

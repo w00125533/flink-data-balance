@@ -19,6 +19,7 @@ public class ChrSimulator {
     private static final Logger log = LoggerFactory.getLogger(ChrSimulator.class);
     private static final long DEFAULT_LOOP_INTERVAL_MS = 100L;
     private static final long METRICS_INTERVAL_MS = 1_000L;
+    private static final long DEFAULT_MAX_OUT_OF_ORDER_LAG_MS = 2_000L;
     private static final int MAX_PRODUCER_THREADS = 256;
     private static final Coordinate[] ANOMALY_GRID_HOTSPOTS = {
         new Coordinate(39.9042d, 116.4074d),
@@ -46,7 +47,7 @@ public class ChrSimulator {
 
         TopologyClient topology = new TopologyClient(bootstrap, "sim-chr");
         topology.start(config.topologyTopic());
-        topology.awaitReady(java.time.Duration.ofSeconds(30));
+        topology.awaitReady(java.time.Duration.ofSeconds(30), config.topologyTargetCells());
 
         List<TopologyRecord> cells = topology.getAllCells();
         log.info("Loaded {} cells from topology", cells.size());
@@ -61,6 +62,7 @@ public class ChrSimulator {
             log.info(SummarySwitch.format("sim-chr", "assigned_users", assignedUsers));
         }
         long baseEps = config.getLong("rate.eps", 5000);
+        long simulationDurationSec = config.getLong("simulation.duration.sec", 0);
         long totalCells = cells.size();
         double lambdaPerCell = (double) baseEps / totalCells;
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CHR_METRICS_FILE");
@@ -72,6 +74,7 @@ public class ChrSimulator {
             log.info(SummarySwitch.format("sim-chr", "anomaly_injection_ratio",
                 String.format("%.3f", anomalyInjectionRatio)));
             log.info(SummarySwitch.format("sim-chr", "producer_threads", producerThreads));
+            log.info(SummarySwitch.format("sim-chr", "simulation_duration_sec", simulationDurationSec));
         }
 
         long startTime = System.currentTimeMillis();
@@ -88,7 +91,8 @@ public class ChrSimulator {
                 cells,
                 cellUsers,
                 config.getDouble("rate.outOfOrderProb", 0.05),
-                config.getLong("rate.maxOutOfOrderLagMs", 5000),
+                validateMaxOutOfOrderLagMs(config.getLong(
+                    "rate.maxOutOfOrderLagMs", DEFAULT_MAX_OUT_OF_ORDER_LAG_MS)),
                 anomalyInjectionRatio);
             workers.add(worker);
             threads.add(new Thread(worker, "chr-producer-" + i));
@@ -96,22 +100,19 @@ public class ChrSimulator {
         try {
             threads.forEach(Thread::start);
             long lastLoggedDelivered = 0L;
-            while (!Thread.currentThread().isInterrupted()) {
+            while (!Thread.currentThread().isInterrupted()
+                && SimulationRuntime.shouldContinue(startTime, System.currentTimeMillis(), simulationDurationSec)) {
                 Throwable failure = firstWorkerFailure(workers);
                 if (failure != null) {
                     throw new IllegalStateException("CHR producer worker failed", failure);
                 }
                 long metricsNow = System.currentTimeMillis();
-                long durationMs = Math.max(0L, metricsNow - startTime);
-                long submitted = sumSubmittedRecords(workers);
-                long delivered = sumDeliveredRecords(workers);
-                double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
-                long expected = expectedEvents(baseEps, startTime, metricsNow);
-                long pending = backlogRecords(expected, submitted);
-                sourceMetrics.write("chr", baseEps, delivered, observedEps, durationMs,
-                    pending, undeliveredRecords(submitted, delivered));
+                long delivered = writeSourceMetrics(sourceMetrics, baseEps, startTime, metricsNow,
+                    simulationDurationSec, workers);
                 if (delivered - lastLoggedDelivered >= 100_000L) {
                     lastLoggedDelivered = delivered;
+                    long durationMs = SimulationRuntime.metricDurationMs(startTime, metricsNow, simulationDurationSec);
+                    double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
                     log.info("Published {} CHR events (EPS: {})", delivered, observedEps);
                     if (summaryEnabled) {
                         log.info(SummarySwitch.format("sim-chr", "events_published", delivered));
@@ -122,6 +123,8 @@ public class ChrSimulator {
             }
         } finally {
             stopWorkers(workers, threads);
+            writeSourceMetrics(sourceMetrics, baseEps, startTime, System.currentTimeMillis(),
+                simulationDurationSec, workers);
         }
     }
 
@@ -166,6 +169,13 @@ public class ChrSimulator {
                 "FDB_CHR_PRODUCER_THREADS must be between 1 and " + MAX_PRODUCER_THREADS);
         }
         return (int) threads;
+    }
+
+    static long validateMaxOutOfOrderLagMs(long configuredLagMs) {
+        if (configuredLagMs <= 0L) {
+            return DEFAULT_MAX_OUT_OF_ORDER_LAG_MS;
+        }
+        return Math.min(configuredLagMs, DEFAULT_MAX_OUT_OF_ORDER_LAG_MS);
     }
 
     static long[] splitTargetEps(long targetEps, int producerThreads) {
@@ -268,8 +278,9 @@ public class ChrSimulator {
             mcs = 1;
         }
 
+        long effectiveMaxOutOfOrderLagMs = validateMaxOutOfOrderLagMs(maxOutOfOrderLagMs);
         int outOfOrderLag = random.nextDouble() < outOfOrderProbability
-            ? random.nextInt((int) Math.max(1, maxOutOfOrderLagMs)) + 100 : 0;
+            ? random.nextInt((int) Math.max(1, effectiveMaxOutOfOrderLagMs)) + 1 : 0;
         int resultCode = anomalous || eventType == ChrEventType.RRC_SETUP_FAIL || eventType == ChrEventType.DETACH
             ? 1 : 0;
         boolean dataSession = eventType == ChrEventType.DATA_SESSION;
@@ -327,6 +338,20 @@ public class ChrSimulator {
             .filter(Objects::nonNull)
             .findFirst()
             .orElse(null);
+    }
+
+    private static long writeSourceMetrics(SourceMetricsWriter sourceMetrics, long targetEps, long startTime,
+                                           long metricsNow, long simulationDurationSec,
+                                           List<ChrProducerWorker> workers) {
+        long durationMs = SimulationRuntime.metricDurationMs(startTime, metricsNow, simulationDurationSec);
+        long submitted = sumSubmittedRecords(workers);
+        long delivered = sumDeliveredRecords(workers);
+        double observedEps = delivered / Math.max(durationMs / 1000.0d, 0.001d);
+        long expected = expectedEvents(targetEps, startTime, startTime + durationMs);
+        long pending = backlogRecords(expected, submitted);
+        sourceMetrics.write("chr", targetEps, delivered, observedEps, durationMs,
+            pending, undeliveredRecords(submitted, delivered));
+        return delivered;
     }
 
     private static void stopWorkers(List<ChrProducerWorker> workers, List<Thread> threads) {

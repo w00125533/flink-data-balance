@@ -50,6 +50,13 @@ class ChrSimulatorTest {
     }
 
     @Test
+    void caps_chr_max_out_of_order_lag_to_two_seconds() {
+        assertThat(ChrSimulator.validateMaxOutOfOrderLagMs(5_000L)).isEqualTo(2_000L);
+        assertThat(ChrSimulator.validateMaxOutOfOrderLagMs(1_500L)).isEqualTo(1_500L);
+        assertThat(ChrSimulator.validateMaxOutOfOrderLagMs(0L)).isEqualTo(2_000L);
+    }
+
+    @Test
     void converts_per_second_lambda_to_tick_probability() {
         assertThat(ChrSimulator.eventProbability(0.05, 100)).isEqualTo(0.005);
     }

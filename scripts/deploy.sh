@@ -139,9 +139,13 @@ local_wait_for_job_terminal() {
 local_wait_for_flink_slots() {
   local wait_sec="${FDB_FLINK_READY_WAIT_SEC:-60}"
   local rest_url="${FDB_FLINK_REST_URL:-http://localhost:8081}"
+  local required_slots="${FDB_FLINK_PARALLELISM:-1}"
 
   if [[ "$wait_sec" == "0" ]]; then
     return 0
+  fi
+  if ! [[ "$required_slots" =~ ^[0-9]+$ ]] || [[ "$required_slots" -le 0 ]]; then
+    required_slots=1
   fi
 
   local deadline=$((SECONDS + wait_sec))
@@ -150,15 +154,15 @@ local_wait_for_flink_slots() {
     if body="$(curl -fsS "${rest_url}/overview" 2>/dev/null)"; then
       taskmanagers="$(printf '%s\n' "$body" | sed -nE 's/.*"taskmanagers"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1)"
       slots_available="$(printf '%s\n' "$body" | sed -nE 's/.*"slots-available"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1)"
-      if [[ "${taskmanagers:-0}" -gt 0 && "${slots_available:-0}" -gt 0 ]]; then
-        ok "Flink slots available: taskmanagers=${taskmanagers}, slots=${slots_available}"
+      if [[ "${taskmanagers:-0}" -gt 0 && "${slots_available:-0}" -ge "$required_slots" ]]; then
+        ok "Flink slots available: taskmanagers=${taskmanagers}, slots=${slots_available}, required=${required_slots}"
         return 0
       fi
     fi
     sleep 2
   done
 
-  warn "timed out waiting for Flink slots to become available"
+  warn "timed out waiting for Flink slots to become available: required=${required_slots}"
   return 1
 }
 
@@ -301,21 +305,54 @@ shared_lakehouse() {
 
 shared_hdfs_exec() {
   local hdfs_bin="${FDB_LOCAL_HDFS_BIN:-/opt/hadoop-3.2.1/bin/hdfs}"
-  if shared_lakehouse exec -T namenode "$hdfs_bin" dfs -fs "$(local_hdfs_uri)" "$@" \
-      >/tmp/fdb-shared-hdfs-exec.out 2>/tmp/fdb-shared-hdfs-exec.err; then
+  local timeout_sec="${FDB_SHARED_HDFS_EXEC_TIMEOUT_SEC:-30}"
+  local compose_command=(
+    docker compose
+    -f "$(shared_infra_dir)/compose.yaml"
+    -f "$(shared_infra_dir)/compose.lakehouse.yaml"
+    --profile lakehouse
+    --profile lakehouse-tools
+    exec -T namenode
+    "$hdfs_bin" dfs -fs "$(local_hdfs_uri)" "$@"
+  )
+  local direct_command=(
+    docker exec shared-data-infra-namenode-1
+    "$hdfs_bin" dfs -fs "$(local_hdfs_uri)" "$@"
+  )
+
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout "${timeout_sec}s" "${compose_command[@]}" \
+        >/tmp/fdb-shared-hdfs-exec.out 2>/tmp/fdb-shared-hdfs-exec.err; then
+      cat /tmp/fdb-shared-hdfs-exec.out
+      return 0
+    fi
+    timeout "${timeout_sec}s" "${direct_command[@]}"
+    return $?
+  fi
+
+  if "${compose_command[@]}" >/tmp/fdb-shared-hdfs-exec.out 2>/tmp/fdb-shared-hdfs-exec.err; then
     cat /tmp/fdb-shared-hdfs-exec.out
     return 0
   fi
 
-  docker exec shared-data-infra-namenode-1 "$hdfs_bin" dfs -fs "$(local_hdfs_uri)" "$@"
+  "${direct_command[@]}"
 }
 
 shared_starrocks() {
-  docker compose \
-    -f "$(shared_infra_dir)/compose.yaml" \
-    -f "$(shared_infra_dir)/compose.starrocks.yaml" \
-    --profile starrocks \
+  local timeout_sec="${FDB_SHARED_STARROCKS_EXEC_TIMEOUT_SEC:-60}"
+  local command=(
+    docker compose
+    -f "$(shared_infra_dir)/compose.yaml"
+    -f "$(shared_infra_dir)/compose.starrocks.yaml"
+    --profile starrocks
     "$@"
+  )
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_sec" "${command[@]}"
+  else
+    "${command[@]}"
+  fi
 }
 
 shared_starrocks_mysql() {
@@ -512,11 +549,10 @@ reset_hdfs_path_with() {
   "$runner" -chmod -R 777 "$path" >/dev/null 2>&1 || true
 }
 
-reset_hdfs_benchmark_outputs_with() {
+reset_hdfs_hive_benchmark_outputs_with() {
   local runner=$1
   local hive_cell_path=${FDB_HIVE_WAREHOUSE_PATH:-/warehouse/fdb/cell_kpi}
   local hive_root=${FDB_HIVE_WAREHOUSE_ROOT:-${hive_cell_path%/cell_kpi}}
-  local iceberg_root=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/${FDB_ICEBERG_DATABASE:-iceberg_db}
 
   if [[ "$hive_root" == "$hive_cell_path" ]]; then
     hive_root="${hive_cell_path%/*}"
@@ -526,10 +562,140 @@ reset_hdfs_benchmark_outputs_with() {
   reset_hdfs_path_with "$runner" "$hive_root/cell_anomaly_events"
   reset_hdfs_path_with "$runner" "$hive_root/user_anomaly_events"
   reset_hdfs_path_with "$runner" "$hive_root/grid_anomaly_events"
+}
+
+reset_hdfs_iceberg_benchmark_outputs_with() {
+  local runner=$1
+  local iceberg_root=${FDB_ICEBERG_WAREHOUSE_PATH:-/warehouse/iceberg}/${FDB_ICEBERG_DATABASE:-iceberg_db}
+
   reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_TABLE:-cell_kpi}"
   reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_CELL_ANOMALY_TABLE:-cell_anomaly_events}"
   reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_USER_ANOMALY_TABLE:-user_anomaly_events}"
   reset_hdfs_path_with "$runner" "$iceberg_root/${FDB_ICEBERG_GRID_ANOMALY_TABLE:-grid_anomaly_events}"
+}
+
+reset_hdfs_benchmark_outputs_with() {
+  local runner=$1
+
+  reset_hdfs_hive_benchmark_outputs_with "$runner"
+  reset_hdfs_iceberg_benchmark_outputs_with "$runner"
+}
+
+LOCAL_FLINK_ENV_ARGS=()
+
+build_local_flink_env_args() {
+  local key
+  local value
+  local env_keys=(
+    FDB_KAFKA_BOOTSTRAP
+    FDB_KAFKA_FETCH_MAX_BYTES
+    FDB_KAFKA_MAX_PARTITION_FETCH_BYTES
+    FDB_KAFKA_MAX_POLL_RECORDS
+    FDB_HDFS_URI
+    FDB_STARROCKS_FE_ENDPOINT
+    FDB_STARROCKS_JDBC_URL
+    FDB_STARROCKS_CONNECTOR_JDBC_URL
+    FDB_STARROCKS_LOAD_URL
+    FDB_STARROCKS_USER
+    FDB_STARROCKS_PASSWORD
+    FDB_STARROCKS_DATABASE
+    FDB_STARROCKS_SINK_SEMANTIC
+    FDB_STARROCKS_SINK_LABEL_PREFIX
+    FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_BYTES
+    FDB_STARROCKS_SINK_BUFFER_FLUSH_MAX_ROWS
+    FDB_STARROCKS_SINK_BUFFER_FLUSH_INTERVAL_MS
+    FDB_RESULT_SINK
+    FDB_DLQ_ENABLED
+    FDB_HIVE_WAREHOUSE
+    FDB_HIVE_WAREHOUSE_PATH
+    FDB_ICEBERG_ENABLED
+    FDB_ICEBERG_WAREHOUSE
+    FDB_ICEBERG_WAREHOUSE_PATH
+    FDB_ICEBERG_CATALOG
+    FDB_ICEBERG_DATABASE
+    FDB_ICEBERG_TABLE
+    FDB_ICEBERG_CELL_ANOMALY_TABLE
+    FDB_ICEBERG_USER_ANOMALY_TABLE
+    FDB_ICEBERG_GRID_ANOMALY_TABLE
+    FDB_ICEBERG_METASTORE_URI
+    FDB_FLINK_CHECKPOINT_DIR
+    FDB_FLINK_CHECKPOINT_INTERVAL_MS
+    FDB_FLINK_PARALLELISM
+    FDB_METRICS_TOPIC
+    FDB_METRICS_ENABLED
+    FDB_METRICS_HISTORY_ENABLED
+    FDB_METRICS_EMIT_INTERVAL_MS
+    FDB_RUN_ID
+    FDB_RUN_LABEL
+    FDB_E2E_SUMMARY
+  )
+
+  LOCAL_FLINK_ENV_ARGS=()
+  for key in "${env_keys[@]}"; do
+    value="${!key:-}"
+    if [[ -n "$value" || "${!key+x}" == "x" ]]; then
+      LOCAL_FLINK_ENV_ARGS+=("-e" "$key=$value")
+    fi
+  done
+}
+
+local_flink_submit_once() {
+  local jar=$1
+  local submit_log=$2
+  local timeout_sec="${FDB_LOCAL_FLINK_SUBMIT_TIMEOUT_SEC:-120}"
+  local command=(
+    docker exec --user flink
+    "${LOCAL_FLINK_ENV_ARGS[@]}"
+    fdb-flink-jobmanager
+    flink run -d -p "$FDB_FLINK_PARALLELISM" "$jar"
+  )
+
+  : > "$submit_log"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout_sec}s" "${command[@]}" | tee "$submit_log"
+  else
+    "${command[@]}" | tee "$submit_log"
+  fi
+}
+
+parse_local_submit_job_id() {
+  local submit_log=$1
+
+  awk '/JobID|Job ID|job id/ {job_id=$NF} END {print job_id}' "$submit_log"
+}
+
+local_latest_active_flink_job_id() {
+  local rest_url="${FDB_FLINK_REST_URL:-http://localhost:8081}"
+  local timeout_sec="${FDB_LOCAL_FLINK_REST_TIMEOUT_SEC:-10}"
+  local body
+
+  body="$(curl -fsS --max-time "$timeout_sec" "${rest_url}/jobs/overview" 2>/dev/null || true)"
+  printf '%s\n' "$body" |
+    tr '{' '\n' |
+    sed -nE 's/.*"jid"[[:space:]]*:[[:space:]]*"([^"]+)".*"state"[[:space:]]*:[[:space:]]*"(RUNNING|CREATED|INITIALIZING|RESTARTING)".*/\1/p' |
+    tail -n1
+}
+
+local_wait_for_late_submit_job_id() {
+  local submit_log=$1
+  local wait_sec="${FDB_LOCAL_FLINK_SUBMIT_LATE_WAIT_SEC:-30}"
+  local deadline=$((SECONDS + wait_sec))
+  local flink_job_id
+
+  while ((SECONDS < deadline)); do
+    flink_job_id="$(parse_local_submit_job_id "$submit_log")"
+    if [[ -n "$flink_job_id" ]]; then
+      printf '%s\n' "$flink_job_id"
+      return 0
+    fi
+
+    flink_job_id="$(local_latest_active_flink_job_id)"
+    if [[ -n "$flink_job_id" ]]; then
+      printf '%s\n' "$flink_job_id"
+      return 0
+    fi
+    sleep 2
+  done
 }
 
 local_reset_kafka_topics_with_admin() {
@@ -549,6 +715,121 @@ local_reset_kafka_topics_with_admin() {
 
   warn "Kafka AdminClient topic reset failed"
   return 2
+}
+
+benchmark_kafka_topics_for_readiness() {
+  local lb_heartbeat="${FDB_LB_HEARTBEAT_TOPIC:-lb-heartbeat}"
+  local lb_routing="${FDB_LB_ROUTING_TOPIC:-lb-routing}"
+  local topic
+
+  while read -r topic; do
+    [[ -n "$topic" ]] || continue
+    if [[ "${FDB_DYNAMIC_BALANCING_ENABLED:-false}" != "true" ]] \
+      && { [[ "$topic" == "$lb_heartbeat" ]] || [[ "$topic" == "$lb_routing" ]]; }; then
+      continue
+    fi
+    printf '%s\n' "$topic"
+  done < <(benchmark_kafka_topics)
+}
+
+local_wait_for_kafka_topic_metadata() {
+  local bootstrap
+  local wait_sec="${FDB_KAFKA_TOPIC_READY_WAIT_SEC:-180}"
+  local poll_sec="${FDB_KAFKA_TOPIC_READY_POLL_SEC:-2}"
+  local stable_polls="${FDB_KAFKA_TOPIC_READY_STABLE_POLLS:-3}"
+  local deadline
+  local descriptions
+  local topic
+  local missing
+  local stable_count=0
+
+  bootstrap="$(local_kafka_bootstrap)"
+  if [[ "$wait_sec" == "0" ]]; then
+    return 0
+  fi
+  if ! [[ "$stable_polls" =~ ^[0-9]+$ ]] || [[ "$stable_polls" -lt 1 ]]; then
+    stable_polls=1
+  fi
+  deadline=$((SECONDS + wait_sec))
+
+  while ((SECONDS < deadline)); do
+    missing=()
+    descriptions="$(shared_kafka_exec kafka-topics --bootstrap-server "$bootstrap" --describe 2>/dev/null || true)"
+    if [[ -n "$descriptions" ]]; then
+      while read -r topic; do
+        [[ -n "$topic" ]] || continue
+        if ! grep -Eq "(^|[[:space:]])Topic:[[:space:]]+${topic}([[:space:]]|$)" <<< "$descriptions"; then
+          missing+=("$topic")
+        fi
+      done < <(benchmark_kafka_topics_for_readiness)
+    else
+      missing+=("<broker-metadata>")
+    fi
+
+    if [[ "${#missing[@]}" == "0" ]]; then
+      stable_count=$((stable_count + 1))
+      if [[ "$stable_count" -ge "$stable_polls" ]]; then
+        ok "Kafka benchmark topic metadata visible: stable_polls=${stable_count}"
+        return 0
+      fi
+    else
+      stable_count=0
+    fi
+    sleep "$poll_sec"
+  done
+
+  die "Kafka benchmark topic metadata not ready within ${wait_sec}s: ${missing[*]:-unknown}"
+}
+
+local_wait_for_kafka_idempotent_producer() {
+  local bootstrap
+  local topic="${FDB_KAFKA_READY_PROBE_TOPIC:-fdb-benchmark-probe}"
+  local retention_ms="${FDB_KAFKA_READY_PROBE_RETENTION_MS:-600000}"
+  local wait_sec="${FDB_KAFKA_PRODUCER_READY_WAIT_SEC:-180}"
+  local poll_sec="${FDB_KAFKA_PRODUCER_READY_POLL_SEC:-2}"
+  local deadline
+
+  bootstrap="$(local_kafka_bootstrap)"
+  if [[ "$wait_sec" == "0" ]]; then
+    return 0
+  fi
+
+  shared_kafka_exec kafka-topics \
+    --bootstrap-server "$bootstrap" \
+    --create --if-not-exists \
+    --topic "$topic" \
+    --partitions 1 \
+    --replication-factor 1 \
+    --config cleanup.policy=delete \
+    --config "retention.ms=$retention_ms" >/dev/null
+
+  deadline=$((SECONDS + wait_sec))
+  while ((SECONDS < deadline)); do
+    if shared_kafka_exec kafka-producer-perf-test \
+      --topic "$topic" \
+      --num-records 1 \
+      --record-size 16 \
+      --throughput 1 \
+      --producer-props \
+        "bootstrap.servers=$bootstrap" \
+        acks=all \
+        enable.idempotence=true \
+        max.block.ms=10000 \
+        request.timeout.ms=10000 \
+        delivery.timeout.ms=15000 >/dev/null 2>&1; then
+      ok "Kafka idempotent producer probe OK"
+      return 0
+    fi
+    sleep "$poll_sec"
+  done
+
+  die "Kafka idempotent producer probe did not become ready within ${wait_sec}s"
+}
+
+local_wait_for_kafka_benchmark_ready() {
+  log "waiting for Kafka benchmark topics and producer path to be ready"
+  local_wait_for_kafka_topic_metadata
+  local_wait_for_kafka_idempotent_producer
 }
 
 run_hdfs_prune_with() {
@@ -708,6 +989,7 @@ local_reset_kafka_topics() {
   bootstrap="$(local_kafka_bootstrap)"
 
   if local_reset_kafka_topics_with_admin; then
+    local_wait_for_kafka_benchmark_ready
     return 0
   else
     local admin_status=$?
@@ -740,17 +1022,33 @@ local_reset_kafka_topics() {
   done
 
   bash scripts/init-kafka-topics.sh >/dev/null
+  local_wait_for_kafka_benchmark_ready
 }
 
 local_prepare() {
   load_env_optional
   local_reset_kafka_topics
 
-  log "resetting shared StarRocks benchmark tables"
-  reset_starrocks_sql | shared_starrocks_mysql
-
-  log "resetting shared HDFS benchmark outputs"
-  reset_hdfs_benchmark_outputs_with shared_hdfs_exec
+  case "${FDB_RESULT_SINK:-starrocks}" in
+    starrocks)
+      log "resetting shared StarRocks benchmark tables"
+      reset_starrocks_sql | shared_starrocks_mysql
+      ;;
+    hive)
+      log "resetting shared Hive HDFS benchmark outputs"
+      reset_hdfs_hive_benchmark_outputs_with shared_hdfs_exec
+      ;;
+    iceberg)
+      log "resetting shared Iceberg HDFS benchmark outputs"
+      reset_hdfs_iceberg_benchmark_outputs_with shared_hdfs_exec
+      ;;
+    kafka|none)
+      log "no shared storage reset required for ${FDB_RESULT_SINK:-starrocks} sink"
+      ;;
+    *)
+      die "unsupported FDB_RESULT_SINK for local prepare: ${FDB_RESULT_SINK:-}"
+      ;;
+  esac
 
   ok "local benchmark data prepared"
 }
@@ -776,33 +1074,60 @@ local_submit() {
   local state_file="${FDB_LOCAL_STATE_FILE:-logs/local-current.env}"
   local state_dir
   local flink_job_id
-  local runtime_env_args=(
-    -e "FDB_RUN_ID=${FDB_RUN_ID}"
-    -e "FDB_RUN_LABEL=${FDB_RUN_LABEL}"
-    -e "FDB_RESULT_SINK=${FDB_RESULT_SINK}"
-    -e "FDB_DLQ_ENABLED=${FDB_DLQ_ENABLED}"
-    -e "FDB_METRICS_ENABLED=${FDB_METRICS_ENABLED}"
-    -e "FDB_METRICS_HISTORY_ENABLED=${FDB_METRICS_HISTORY_ENABLED}"
-    -e "FDB_METRICS_EMIT_INTERVAL_MS=${FDB_METRICS_EMIT_INTERVAL_MS}"
-    -e "FDB_FLINK_PARALLELISM=${FDB_FLINK_PARALLELISM}"
-    -e "FDB_FLINK_CHECKPOINT_INTERVAL_MS=${FDB_FLINK_CHECKPOINT_INTERVAL_MS}"
-  )
 
   local_ensure_flink_slots_for_submit || die "Flink slots are not available for local submit"
 
   log "recreating observability-api with run context: ${FDB_RUN_ID}"
   docker compose -f docker/docker-compose.yml --profile e2e up -d --no-deps --force-recreate observability-api
 
+  build_local_flink_env_args
   log "submitting local Flink job: $jar"
-  docker exec --user flink "${runtime_env_args[@]}" fdb-flink-jobmanager \
-    flink run -d -p "$FDB_FLINK_PARALLELISM" "$jar" | tee "$submit_log"
+  if ! local_flink_submit_once "$jar" "$submit_log"; then
+    flink_job_id="$(parse_local_submit_job_id "$submit_log")"
+    if [[ -z "$flink_job_id" ]]; then
+      flink_job_id="$(local_wait_for_late_submit_job_id "$submit_log")"
+    fi
+    if [[ -z "$flink_job_id" ]]; then
+      if [[ "${FDB_LOCAL_FLINK_SUBMIT_RETRY_ON_UNKNOWN:-0}" != "1" ]]; then
+        die "local Flink submit did not return JobID; not retrying unknown submit status"
+      fi
+      warn "local Flink submit failed or timed out without JobID; retrying once"
+      sleep "${FDB_LOCAL_FLINK_SUBMIT_RETRY_SLEEP_SEC:-2}"
+      log "retrying local Flink job submit: $jar"
+      if ! local_flink_submit_once "$jar" "$submit_log"; then
+        flink_job_id="$(parse_local_submit_job_id "$submit_log")"
+        if [[ -z "$flink_job_id" ]]; then
+          flink_job_id="$(local_wait_for_late_submit_job_id "$submit_log")"
+        fi
+        if [[ -z "$flink_job_id" && "${FDB_LOCAL_FLINK_SUBMIT_RECREATE_ON_RETRY:-0}" == "1" ]]; then
+          warn "local Flink submit retry failed without JobID; recreating JobManager/TaskManager and retrying once"
+          docker compose -f docker/docker-compose.yml --profile e2e up -d --force-recreate --no-deps jobmanager taskmanager
+          local_ensure_flink_slots_for_submit || die "Flink slots are not available after local runtime recreate"
+          log "retrying local Flink job submit after runtime recreate: $jar"
+          if ! local_flink_submit_once "$jar" "$submit_log"; then
+            flink_job_id="$(parse_local_submit_job_id "$submit_log")"
+            if [[ -z "$flink_job_id" ]]; then
+              flink_job_id="$(local_wait_for_late_submit_job_id "$submit_log")"
+            fi
+          fi
+        fi
+        [[ -n "$flink_job_id" ]] || die "local Flink submit failed after retry"
+        warn "local Flink submit retry returned non-zero after JobID was observed: $flink_job_id"
+      fi
+    else
+      warn "local Flink submit command returned non-zero after JobID was observed: $flink_job_id"
+    fi
+  fi
 
   state_dir="$(dirname "$state_file")"
   if [[ "$state_dir" != "." ]]; then
     mkdir -p "$state_dir"
   fi
 
-  flink_job_id="$(awk '/JobID|Job ID|job id/ {job_id=$NF} END {print job_id}' "$submit_log")"
+  flink_job_id="$(parse_local_submit_job_id "$submit_log")"
+  if [[ -z "$flink_job_id" ]]; then
+    flink_job_id="$(local_wait_for_late_submit_job_id "$submit_log" || true)"
+  fi
   {
     printf 'FDB_LOCAL_SUBMITTED_AT=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf 'FDB_LOCAL_ENV_FILE=%q\n' "${FDB_ENV_FILE:-.env}"
@@ -844,7 +1169,8 @@ local_stop() {
   fi
 
   log "cancelling local Flink job: $job_id"
-  if ! curl -fsS -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null; then
+  local cancel_timeout_sec="${FDB_FLINK_REST_CANCEL_TIMEOUT_SEC:-10}"
+  if ! curl -fsS --max-time "$cancel_timeout_sec" -X PATCH "${FDB_FLINK_REST_URL:-http://localhost:8081}/jobs/${job_id}?mode=cancel" >/dev/null; then
     warn "Flink REST cancel failed; falling back to CLI cancel"
     docker exec --user flink fdb-flink-jobmanager flink cancel "$job_id" || stop_status=$?
   fi
@@ -1616,23 +1942,33 @@ external_reset_kafka_topics() {
   done
 }
 
-external_reset_hdfs_benchmark_outputs() {
+external_reset_hive_benchmark_outputs() {
   local hive_cell_path
   local hive_root
-  local iceberg_root
 
   hive_cell_path="$(external_hdfs_path_from_location "$(external_hive_cell_kpi_location)")"
   hive_root="$(external_hdfs_path_from_location "${FDB_HIVE_WAREHOUSE_ROOT:-${hive_cell_path%/*}}")"
-  iceberg_root="$(external_iceberg_warehouse_path)/${FDB_ICEBERG_DATABASE:-iceberg_db}"
 
   reset_hdfs_path_with external_hdfs_exec "$hive_cell_path"
   reset_hdfs_path_with external_hdfs_exec "$hive_root/cell_anomaly_events"
   reset_hdfs_path_with external_hdfs_exec "$hive_root/user_anomaly_events"
   reset_hdfs_path_with external_hdfs_exec "$hive_root/grid_anomaly_events"
+}
+
+external_reset_iceberg_benchmark_outputs() {
+  local iceberg_root
+
+  iceberg_root="$(external_iceberg_warehouse_path)/${FDB_ICEBERG_DATABASE:-iceberg_db}"
+
   reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_TABLE:-cell_kpi}"
   reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_CELL_ANOMALY_TABLE:-cell_anomaly_events}"
   reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_USER_ANOMALY_TABLE:-user_anomaly_events}"
   reset_hdfs_path_with external_hdfs_exec "$iceberg_root/${FDB_ICEBERG_GRID_ANOMALY_TABLE:-grid_anomaly_events}"
+}
+
+external_reset_hdfs_benchmark_outputs() {
+  external_reset_hive_benchmark_outputs
+  external_reset_iceberg_benchmark_outputs
 }
 
 external_prepare() {
@@ -1647,16 +1983,31 @@ external_prepare() {
   external_reset_kafka_topics
   external_init
 
-  log "resetting external StarRocks benchmark tables"
-  reset_starrocks_sql | external_mysql_run_sql \
-    "$(external_starrocks_host)" \
-    "$(external_starrocks_port)" \
-    "${FDB_STARROCKS_USER:-root}" \
-    "${FDB_STARROCKS_PASSWORD:-}" \
-    "${FDB_STARROCKS_DATABASE:-fdb}"
-
-  log "resetting external HDFS benchmark outputs"
-  external_reset_hdfs_benchmark_outputs
+  case "${FDB_RESULT_SINK:-starrocks}" in
+    starrocks)
+      log "resetting external StarRocks benchmark tables"
+      reset_starrocks_sql | external_mysql_run_sql \
+        "$(external_starrocks_host)" \
+        "$(external_starrocks_port)" \
+        "${FDB_STARROCKS_USER:-root}" \
+        "${FDB_STARROCKS_PASSWORD:-}" \
+        "${FDB_STARROCKS_DATABASE:-fdb}"
+      ;;
+    hive)
+      log "resetting external Hive HDFS benchmark outputs"
+      external_reset_hive_benchmark_outputs
+      ;;
+    iceberg)
+      log "resetting external Iceberg HDFS benchmark outputs"
+      external_reset_iceberg_benchmark_outputs
+      ;;
+    kafka|none)
+      log "no external storage reset required for ${FDB_RESULT_SINK:-starrocks} sink"
+      ;;
+    *)
+      die "unsupported FDB_RESULT_SINK for external prepare: ${FDB_RESULT_SINK:-}"
+      ;;
+  esac
 
   ok "external-yarn benchmark data prepared"
 }

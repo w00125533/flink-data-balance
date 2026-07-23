@@ -27,7 +27,7 @@ public class CfgSimulator {
 
         TopologyClient topology = new TopologyClient(bootstrap, "sim-cfg");
         topology.start(simConfig.topologyTopic());
-        topology.awaitReady(Duration.ofSeconds(30));
+        topology.awaitReady(Duration.ofSeconds(30), simConfig.topologyTargetCells());
 
         List<TopologyRecord> cells = new ArrayList<>(topology.getAllCells());
         log.info("Loaded {} cells from topology for CFG simulator", cells.size());
@@ -39,6 +39,7 @@ public class CfgSimulator {
         }
 
         SourceMetricsWriter sourceMetrics = new SourceMetricsWriter("FDB_CFG_METRICS_FILE");
+        long simulationDurationSec = simConfig.getLong("simulation.duration.sec", 0);
         try (KafkaPublisher<CfgConfig> publisher = new KafkaPublisher<>(bootstrap, topic, CfgConfig.class)) {
             long version = 1;
             long metricsStartMs = System.currentTimeMillis();
@@ -63,6 +64,9 @@ public class CfgSimulator {
             }
 
             version++;
+            if (!shouldRunContinuousUpdates(simulationDurationSec)) {
+                return;
+            }
 
             while (!Thread.currentThread().isInterrupted()) {
                 long intervalMs = simConfig.getLong("updates.intervalMin", 30) * 60_000;
@@ -178,5 +182,9 @@ public class CfgSimulator {
         }
         double seconds = Math.max(batchDurationMs / 1000.0d, 1.0d);
         return Math.max(1L, Math.round(batchCount / seconds));
+    }
+
+    static boolean shouldRunContinuousUpdates(long simulationDurationSec) {
+        return simulationDurationSec <= 0L;
     }
 }

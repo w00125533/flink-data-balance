@@ -3,6 +3,7 @@ package com.fdb.simulator;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fdb.common.avro.ChrEvent;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.kafka.clients.producer.Callback;
@@ -30,9 +31,20 @@ class KafkaPublisherTest {
         assertThat(publisher.failedRecords()).isEqualTo(1);
     }
 
+    @Test
+    void close_uses_bounded_timeout() {
+        FakeSender<ChrEvent> sender = new FakeSender<>();
+        KafkaPublisher<ChrEvent> publisher = new KafkaPublisher<>("chr-events", sender);
+
+        publisher.close();
+
+        assertThat(sender.closeTimeout).isEqualTo(Duration.ofSeconds(5));
+    }
+
     private static final class FakeSender<T extends org.apache.avro.specific.SpecificRecord>
         implements KafkaPublisher.Sender<T> {
         private final List<Callback> callbacks = new ArrayList<>();
+        private Duration closeTimeout;
 
         @Override
         public void send(ProducerRecord<String, T> record, Callback callback) {
@@ -44,7 +56,8 @@ class KafkaPublisherTest {
         }
 
         @Override
-        public void close() {
+        public void close(Duration timeout) {
+            closeTimeout = timeout;
         }
 
         void succeed(int index) {

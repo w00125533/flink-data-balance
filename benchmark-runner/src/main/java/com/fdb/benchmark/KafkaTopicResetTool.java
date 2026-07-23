@@ -22,6 +22,7 @@ import org.apache.kafka.clients.admin.DeleteTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.errors.UnknownServerException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 
 public final class KafkaTopicResetTool {
@@ -106,15 +107,44 @@ public final class KafkaTopicResetTool {
   }
 
   private static void deleteTopics(Admin admin, Set<String> names, Duration timeout) throws Exception {
-    DeleteTopicsResult result = admin.deleteTopics(names);
-    for (String name : names) {
-      try {
-        result.topicNameValues().get(name).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-      } catch (ExecutionException e) {
-        if (!(e.getCause() instanceof UnknownTopicOrPartitionException)) {
-          throw e;
+    long deadline = System.nanoTime() + timeout.toNanos();
+    Set<String> pending = new LinkedHashSet<>(names);
+    Exception lastRetryableFailure = null;
+
+    while (!pending.isEmpty() && System.nanoTime() < deadline) {
+      DeleteTopicsResult result = admin.deleteTopics(pending);
+      for (String name : new ArrayList<>(pending)) {
+        try {
+          result.topicNameValues().get(name).get(operationWaitMillis(deadline), TimeUnit.MILLISECONDS);
+          pending.remove(name);
+        } catch (ExecutionException e) {
+          Throwable cause = e.getCause();
+          if (cause instanceof UnknownTopicOrPartitionException) {
+            pending.remove(name);
+          } else if (cause instanceof UnknownServerException) {
+            lastRetryableFailure = e;
+          } else {
+            throw e;
+          }
+        } catch (TimeoutException e) {
+          lastRetryableFailure = e;
         }
       }
+
+      Set<String> current = topicNames(admin, deadline);
+      pending.removeIf(name -> !current.contains(name));
+      if (!pending.isEmpty()) {
+        sleepBeforeRetry(deadline);
+      }
+    }
+
+    if (!pending.isEmpty()) {
+      TimeoutException timeoutException =
+          new TimeoutException("timed out waiting for Kafka topics to accept delete: " + pending);
+      if (lastRetryableFailure != null) {
+        timeoutException.initCause(lastRetryableFailure);
+      }
+      throw timeoutException;
     }
   }
 
@@ -199,6 +229,10 @@ public final class KafkaTopicResetTool {
       throw new TimeoutException("Kafka AdminClient operation timed out");
     }
     return Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos));
+  }
+
+  private static long operationWaitMillis(long deadlineNanos) throws TimeoutException {
+    return Math.min(remainingMillis(deadlineNanos), POLL_INTERVAL_MS);
   }
 
   private static void sleepBeforeRetry(long deadlineNanos) throws InterruptedException {

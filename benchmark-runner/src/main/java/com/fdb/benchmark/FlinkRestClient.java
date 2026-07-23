@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class FlinkRestClient {
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -17,7 +19,9 @@ public final class FlinkRestClient {
       "busyTimeMsPerSecond",
       "idleTimeMsPerSecond",
       "backPressuredTimeMsPerSecond",
-      "pendingRecords");
+      "pendingRecords",
+      "currentInputWatermark",
+      "currentOutputWatermark");
 
   private final URI baseUri;
   private final HttpGateway http;
@@ -28,7 +32,7 @@ public final class FlinkRestClient {
   }
 
   public FlinkSnapshot snapshot() throws IOException, InterruptedException {
-    JsonNode overview = read("/jobs/overview");
+    JsonNode overview = readOrEmpty("/jobs/overview");
     JsonNode job = selectJob(overview.path("jobs"));
     String jobId = text(job, "jid", "");
     String status = text(job, "state", "UNKNOWN");
@@ -60,6 +64,7 @@ public final class FlinkRestClient {
 
       JsonNode jobDetails = readOrEmpty("/jobs/" + jobId);
       operatorEdges = operatorEdges(jobDetails.path("plan").path("nodes"));
+      Map<String, List<String>> inputSourcesByTarget = inputSourcesByTarget(operatorEdges);
       JsonNode vertices = jobDetails.path("vertices");
       if (!vertices.isArray()) {
         vertices = readOrEmpty("/jobs/" + jobId + "/vertices").path("vertices");
@@ -72,7 +77,11 @@ public final class FlinkRestClient {
               ? MAPPER.createObjectNode()
               : metricMap(readOrEmpty("/jobs/" + jobId + "/vertices/" + vertexId + "/metrics?get="
                   + VERTEX_RATE_METRICS));
-          FlinkOperatorSnapshot operator = operatorSnapshot(vertex, metrics, rateMetrics);
+          List<FlinkMarkerLatencySnapshot> markerLatencies = vertexId.isBlank()
+              ? List.of()
+              : flinkMarkerLatencies(jobId, vertexId, inputSourcesByTarget.getOrDefault(vertexId, List.of()));
+          FlinkOperatorSnapshot operator = operatorSnapshot(vertex, metrics, rateMetrics,
+              flinkMarkerP95Ms(markerLatencies), markerLatencies);
           operators.add(operator);
           recordsInPerSec += operator.recordsInPerSec();
           recordsOutPerSec += operator.recordsOutPerSec();
@@ -141,6 +150,10 @@ public final class FlinkRestClient {
   }
 
   private static long metricLong(JsonNode metrics, String field) {
+    return metricLong(metrics, field, 0);
+  }
+
+  private static long metricLong(JsonNode metrics, String field, long defaultValue) {
     JsonNode value = metrics.path(field);
     if (value.isIntegralNumber()) {
       return value.asLong();
@@ -155,11 +168,11 @@ public final class FlinkRestClient {
         try {
           return (long) Double.parseDouble(value.asText());
         } catch (NumberFormatException ignoredAgain) {
-          return 0;
+          return defaultValue;
         }
       }
     }
-    return 0;
+    return defaultValue;
   }
 
   private static JsonNode metricMap(JsonNode metricsResponse) {
@@ -186,7 +199,7 @@ public final class FlinkRestClient {
   }
 
   private static FlinkOperatorSnapshot operatorSnapshot(JsonNode vertex, JsonNode cumulativeMetrics,
-      JsonNode rateMetrics) {
+      JsonNode rateMetrics, long flinkMarkerP95Ms, List<FlinkMarkerLatencySnapshot> markerLatencies) {
     double busyMs = metricNumberOrFallback(rateMetrics, cumulativeMetrics, "busyTimeMsPerSecond");
     double idleMs = metricNumberOrFallback(rateMetrics, cumulativeMetrics, "idleTimeMsPerSecond");
     double backpressureMs = metricNumberOrFallback(rateMetrics, cumulativeMetrics, "backPressuredTimeMsPerSecond");
@@ -203,7 +216,99 @@ public final class FlinkRestClient {
         ratioFromMillisPerSecond(busyMs),
         ratioFromMillisPerSecond(idleMs),
         ratioFromMillisPerSecond(backpressureMs),
-        metricLong(rateMetrics, "pendingRecords"));
+        metricLong(rateMetrics, "pendingRecords"),
+        metricLong(rateMetrics, "currentInputWatermark", -1),
+        metricLong(rateMetrics, "currentOutputWatermark", -1),
+        flinkMarkerP95Ms,
+        markerLatencies);
+  }
+
+  private static long flinkMarkerP95Ms(List<FlinkMarkerLatencySnapshot> markers) {
+    long max = -1L;
+    for (FlinkMarkerLatencySnapshot marker : markers) {
+      max = Math.max(max, marker.p95Ms());
+    }
+    return max;
+  }
+
+  private List<FlinkMarkerLatencySnapshot> flinkMarkerLatencies(String jobId, String targetId,
+      List<String> inputSourceIds) {
+    String metricPath = "/jobs/" + jobId + "/vertices/" + targetId + "/metrics";
+    JsonNode markerMetrics = readOrEmpty(metricPath);
+    List<String> markerIds = flinkMarkerP95MetricIds(markerMetrics);
+    if (markerIds.isEmpty()) {
+      return List.of();
+    }
+    List<FlinkMarkerLatencySnapshot> markerValues = parseFlinkMarkerLatencies(targetId, inputSourceIds,
+        readOrEmpty(metricPath + "?get=" + String.join(",", markerIds)));
+    if (!markerValues.isEmpty()) {
+      return markerValues;
+    }
+    return parseFlinkMarkerLatencies(targetId, inputSourceIds, markerMetrics);
+  }
+
+  private static List<String> flinkMarkerP95MetricIds(JsonNode metricsResponse) {
+    if (!metricsResponse.isArray()) {
+      return List.of();
+    }
+    List<String> ids = new ArrayList<>();
+    for (JsonNode metric : metricsResponse) {
+      String id = text(metric, "id", "");
+      if (isFlinkMarkerP95Metric(id)) {
+        ids.add(id);
+      }
+    }
+    return List.copyOf(ids);
+  }
+
+  private static List<FlinkMarkerLatencySnapshot> parseFlinkMarkerLatencies(String targetId,
+      List<String> inputSourceIds,
+      JsonNode metricsResponse) {
+    if (!metricsResponse.isArray()) {
+      return List.of();
+    }
+    Map<String, FlinkMarkerLatencySnapshot> byEdge = new LinkedHashMap<>();
+    for (JsonNode metric : metricsResponse) {
+      String id = text(metric, "id", "");
+      if (isFlinkMarkerP95Metric(id)) {
+        long p95Ms = metricLong(metric, "value", -1L);
+        if (p95Ms < 0) {
+          continue;
+        }
+        String sourceId = markerSourceId(id, inputSourceIds);
+        String key = sourceId + "\u0000" + targetId;
+        FlinkMarkerLatencySnapshot existing = byEdge.get(key);
+        if (existing == null || p95Ms > existing.p95Ms()) {
+          byEdge.put(key, new FlinkMarkerLatencySnapshot(sourceId, targetId, p95Ms, id));
+        }
+      }
+    }
+    return List.copyOf(byEdge.values());
+  }
+
+  private static String markerSourceId(String metricId, List<String> inputSourceIds) {
+    String lowerMetric = lower(metricId);
+    for (String sourceId : inputSourceIds) {
+      if (!sourceId.isBlank() && lowerMetric.contains(lower(sourceId))) {
+        return sourceId;
+      }
+    }
+    if (inputSourceIds.size() == 1) {
+      return inputSourceIds.get(0);
+    }
+    return "unknown";
+  }
+
+  private static boolean isFlinkMarkerP95Metric(String metricId) {
+    String value = metricId == null ? "" : metricId.toLowerCase(java.util.Locale.ROOT);
+    return value.contains("latency")
+        && !value.contains("watermark")
+        && (value.contains("p95")
+            || value.contains("95th")
+            || value.contains("95percentile")
+            || value.contains("percentile95")
+            || value.endsWith(".95")
+            || value.endsWith("_95"));
   }
 
   private static long checkpointDurationMs(JsonNode completed) {
@@ -234,8 +339,20 @@ public final class FlinkRestClient {
     return List.copyOf(edges);
   }
 
+  private static Map<String, List<String>> inputSourcesByTarget(List<FlinkOperatorEdge> edges) {
+    Map<String, List<String>> values = new LinkedHashMap<>();
+    for (FlinkOperatorEdge edge : edges) {
+      values.computeIfAbsent(edge.targetId(), ignored -> new ArrayList<>()).add(edge.sourceId());
+    }
+    return values;
+  }
+
   private static boolean isSourceOperator(FlinkOperatorSnapshot operator) {
     return operator.name().toLowerCase().contains("source");
+  }
+
+  private static String lower(String value) {
+    return value == null ? "" : value.toLowerCase(java.util.Locale.ROOT);
   }
 
   private static double ratioFromMillisPerSecond(double value) {

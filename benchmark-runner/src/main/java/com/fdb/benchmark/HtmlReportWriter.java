@@ -3,6 +3,7 @@ package com.fdb.benchmark;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -166,10 +167,29 @@ public final class HtmlReportWriter {
             .flow-node { cursor: pointer; }
             .flow-node rect { fill: #ffffff; stroke: #8ea1bd; stroke-width: 1.4; }
             .flow-node text { fill: #1f2937; font-size: 12px; }
+            .flow-node .flow-latency { font-weight: 700; }
+            .flow-node-ok rect { fill: #edf8f1; stroke: #2f855a; }
+            .flow-node-ok .flow-latency { fill: #186238; }
+            .flow-node-warn rect { fill: #fff3d6; stroke: #d97706; stroke-width: 2; }
+            .flow-node-warn .flow-latency { fill: #875400; }
+            .flow-node-fail rect { fill: #fde2e1; stroke: #b42318; stroke-width: 2; }
+            .flow-node-fail .flow-latency { fill: #b42318; }
+            .flow-node-na rect { fill: #f5f7fa; stroke: #b9c2d0; }
+            .flow-node-na .flow-latency { fill: #667085; }
             .flow-node.active rect { fill: #e8f1ff; stroke: #1d4ed8; stroke-width: 2.2; }
             .flow-edge { stroke: #9aa8bb; stroke-width: 1.4; }
+            .flow-edge-marker-ok { stroke: #64748b; stroke-width: 1.8; }
+            .flow-edge-marker-warn { stroke: #d97706; stroke-width: 2.6; }
+            .flow-edge-marker-label { fill: #475467; font-size: 11px; font-weight: 700; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+            .flow-edge-marker-label-warn { fill: #875400; }
             .flow-edge.active { stroke: #1d4ed8; stroke-width: 2.4; }
             tr.active-row td { background: #e8f1ff; }
+            .operator-marker-row td { background: #fbfcfe; color: #475467; font-size: 12px; }
+            .operator-marker-row td:first-child { padding-left: 24px; font-weight: 700; }
+            .operator-section { display: flex; flex-direction: column; gap: 12px; }
+            .column-guide { background: #fff; border: 1px solid #d9dee7; padding: 12px; }
+            .column-guide h3 { font-size: 15px; margin: 0 0 8px; }
+            .column-guide table { margin-top: 8px; }
             a { color: #1d4ed8; }
           </style>
         </head>
@@ -193,17 +213,15 @@ public final class HtmlReportWriter {
             %s
             <h2>Source Density</h2>
             %s
+            <h2>1m Window Diagnostics</h2>
+            %s
             <h2>Run Notes</h2>
             %s
             <h2>Topology Generation</h2>
             %s
             <h2>Flink Resources</h2>
             %s
-            <h2>Operator Flow</h2>
-            %s
-            <h2>Operator Throughput</h2>
-            %s
-            <h2>Latency</h2>
+            <h2>Operator Flow &amp; Metrics</h2>
             %s
             <h2>Sink &amp; Storage</h2>
             %s
@@ -259,12 +277,11 @@ public final class HtmlReportWriter {
             runSummaryTable(config, result),
             stabilityGateTable(config, result),
             sourceDensity(result.source(), plan.cellLevel()),
+            windowDiagnosticsTable(plan, result.source(), fdb),
             runNotes(result),
             topologyTable(result.topology()),
             flinkResourcesTable(flink),
-            operatorFlowDiagram(flink),
-            operatorThroughputTable(flink),
-            latencyTable(plan, fdb),
+            operatorFlowAndMetrics(config, result),
             storageTable(plan, fdb, storage));
   }
 
@@ -285,6 +302,7 @@ public final class HtmlReportWriter {
     SourceMetricsSnapshot source = result.source();
     StorageSnapshot storage = result.storage();
     long kpiAvailabilityP95Ms = maxAvailableLatency(fdb.kpi1mP95Ms(), fdb.kpi5mP95Ms());
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(result.plan(), source, fdb);
 
     List<HealthGateRow> rows = List.of(
         gate("Flink Job Status", flink.jobStatus(), "RUNNING",
@@ -298,6 +316,8 @@ public final class HtmlReportWriter {
             source.hasChrMetrics()
                 ? health(source.producerDeliveryRatio() >= thresholds.minProducerDeliveryRatio())
                 : GateHealth.NA),
+        gate("1m Window Materialization", windows.observedClosedMinutes(), windows.thresholdText(),
+            windows.applicable() ? health(windows.healthy()) : GateHealth.NA),
         gate("Source Operator Backlog", flink.sourceBacklogRecords() + " records",
             "<= " + thresholds.maxSourceBacklogRecords() + " records",
             health(flink.sourceBacklogRecords() <= thresholds.maxSourceBacklogRecords())),
@@ -357,6 +377,7 @@ public final class HtmlReportWriter {
     BenchmarkRunPlan plan = result.plan();
     FlinkSnapshot flink = result.flink();
     SourceMetricsSnapshot source = result.source();
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, result.fdb());
     return twoColumnTable(List.of(
         row("Benchmark", config.benchmarkId()),
         row("Target", config.target()),
@@ -372,6 +393,7 @@ public final class HtmlReportWriter {
         row("Reason", result.bottleneckReason()),
         row("Source Throughput Attainment", formatRatio(source.producerDeliveryRatio())),
         row("Source Backlog", source.chrBacklogRecords() + " CHR records"),
+        row("Expected 1m Closed Windows", String.valueOf(windows.expectedClosedMinuteWindows())),
         row("Checkpoint Interval", formatMs(effectiveCheckpointIntervalMs(plan.sink(), config.checkpointIntervalMs()))),
         row("Checkpoint Duration", formatMs(flink.checkpointDurationMs())),
         row("Checkpoint Failures", String.valueOf(flink.consecutiveCheckpointFailures()))));
@@ -430,6 +452,34 @@ public final class HtmlReportWriter {
         + "</td><td>N/A (one-time init)</td></tr>";
   }
 
+  private static String windowDiagnosticsTable(BenchmarkRunPlan plan, SourceMetricsSnapshot source,
+      FdbMetricsSnapshot fdb) {
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, fdb);
+    StringBuilder rows = new StringBuilder();
+    appendWindowStageRow(rows, windows.chr(), windows.expectedClosedMinuteWindows(), windows.applicable());
+    appendWindowStageRow(rows, windows.pm(), windows.expectedClosedMinuteWindows(), windows.applicable());
+    appendWindowStageRow(rows, windows.kpi(), windows.expectedClosedMinuteWindows(), windows.applicable());
+    return """
+        <table>
+          <thead><tr><th>Stage</th><th>Records In Total</th><th>Records Out Total</th><th>Closed Minutes</th><th>Expected Closed Minutes</th><th>Input Watermark</th><th>Output Watermark</th><th>Health</th></tr></thead>
+          <tbody>%s</tbody>
+        </table>
+        """.formatted(rows);
+  }
+
+  private static void appendWindowStageRow(StringBuilder rows, WindowMaterializationSnapshot.WindowStage stage,
+      long expectedClosedMinuteWindows, boolean applicable) {
+    GateHealth health = !applicable ? GateHealth.NA : health(stage.healthy(expectedClosedMinuteWindows));
+    rows.append("<tr><td>").append(escape(stage.label())).append("</td><td>")
+        .append(formatNumber(stage.recordsInTotal())).append("</td><td>")
+        .append(formatNumber(stage.recordsOutTotal())).append("</td><td>")
+        .append(stage.closedMinuteWindows()).append("</td><td>")
+        .append(expectedClosedMinuteWindows).append("</td><td>")
+        .append(escape(formatWatermark(stage.currentInputWatermarkMs()))).append("</td><td>")
+        .append(escape(formatWatermark(stage.currentOutputWatermarkMs()))).append("</td><td>")
+        .append(healthBadge(health)).append("</td></tr>");
+  }
+
   private static String topologyTable(TopologyMetricsSnapshot topology) {
     if (topology == null || !topology.present()) {
       return twoColumnTable(List.of(row("Status", "No topology metrics file captured")));
@@ -461,19 +511,42 @@ public final class HtmlReportWriter {
         row("Checkpoint Failures", String.valueOf(flink.consecutiveCheckpointFailures()))));
   }
 
-  private static String operatorThroughputTable(FlinkSnapshot flink) {
+  private static String operatorFlowAndMetrics(BenchmarkConfig config, BenchmarkRunResult result) {
+    return """
+        <div class="operator-section">
+          %s
+          %s
+          %s
+        </div>
+        """.formatted(
+            operatorFlowDiagram(config, result),
+            operatorMetricsTable(config, result),
+            operatorMetricGuide());
+  }
+
+  private static String operatorMetricsTable(BenchmarkConfig config, BenchmarkRunResult result) {
+    BenchmarkRunPlan plan = result.plan();
+    BenchmarkThresholds thresholds = config.thresholds();
+    FlinkSnapshot flink = result.flink();
+    FdbMetricsSnapshot fdb = result.fdb();
     StringBuilder rows = new StringBuilder();
     if (flink.operators().isEmpty()) {
-      rows.append("<tr><td>aggregate job</td><td>-</td><td>")
+      rows.append("<tr><td>aggregate job</td><td>aggregate</td><td>-</td><td>")
           .append(formatNumber(flink.recordsInPerSec())).append("</td><td>")
           .append(formatNumber(flink.recordsOutPerSec())).append("</td><td>")
           .append(formatNumber(flink.recordsInTotal())).append("</td><td>")
-          .append(formatNumber(flink.recordsOutTotal())).append("</td><td>-</td><td>-</td><td>-</td><td>-</td><td>")
-          .append(formatRatio(flink.backpressureRatio())).append("</td></tr>");
+          .append(formatNumber(flink.recordsOutTotal()))
+          .append("</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>")
+          .append(formatRatio(flink.backpressureRatio()))
+          .append("</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>NA</td><td>NA</td><td>")
+          .append(healthBadge(GateHealth.NA)).append("</td></tr>");
     } else {
       for (FlinkOperatorSnapshot operator : flink.operators()) {
+        OperatorLatency latency = operatorLatency(plan, fdb, operator);
+        GateHealth health = operatorHealth(thresholds, operator, latency);
         rows.append("<tr id=\"operator-row-").append(htmlId(operator.id())).append("\" data-operator-id=\"")
             .append(escape(operator.id())).append("\"><td>").append(escape(operator.name())).append("</td><td>")
+            .append(escape(operatorRole(operator))).append("</td><td>")
             .append(operator.parallelism()).append("</td><td>")
             .append(formatNumber(operator.recordsInPerSec())).append("</td><td>")
             .append(formatNumber(operator.recordsOutPerSec())).append("</td><td>")
@@ -483,29 +556,270 @@ public final class HtmlReportWriter {
             .append(formatNumber(operator.bytesOutPerSec())).append("</td><td>")
             .append(formatRatio(operator.busyRatio())).append("</td><td>")
             .append(formatRatio(operator.idleRatio())).append("</td><td>")
-            .append(formatRatio(operator.backpressureRatio())).append("</td></tr>");
+            .append(escape(formatWatermark(operator.currentInputWatermarkMs()))).append("</td><td>")
+            .append(escape(formatWatermark(operator.currentOutputWatermarkMs()))).append("</td><td>")
+            .append(formatRatio(operator.backpressureRatio())).append("</td><td>")
+            .append(formatMs(latency.p50Ms())).append("</td><td>")
+            .append(formatMs(latency.p95Ms())).append("</td><td>")
+            .append(formatMs(latency.p99Ms())).append("</td><td>")
+            .append(formatMs(latency.watermarkLagMs())).append("</td><td>")
+            .append(formatMs(operator.flinkMarkerP95Ms())).append("</td><td>")
+            .append(escape(latency.source())).append("</td><td>")
+            .append(escape(latency.scope())).append("</td><td>")
+            .append(healthBadge(health)).append("</td></tr>");
+        rows.append(operatorMarkerRows(thresholds, operator));
       }
     }
     return """
         <table>
-          <thead><tr><th>Operator</th><th>Parallelism</th><th>Sampled Avg Records In/s</th><th>Sampled Avg Records Out/s</th><th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th><th>Busy</th><th>Idle</th><th>Backpressure</th></tr></thead>
+          <thead><tr><th>Operator</th><th>Role</th><th>Parallelism</th><th>Sampled Avg Records In/s</th><th>Sampled Avg Records Out/s</th><th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th><th>Busy</th><th>Idle</th><th>Input Watermark</th><th>Output Watermark</th><th>Backpressure</th><th>Business Latency P50</th><th>Business Latency P95</th><th>Business Latency P99</th><th>Watermark Lag</th><th>Flink Marker P95</th><th>Business Probe Source</th><th>Latency Scope</th><th>Health</th></tr></thead>
           <tbody>%s</tbody>
         </table>
         """.formatted(rows);
   }
 
-  private static String operatorFlowDiagram(FlinkSnapshot flink) {
+  private static String operatorMarkerRows(BenchmarkThresholds thresholds, FlinkOperatorSnapshot operator) {
+    StringBuilder rows = new StringBuilder();
+    for (FlinkMarkerLatencySnapshot marker : operator.flinkMarkerLatencies()) {
+      GateHealth health = markerHealth(thresholds, marker);
+      rows.append("<tr class=\"operator-marker-row\" data-operator-id=\"")
+          .append(escape(operator.id())).append("\"><td>")
+          .append("marker: ").append(escape(marker.sourceOperatorId())).append(" -> ")
+          .append(escape(marker.targetOperatorId())).append("</td><td>marker</td><td>-</td>")
+          .append("<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>")
+          .append("<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>")
+          .append("<td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>")
+          .append(formatMs(marker.p95Ms())).append("</td><td>Flink marker</td><td>transport</td><td>")
+          .append(healthBadge(health)).append("</td></tr>");
+    }
+    return rows.toString();
+  }
+
+  private static OperatorLatency operatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
+      FlinkOperatorSnapshot operator) {
+    boolean sinkOperator = "sink".equals(operatorRole(operator));
+    if (sinkOperator) {
+      OperatorLatency sinkLatency = sinkOperatorLatency(plan, fdb, operator);
+      if (sinkLatency.available()) {
+        return sinkLatency;
+      }
+    }
+    for (StageLatencySnapshot stage : fdb.stageLatencies()) {
+      if (isRelevantStage(plan.sink(), stage.stageId()) && metricMatchesOperator(operator, stage.stageId())) {
+        return new OperatorLatency(stage.latencyP50Ms(), stage.latencyP95Ms(), stage.latencyP99Ms(),
+            stage.watermarkLagMs(), "stage:" + stage.stageId(), "output-age");
+      }
+    }
+    if (!sinkOperator) {
+      OperatorLatency sinkLatency = sinkOperatorLatency(plan, fdb, operator);
+      if (sinkLatency.available()) {
+        return sinkLatency;
+      }
+    }
+    return OperatorLatency.empty();
+  }
+
+  private static OperatorLatency sinkOperatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
+      FlinkOperatorSnapshot operator) {
+    for (SinkLatencySnapshot sink : fdb.sinkLatencies()) {
+      if ((isCurrentBusinessSink(plan.sink(), sink.sinkName()) || isAuxiliarySink(sink.sinkName()))
+          && metricMatchesOperator(operator, sink.sinkName())) {
+        return new OperatorLatency(sink.latencyP50Ms(), sink.latencyP95Ms(), sink.latencyP99Ms(),
+            -1L, "sink:" + sink.sinkName(), "sink-front");
+      }
+    }
+    return OperatorLatency.empty();
+  }
+
+  private static boolean metricMatchesOperator(FlinkOperatorSnapshot operator, String metricId) {
+    String haystack = lower(operator.id() + " " + operator.name());
+    for (String alias : metricAliases(metricId)) {
+      if (!alias.isBlank() && haystack.contains(alias)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static List<String> metricAliases(String metricId) {
+    String value = lower(metricId);
+    if (value.isBlank()) {
+      return List.of();
+    }
+    return List.of(
+        value,
+        value.replace("window-", ""),
+        value.replace("starrocks-", ""),
+        value.replace("iceberg-", ""),
+        value.replace("hive-", ""),
+        value.replace("kafka-", ""));
+  }
+
+  private static String operatorRole(FlinkOperatorSnapshot operator) {
+    String name = lower(operator.name());
+    if (name.contains("source")) {
+      return "source";
+    }
+    if (name.contains("sink") || name.contains("iceberg") || name.contains("starrocks")
+        || name.contains("hive") || name.contains("kafka")) {
+      return "sink";
+    }
+    if (name.contains("enrich")) {
+      return "enrich";
+    }
+    if (name.contains("anomaly") || name.contains("coverage")) {
+      return "anomaly";
+    }
+    if (name.contains("kpi")) {
+      return "kpi";
+    }
+    if (name.contains("chr") || name.contains("pm-") || name.contains("cfg")) {
+      return "stage";
+    }
+    return "operator";
+  }
+
+  private static GateHealth operatorHealth(BenchmarkThresholds thresholds, FlinkOperatorSnapshot operator,
+      OperatorLatency latency) {
+    long businessThreshold = "sink-front".equals(latency.scope())
+        ? thresholds.maxSinkP95Ms()
+        : thresholds.maxKpiAvailabilityP95Ms();
+    if (latency.p95Ms() >= 0 && latency.p95Ms() > businessThreshold) {
+      return GateHealth.UNSTABLE;
+    }
+    if (operator.flinkMarkerP95Ms() >= 0 && operator.flinkMarkerP95Ms() > thresholds.maxWatermarkLagMs()) {
+      return GateHealth.UNSTABLE;
+    }
+    if (operator.backpressureRatio() > thresholds.maxBackpressureRatio()) {
+      return GateHealth.UNSTABLE;
+    }
+    return GateHealth.HEALTHY;
+  }
+
+  private static GateHealth operatorGraphHealth(BenchmarkThresholds thresholds, FlinkOperatorSnapshot operator,
+      OperatorLatency latency) {
+    if (!latency.available() && operator.backpressureRatio() <= thresholds.maxBackpressureRatio()) {
+      return GateHealth.NA;
+    }
+    long businessThreshold = "sink-front".equals(latency.scope())
+        ? thresholds.maxSinkP95Ms()
+        : thresholds.maxKpiAvailabilityP95Ms();
+    if (latency.p95Ms() >= 0 && latency.p95Ms() > businessThreshold) {
+      return GateHealth.UNSTABLE;
+    }
+    if (operator.backpressureRatio() > thresholds.maxBackpressureRatio()) {
+      return GateHealth.UNSTABLE;
+    }
+    return GateHealth.HEALTHY;
+  }
+
+  private static GateHealth markerHealth(BenchmarkThresholds thresholds, FlinkMarkerLatencySnapshot marker) {
+    return marker.p95Ms() > thresholds.maxWatermarkLagMs() ? GateHealth.UNSTABLE : GateHealth.HEALTHY;
+  }
+
+  private static String flowNodeClass(GateHealth health) {
+    return switch (health) {
+      case HEALTHY -> "flow-node-ok";
+      case UNSTABLE -> "flow-node-warn";
+      case FAILED -> "flow-node-fail";
+      case NA -> "flow-node-na";
+    };
+  }
+
+  private static String flowEdgeMarkerClass(GateHealth health) {
+    return health == GateHealth.UNSTABLE ? "flow-edge-marker-warn" : "flow-edge-marker-ok";
+  }
+
+  private static String operatorNodeLatencyLabel(FlinkOperatorSnapshot operator, OperatorLatency latency) {
+    if (latency.p95Ms() >= 0) {
+      return "P95 " + formatMs(latency.p95Ms());
+    }
+    return "P95 N/A";
+  }
+
+  private static String operatorNodeTitle(FlinkOperatorSnapshot operator, OperatorLatency latency,
+      GateHealth health) {
+    return operator.name()
+        + " | " + health.label()
+        + " | " + operatorNodeLatencyLabel(operator, latency)
+        + " | source " + latency.source()
+        + " | scope " + latency.scope();
+  }
+
+  private static FlinkMarkerLatencySnapshot edgeMarkerLatency(FlinkOperatorSnapshot targetOperator,
+      FlinkOperatorEdge edge) {
+    if (targetOperator == null) {
+      return null;
+    }
+    FlinkMarkerLatencySnapshot best = null;
+    for (FlinkMarkerLatencySnapshot marker : targetOperator.flinkMarkerLatencies()) {
+      if (edge.sourceId().equals(marker.sourceOperatorId()) && edge.targetId().equals(marker.targetOperatorId())
+          && marker.p95Ms() >= 0
+          && (best == null || marker.p95Ms() > best.p95Ms())) {
+        best = marker;
+      }
+    }
+    return best;
+  }
+
+  private static String operatorMetricGuide() {
+    return """
+        <div class="column-guide">
+          <h3>Column Guide</h3>
+          <table>
+            <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>Business Latency P50/P95/P99</td><td>Custom stage or sink-front latency mapped to this operator row. It is based on business event/window time and is cumulative to the probe point.</td></tr>
+              <tr><td>Watermark Lag</td><td>Custom stage watermark lag from the same mapped stage metric. N/A means no stage metric is mapped to this operator.</td></tr>
+              <tr><td>Flink Marker P95</td><td>Flink latency marker P95 observed on this downstream operator. Marker detail rows show each source-to-target input when Flink exposes it.</td></tr>
+              <tr><td>Flow Node Color</td><td>Green means mapped business latency/backpressure is within threshold, orange means business latency/backpressure is over threshold, grey means no mapped business latency sample is available for that operator.</td></tr>
+              <tr><td>Flow Edge Marker</td><td>Edge labels show Flink marker P95 for the source-to-target edge. NA marker values are not rendered.</td></tr>
+              <tr><td>Business Probe Source</td><td>The custom metric matched to the operator row, such as stage:kpi-1m, sink:iceberg-kpi-1m, or NA.</td></tr>
+              <tr><td>Latency Scope</td><td>output-age is cumulative business latency to the operator probe. sink-front is before connector write. NA means no mapped latency sample.</td></tr>
+            </tbody>
+          </table>
+          <h3>Abnormal Value Analysis</h3>
+          <table>
+            <thead><tr><th>Pattern</th><th>Likely Cause</th><th>Next Check</th></tr></thead>
+            <tbody>
+              <tr><td>Business Latency P95 high while Flink Marker P95 is normal</td><td>Window waiting, event-time skew, join wait, or business timestamp baseline is dominating.</td><td>Check Watermark Lag, 1m Window Diagnostics, and stage source mapping.</td></tr>
+              <tr><td>Flink Marker P95 high</td><td>Source-to-operator queueing, network transfer, shuffle, or backpressure before this operator.</td><td>Check upstream Records Out/s, downstream Busy, and Backpressure.</td></tr>
+              <tr><td>Backpressure high with low Records Out/s</td><td>The operator or downstream sink cannot drain at the produced rate.</td><td>Increase targeted parallelism or inspect sink/storage health.</td></tr>
+              <tr><td>Business Probe Source is NA</td><td>No custom stage or sink metric can be mapped to this Flink operator yet.</td><td>Add a lightweight StageMetricsProbe only if this operator is important for pressure analysis.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        """;
+  }
+
+  private record OperatorLatency(long p50Ms, long p95Ms, long p99Ms, long watermarkLagMs, String source,
+                                 String scope) {
+    static OperatorLatency empty() {
+      return new OperatorLatency(-1L, -1L, -1L, -1L, "NA", "NA");
+    }
+
+    boolean available() {
+      return p50Ms >= 0 || p95Ms >= 0 || p99Ms >= 0 || watermarkLagMs >= 0;
+    }
+  }
+
+  private static String operatorFlowDiagram(BenchmarkConfig config, BenchmarkRunResult result) {
+    BenchmarkRunPlan plan = result.plan();
+    BenchmarkThresholds thresholds = config.thresholds();
+    FdbMetricsSnapshot fdb = result.fdb();
+    FlinkSnapshot flink = result.flink();
     if (flink.operators().isEmpty()) {
       return "<p>No operator graph was captured for this run.</p>";
     }
     Map<String, Integer> levels = operatorLevels(flink.operators(), flink.operatorEdges());
     Map<String, FlowPosition> positions = operatorPositions(flink.operators(), levels);
+    Map<String, FlinkOperatorSnapshot> operatorsById = operatorsById(flink.operators());
     int maxLevel = levels.values().stream().max(Integer::compareTo).orElse(0);
     Map<Integer, Long> perLevel = levels.values().stream()
         .collect(Collectors.groupingBy(level -> level, Collectors.counting()));
     long maxRows = perLevel.values().stream().max(Long::compareTo).orElse(1L);
     int width = Math.max(760, 260 + (maxLevel * 260));
-    int height = Math.max(180, 100 + ((int) maxRows * 110));
+    int height = Math.max(190, 110 + ((int) maxRows * 130));
 
     StringBuilder edges = new StringBuilder();
     for (FlinkOperatorEdge edge : flink.operatorEdges()) {
@@ -514,23 +828,45 @@ public final class HtmlReportWriter {
       if (source == null || target == null) {
         continue;
       }
-      edges.append("<line class=\"flow-edge\" data-source-id=\"").append(escape(edge.sourceId()))
+      FlinkMarkerLatencySnapshot marker = edgeMarkerLatency(operatorsById.get(edge.targetId()), edge);
+      String edgeClass = marker == null ? "" : " " + flowEdgeMarkerClass(markerHealth(thresholds, marker));
+      int x1 = source.x() + 190;
+      int y1 = source.y() + 43;
+      int x2 = target.x() - 10;
+      int y2 = target.y() + 43;
+      edges.append("<line class=\"flow-edge").append(edgeClass).append("\" data-source-id=\"")
+          .append(escape(edge.sourceId()))
           .append("\" data-target-id=\"").append(escape(edge.targetId()))
-          .append("\" x1=\"").append(source.x() + 190).append("\" y1=\"").append(source.y() + 34)
-          .append("\" x2=\"").append(target.x() - 10).append("\" y2=\"").append(target.y() + 34)
+          .append("\" x1=\"").append(x1).append("\" y1=\"").append(y1)
+          .append("\" x2=\"").append(x2).append("\" y2=\"").append(y2)
           .append("\" marker-end=\"url(#arrow)\"></line>");
+      if (marker != null) {
+        GateHealth markerHealth = markerHealth(thresholds, marker);
+        edges.append("<text class=\"flow-edge-marker-label")
+            .append(markerHealth == GateHealth.UNSTABLE ? " flow-edge-marker-label-warn" : "")
+            .append("\" x=\"").append((x1 + x2) / 2)
+            .append("\" y=\"").append(((y1 + y2) / 2) - 8)
+            .append("\">P95 ").append(escape(formatMs(marker.p95Ms()))).append("</text>");
+      }
     }
 
     StringBuilder nodes = new StringBuilder();
     for (FlinkOperatorSnapshot operator : flink.operators()) {
       FlowPosition position = positions.get(operator.id());
-      nodes.append("<g class=\"flow-node\" data-operator-id=\"").append(escape(operator.id()))
+      OperatorLatency latency = operatorLatency(plan, fdb, operator);
+      GateHealth health = operatorGraphHealth(thresholds, operator, latency);
+      nodes.append("<g class=\"flow-node ").append(flowNodeClass(health))
+          .append("\" data-operator-id=\"").append(escape(operator.id()))
+          .append("\" data-latency-health=\"").append(escape(health.label()))
           .append("\" transform=\"translate(").append(position.x()).append(",").append(position.y()).append(")\">")
-          .append("<rect width=\"180\" height=\"68\" rx=\"4\"></rect>")
+          .append("<title>").append(escape(operatorNodeTitle(operator, latency, health))).append("</title>")
+          .append("<rect width=\"180\" height=\"86\" rx=\"4\"></rect>")
           .append("<text x=\"10\" y=\"22\">").append(escape(shortLabel(operator.name(), 28))).append("</text>")
           .append("<text x=\"10\" y=\"43\">p=").append(operator.parallelism())
           .append(" out/s=").append(escape(formatNumber(operator.recordsOutPerSec()))).append("</text>")
-          .append("<text x=\"10\" y=\"60\">bp=").append(escape(formatRatio(operator.backpressureRatio())))
+          .append("<text class=\"flow-latency\" x=\"10\" y=\"62\">")
+          .append(escape(operatorNodeLatencyLabel(operator, latency))).append("</text>")
+          .append("<text x=\"10\" y=\"79\">bp=").append(escape(formatRatio(operator.backpressureRatio())))
           .append("</text></g>");
     }
 
@@ -582,9 +918,17 @@ public final class HtmlReportWriter {
       int level = levels.getOrDefault(operator.id(), 0);
       int index = indexes.getOrDefault(level, 0);
       indexes.put(level, index + 1);
-      positions.put(operator.id(), new FlowPosition(40 + level * 260, 30 + index * 110));
+      positions.put(operator.id(), new FlowPosition(40 + level * 260, 30 + index * 130));
     }
     return positions;
+  }
+
+  private static Map<String, FlinkOperatorSnapshot> operatorsById(List<FlinkOperatorSnapshot> operators) {
+    Map<String, FlinkOperatorSnapshot> values = new LinkedHashMap<>();
+    for (FlinkOperatorSnapshot operator : operators) {
+      values.put(operator.id(), operator);
+    }
+    return values;
   }
 
   private record FlowPosition(int x, int y) {
@@ -841,6 +1185,10 @@ public final class HtmlReportWriter {
 
   private static String formatMs(long value) {
     return value < 0 ? "N/A" : value + " ms";
+  }
+
+  private static String formatWatermark(long value) {
+    return value < 0 ? "N/A" : Instant.ofEpochMilli(value).toString();
   }
 
   private static String formatRatio(double value) {
