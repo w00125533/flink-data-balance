@@ -126,6 +126,19 @@ class BenchmarkDecisionEngineTest {
   }
 
   @Test
+  void high_connector_write_or_commit_latency_marks_unstable() {
+    BenchmarkRunResult writeResult = engine.decide(plan(),
+        healthy().withFdb(healthy().fdb().withConnectorWriteP95Ms(181_000)));
+    BenchmarkRunResult commitResult = engine.decide(plan(),
+        healthy().withFdb(healthy().fdb().withConnectorCommitP95Ms(181_000)));
+
+    assertThat(writeResult.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(writeResult.bottleneckReason()).contains("connector write p95");
+    assertThat(commitResult.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(commitResult.bottleneckReason()).contains("connector commit p95");
+  }
+
+  @Test
   void unavailable_kpi_latency_samples_do_not_mark_run_unstable() {
     RunObservation observation = healthy().withFdb(new FdbMetricsSnapshot(2_000, -1, -1, 5_000, 0, 20_000));
 

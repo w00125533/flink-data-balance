@@ -55,6 +55,12 @@ public final class BenchmarkDecisionEngine {
     if (fdb.sinkP95Ms() >= 0 && fdb.sinkP95Ms() > thresholds.maxSinkP95Ms()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "sink p95 over threshold", observation);
     }
+    if (fdb.connectorWriteP95Ms() >= 0 && fdb.connectorWriteP95Ms() > thresholds.maxSinkP95Ms()) {
+      return result(plan, BenchmarkStatus.UNSTABLE, "connector write p95 over threshold", observation);
+    }
+    if (fdb.connectorCommitP95Ms() >= 0 && fdb.connectorCommitP95Ms() > thresholds.maxSinkP95Ms()) {
+      return result(plan, BenchmarkStatus.UNSTABLE, "connector commit p95 over threshold", observation);
+    }
     if (fdb.sinkFailures() > 0) {
       return result(plan, BenchmarkStatus.UNSTABLE, "sink failures " + fdb.sinkFailures(), observation);
     }

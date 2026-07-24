@@ -2,8 +2,11 @@ package com.fdb.job.sink;
 
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.CellKpi;
+import com.fdb.job.metrics.ConnectorSinkMetrics;
+import com.fdb.job.metrics.InstrumentedIcebergSink;
 import com.fdb.job.metrics.MetricRuntimeConfig;
 import com.fdb.job.metrics.SinkLatencyProbe;
+import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
@@ -18,10 +21,12 @@ import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.TableLoader;
-import org.apache.iceberg.flink.sink.FlinkSink;
+import org.apache.iceberg.flink.sink.IcebergSink;
 import org.apache.iceberg.hive.HiveCatalog;
 import org.apache.iceberg.types.Types;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Map;
 
 public final class IcebergSinks {
@@ -174,20 +179,42 @@ public final class IcebergSinks {
             "uri", config.metastoreUri());
     }
 
-    public static DataStreamSink<Void> appendCellKpiSink(DataStream<RowData> stream, IcebergConfig config) {
+    public static DataStreamSink<?> appendCellKpiSink(DataStream<RowData> stream, IcebergConfig config) {
         Schema schema = cellKpiSchema();
         return appendRowDataSink(stream, config, cellKpiIdentifier(config), schema, cellKpiPartitionSpec(schema));
     }
 
-    static DataStreamSink<Void> appendRowDataSink(DataStream<RowData> stream, IcebergConfig config,
-                                                  TableIdentifier identifier, Schema schema, PartitionSpec spec) {
+    static DataStreamSink<?> appendRowDataSink(DataStream<RowData> stream, IcebergConfig config,
+                                               TableIdentifier identifier, Schema schema, PartitionSpec spec) {
+        return appendRowDataSink(stream, config, identifier, schema, spec, null);
+    }
+
+    static DataStreamSink<?> appendRowDataSink(DataStream<RowData> stream, IcebergConfig config,
+                                               TableIdentifier identifier, Schema schema, PartitionSpec spec,
+                                               ConnectorSinkMetrics connectorMetrics) {
         ensureTable(config, identifier, schema, spec);
         CatalogLoader catalogLoader = CatalogLoader.hive(
             config.catalogName(), new Configuration(), catalogProperties(config));
         TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, identifier);
-        return FlinkSink.forRowData(stream)
-            .tableLoader(tableLoader)
-            .append();
+        IcebergSink.Builder builder = IcebergSink.forRowData(stream).tableLoader(tableLoader);
+        if (connectorMetrics == null) {
+            return builder.append();
+        }
+        return stream.sinkTo(new InstrumentedIcebergSink(buildIcebergSink(builder), connectorMetrics));
+    }
+
+    @SuppressWarnings("unchecked")
+    static Sink<RowData> buildIcebergSink(IcebergSink.Builder builder) {
+        try {
+            Method build = builder.getClass().getDeclaredMethod("build");
+            build.setAccessible(true);
+            return (Sink<RowData>) build.invoke(builder);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new IllegalStateException("Iceberg connector sink instrumentation requires IcebergSink.Builder#build", e);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            throw new IllegalStateException("Failed to build Iceberg connector sink for instrumentation", cause);
+        }
     }
 
     public static void appendBusinessResultSinks(
@@ -203,59 +230,81 @@ public final class IcebergSinks {
         Schema anomalySchema = anomalySchema();
         PartitionSpec anomalySpec = anomalyPartitionSpec(anomalySchema);
 
+        String kpi1mStage = ResultSinks.kpiStageId(com.fdb.job.config.ResultSinkType.ICEBERG, "1m");
+        String kpi5mStage = ResultSinks.kpiStageId(com.fdb.job.config.ResultSinkType.ICEBERG, "5m");
+        String cellAnomalyStage = ResultSinks.anomalyStageId(com.fdb.job.config.ResultSinkType.ICEBERG, "cell");
+        String userAnomalyStage = ResultSinks.anomalyStageId(com.fdb.job.config.ResultSinkType.ICEBERG, "user");
+        String gridAnomalyStage = ResultSinks.anomalyStageId(com.fdb.job.config.ResultSinkType.ICEBERG, "grid");
+
         DataStream<RowData> icebergKpi1m = kpi1m
-            .process(new SinkLatencyProbe<>("iceberg-kpi-1m", "Cell KPI 1m Iceberg Sink", "iceberg",
+            .process(new SinkLatencyProbe<>(kpi1mStage, "Cell KPI 1m Iceberg Sink", "iceberg",
                 "kpi_1m", "MIN_1", 100, metricConfig), new GenericTypeInfo<>(CellKpi.class))
             .startNewChain()
-            .name("iceberg-kpi-1m")
+            .name(kpi1mStage)
             .map(new CellKpiIcebergMapper())
             .returns(new GenericTypeInfo<>(RowData.class))
             .name("cell-kpi-1m-iceberg-map");
-        appendRowDataSink(icebergKpi1m, config, cellKpiIdentifier(config), kpiSchema, kpiSpec)
+        appendRowDataSink(icebergKpi1m, config, cellKpiIdentifier(config), kpiSchema, kpiSpec,
+            connectorMetrics(kpi1mStage, "Cell KPI 1m Iceberg Sink", "iceberg", "kpi_1m", "MIN_1",
+                metricConfig))
             .name("cell-kpi-1m-iceberg-sink");
 
         DataStream<RowData> icebergKpi5m = kpi5m
-            .process(new SinkLatencyProbe<>("iceberg-kpi-5m", "Cell KPI 5m Iceberg Sink", "iceberg",
+            .process(new SinkLatencyProbe<>(kpi5mStage, "Cell KPI 5m Iceberg Sink", "iceberg",
                 "kpi_5m", "MIN_5", 100, metricConfig), new GenericTypeInfo<>(CellKpi.class))
             .startNewChain()
-            .name("iceberg-kpi-5m")
+            .name(kpi5mStage)
             .map(new CellKpiIcebergMapper())
             .returns(new GenericTypeInfo<>(RowData.class))
             .name("cell-kpi-5m-iceberg-map");
-        appendRowDataSink(icebergKpi5m, config, cellKpiIdentifier(config), kpiSchema, kpiSpec)
+        appendRowDataSink(icebergKpi5m, config, cellKpiIdentifier(config), kpiSchema, kpiSpec,
+            connectorMetrics(kpi5mStage, "Cell KPI 5m Iceberg Sink", "iceberg", "kpi_5m", "MIN_5",
+                metricConfig))
             .name("cell-kpi-5m-iceberg-sink");
 
         DataStream<RowData> icebergCellAnomalies = cellAnomalies
-            .process(new SinkLatencyProbe<>("iceberg-cell-anomaly", "Cell Anomaly Iceberg Sink", "iceberg",
+            .process(new SinkLatencyProbe<>(cellAnomalyStage, "Cell Anomaly Iceberg Sink", "iceberg",
                 "cell_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
-            .name("iceberg-cell-anomaly")
+            .name(cellAnomalyStage)
             .map(new AnomalyEventIcebergMapper())
             .returns(new GenericTypeInfo<>(RowData.class))
             .name("cell-anomaly-iceberg-map");
-        appendRowDataSink(icebergCellAnomalies, config, cellAnomalyIdentifier(config), anomalySchema, anomalySpec)
+        appendRowDataSink(icebergCellAnomalies, config, cellAnomalyIdentifier(config), anomalySchema, anomalySpec,
+            connectorMetrics(cellAnomalyStage, "Cell Anomaly Iceberg Sink", "iceberg",
+                "cell_anomaly_events", "ANOMALY", metricConfig))
             .name("cell-anomaly-iceberg-sink");
 
         DataStream<RowData> icebergUserAnomalies = userAnomalies
-            .process(new SinkLatencyProbe<>("iceberg-user-anomaly", "User Anomaly Iceberg Sink", "iceberg",
+            .process(new SinkLatencyProbe<>(userAnomalyStage, "User Anomaly Iceberg Sink", "iceberg",
                 "user_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
-            .name("iceberg-user-anomaly")
+            .name(userAnomalyStage)
             .map(new AnomalyEventIcebergMapper())
             .returns(new GenericTypeInfo<>(RowData.class))
             .name("user-anomaly-iceberg-map");
-        appendRowDataSink(icebergUserAnomalies, config, userAnomalyIdentifier(config), anomalySchema, anomalySpec)
+        appendRowDataSink(icebergUserAnomalies, config, userAnomalyIdentifier(config), anomalySchema, anomalySpec,
+            connectorMetrics(userAnomalyStage, "User Anomaly Iceberg Sink", "iceberg",
+                "user_anomaly_events", "ANOMALY", metricConfig))
             .name("user-anomaly-iceberg-sink");
 
         DataStream<RowData> icebergGridAnomalies = gridAnomalies
-            .process(new SinkLatencyProbe<>("iceberg-grid-anomaly", "Grid Anomaly Iceberg Sink", "iceberg",
+            .process(new SinkLatencyProbe<>(gridAnomalyStage, "Grid Anomaly Iceberg Sink", "iceberg",
                 "grid_anomaly_events", "ANOMALY", 100, metricConfig), new GenericTypeInfo<>(AnomalyEvent.class))
             .startNewChain()
-            .name("iceberg-grid-anomaly")
+            .name(gridAnomalyStage)
             .map(new AnomalyEventIcebergMapper())
             .returns(new GenericTypeInfo<>(RowData.class))
             .name("grid-anomaly-iceberg-map");
-        appendRowDataSink(icebergGridAnomalies, config, gridAnomalyIdentifier(config), anomalySchema, anomalySpec)
+        appendRowDataSink(icebergGridAnomalies, config, gridAnomalyIdentifier(config), anomalySchema, anomalySpec,
+            connectorMetrics(gridAnomalyStage, "Grid Anomaly Iceberg Sink", "iceberg",
+                "grid_anomaly_events", "ANOMALY", metricConfig))
             .name("grid-anomaly-iceberg-sink");
+    }
+
+    private static ConnectorSinkMetrics connectorMetrics(String stageId, String displayName, String sinkType,
+                                                         String dataset, String windowKind,
+                                                         MetricRuntimeConfig metricConfig) {
+        return new ConnectorSinkMetrics(stageId, displayName, sinkType, dataset, windowKind, 100, metricConfig);
     }
 }

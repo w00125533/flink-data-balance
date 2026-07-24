@@ -42,7 +42,7 @@ final class LatencyStats implements Serializable {
         return snapshot;
     }
 
-    private void recordLatency(long latencyMs) {
+    void recordLatency(long latencyMs) {
         seen++;
         if (size < samples.length) {
             samples[size++] = latencyMs;

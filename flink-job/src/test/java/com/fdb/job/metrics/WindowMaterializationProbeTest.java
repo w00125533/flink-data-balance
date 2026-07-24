@@ -19,10 +19,26 @@ class WindowMaterializationProbeTest {
         assertThat(sample.dataset()).isEqualTo("chr-1m");
         assertThat(sample.windowKind()).isEqualTo("MIN_1@60000");
         assertThat(sample.records()).isEqualTo(1_000L);
+        assertThat(sample.latencyP50Ms()).isEqualTo(63_456L);
+        assertThat(sample.latencyP95Ms()).isEqualTo(63_456L);
+        assertThat(sample.latencyP99Ms()).isEqualTo(63_456L);
         assertThat(sample.runId()).isEqualTo("run-a");
         assertThat(sample.resultSink()).isEqualTo("iceberg");
         assertThat(sample.parallelism()).isEqualTo(6);
         assertThat(sample.subtaskIndex()).isEqualTo(2);
+    }
+
+    @Test
+    void clamps_window_materialization_latency_to_zero_when_processing_time_is_behind_window_end() {
+        MetricRuntimeConfig metricConfig = new MetricRuntimeConfig("run-a", "iceberg", 6, true);
+
+        StageMetricSample sample = WindowMaterializationProbe.sample(
+            "window-chr-1m", "CHR 1m Materialization", "chr-1m", "MIN_1",
+            60_000L, 1_000L, metricConfig, 2, 59_000L);
+
+        assertThat(sample.latencyP50Ms()).isZero();
+        assertThat(sample.latencyP95Ms()).isZero();
+        assertThat(sample.latencyP99Ms()).isZero();
     }
 
     @Test

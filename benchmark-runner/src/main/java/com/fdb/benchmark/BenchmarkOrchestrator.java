@@ -6,6 +6,8 @@ import java.util.List;
 public final class BenchmarkOrchestrator {
   private static final long POST_CLEANUP_STORAGE_REFRESH_MIN_TIMEOUT_SEC = 30;
   private static final long POST_CLEANUP_STORAGE_REFRESH_MAX_SLEEP_SEC = 5;
+  private static final int POST_CLEANUP_FLINK_METRICS_REFRESH_ATTEMPTS = 3;
+  private static final long POST_CLEANUP_FLINK_METRICS_REFRESH_SLEEP_MS = 2_000L;
 
   private final BenchmarkConfig config;
   private final DeployCommandClient deploy;
@@ -55,6 +57,9 @@ public final class BenchmarkOrchestrator {
         result = failedResult(plan, e);
       }
       Exception cleanupFailure = cleanup(plan);
+      if (cleanupFailure == null && result != null && shouldRefreshFlinkAfterCleanup(result)) {
+        result = refreshFlinkAfterCleanup(plan, result);
+      }
       if (cleanupFailure == null && result != null && shouldRefreshStorageAfterCleanup(plan, result)) {
         result = refreshStorageAfterCleanup(plan, result);
       }
@@ -149,6 +154,70 @@ public final class BenchmarkOrchestrator {
       }
     }
     return result.withStorage(best);
+  }
+
+  private BenchmarkRunResult refreshFlinkAfterCleanup(BenchmarkRunPlan plan, BenchmarkRunResult result) {
+    FlinkSnapshot best = result.flink();
+    for (int attempt = 0; attempt < POST_CLEANUP_FLINK_METRICS_REFRESH_ATTEMPTS; attempt++) {
+      try {
+        FlinkSnapshot current = clients.observe(plan).flink();
+        if (isBetterFlinkSnapshot(best, current)) {
+          best = current.withJobStatus(result.flink().jobStatus());
+        }
+        if (operatorMetricsAvailableCount(best) == best.operators().size() && !best.operators().isEmpty()) {
+          return result.withFlink(best);
+        }
+      } catch (Exception e) {
+        // Keep the drain result when post-cleanup Flink REST metrics are transiently unavailable.
+      }
+      if (attempt + 1 < POST_CLEANUP_FLINK_METRICS_REFRESH_ATTEMPTS && !sleepFlinkMetricsRefresh()) {
+        break;
+      }
+    }
+    return result.withFlink(best);
+  }
+
+  private static boolean shouldRefreshFlinkAfterCleanup(BenchmarkRunResult result) {
+    return result.status() != BenchmarkStatus.FAILED
+        && hasPublishedSourceRecords(result.source())
+        && hasMissingOperatorMetrics(result.flink());
+  }
+
+  private static boolean hasPublishedSourceRecords(SourceMetricsSnapshot source) {
+    return source.present()
+        && (source.chrPublished() > 0 || source.pmPublished() > 0 || source.cfgPublished() > 0);
+  }
+
+  private static boolean hasMissingOperatorMetrics(FlinkSnapshot flink) {
+    return !flink.operators().isEmpty()
+        && flink.operators().stream().anyMatch(operator -> !operator.metricsAvailable());
+  }
+
+  private static boolean isBetterFlinkSnapshot(FlinkSnapshot best, FlinkSnapshot current) {
+    int bestAvailable = operatorMetricsAvailableCount(best);
+    int currentAvailable = operatorMetricsAvailableCount(current);
+    if (currentAvailable > bestAvailable) {
+      return true;
+    }
+    if (currentAvailable == 0 || currentAvailable < bestAvailable) {
+      return false;
+    }
+    return current.recordsInTotal() > best.recordsInTotal()
+        || current.recordsOutTotal() > best.recordsOutTotal();
+  }
+
+  private static int operatorMetricsAvailableCount(FlinkSnapshot flink) {
+    return Math.toIntExact(flink.operators().stream().filter(FlinkOperatorSnapshot::metricsAvailable).count());
+  }
+
+  private boolean sleepFlinkMetricsRefresh() {
+    try {
+      Thread.sleep(POST_CLEANUP_FLINK_METRICS_REFRESH_SLEEP_MS);
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 
   private boolean isPostCleanupStorageVisible(

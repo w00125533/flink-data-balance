@@ -56,10 +56,11 @@ class HtmlReportWriterTest {
         .contains("<tr><th>Checkpoint Interval</th><td>60000 ms</td></tr>")
         .contains("<tr><th>Checkpoint Duration</th><td>10000 ms</td></tr>")
         .contains("Operator Flow &amp; Metrics")
-        .contains("Business Latency P95")
+        .contains("Cumulative Business Age P95")
         .contains("Flink Marker P95")
         .contains("Column Guide")
         .contains("Abnormal Value Analysis")
+        .contains("latency marker unavailable")
         .contains("N/A")
         .contains("Flink Resources")
         .contains("operator-flow")
@@ -112,9 +113,12 @@ class HtmlReportWriterTest {
         new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1_200, 1_100, 1, 4, List.of(
             new FlinkOperatorSnapshot("kpi-1m", "kpi-1m-full-join", 4,
                 300, 100, 600, 200, 8_192, 2_048, 0.4, 0.6, 0.0))),
-        new FdbMetricsSnapshot(1, 2, 3, -1, 0, 5, List.of(
+        new FdbMetricsSnapshot(1, 2, 3, 20, 10, 33, 0, 5, List.of(
             new StageLatencySnapshot("kpi-1m", 10, 20, -1, 5)),
-            List.of(new SinkLatencySnapshot("starrocks-kpi-1m", 200, 20_000, 10, 20, -1, 0))),
+            List.of(
+                new SinkLatencySnapshot("starrocks-kpi-1m", 200, 20_000, 10, 20, -1, 0),
+                new SinkLatencySnapshot("starrocks-kpi-1m.connector-write", 200, 0, 4, 10, 12, 0),
+                new SinkLatencySnapshot("starrocks-kpi-1m.connector-commit", 4, 0, 20, 33, 40, 0))),
         new StorageSnapshot(true, "starrocks rows=12345", 12_345, 0, 0),
         TopologyMetricsSnapshot.empty(),
         new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 12, 12,
@@ -128,14 +132,115 @@ class HtmlReportWriterTest {
         .contains("Sampled Avg Out EPS")
         .contains("<tr><th>Sampled Avg Records In/s</th><td>300</td></tr>")
         .contains("<tr><th>Operator Aggregate Records In Total</th><td>1200</td></tr>")
-        .contains("<th>Business Latency P50</th><th>Business Latency P95</th><th>Business Latency P99</th>")
+        .contains("<th>Cumulative Business Age P50</th><th>Cumulative Business Age P95</th><th>Cumulative Business Age P99</th>")
         .contains("<td>kpi-1m-full-join</td><td>kpi</td><td>4</td><td>300</td><td>100</td>")
-        .contains("<td>10 ms</td><td>20 ms</td><td>N/A</td><td>5 ms</td><td>N/A</td><td>stage:kpi-1m</td><td>output-age</td>")
+        .contains("<td>10 ms</td><td>20 ms</td><td>N/A</td><td>5 ms</td><td>stage:kpi-1m</td><td>output-age</td>")
         .contains("<tr><th>CFG total</th><td>1000</td><td>1000.00</td><td>1.00</td><td>N/A (one-time init)</td></tr>")
-        .contains("Business Latency P95 high while Flink Marker P95 is normal")
+        .contains("Cumulative Business Age P95 high while Flink Marker P95 is normal")
         .contains("Flink Marker P95 high")
-        .contains("<tr><td>Storage Rows</td><td>12345</td><td>-</td><td colspan=\"5\">starrocks rows=12345</td></tr>")
+        .contains("Connector Write P95")
+        .contains("Connector Commit P95")
+        .contains("<td>connector-commit</td><td>starrocks-kpi-1m.connector-commit</td>")
+        .contains("Latency Confidence")
+        .contains("<tr><td>Storage Rows</td><td>storage</td><td>starrocks</td><td>12345</td><td>-</td><td colspan=\"5\">starrocks rows=12345</td></tr>")
         .doesNotContain("Storage Files</td><td>12345");
+  }
+
+  @Test
+  void report_marks_untrusted_operator_metrics_as_unavailable() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-missing-operator-metrics",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+    BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
+    BenchmarkRunResult result = new BenchmarkRunResult(plan, BenchmarkStatus.STABLE,
+        "all thresholds healthy",
+        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 0, 0, 0, 0, 1, 4, List.of(
+            new FlinkOperatorSnapshot("source-1", "Source: chr-source", 4,
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, -1, -1, -1, List.of(), false))),
+        new FdbMetricsSnapshot(1, 2, -1, -1, 0, 0, List.of(), List.of()),
+        new StorageSnapshot(true, "healthy", 0, 0, 0),
+        TopologyMetricsSnapshot.empty(),
+        new SourceMetricsSnapshot(true, 30_000, 90_000, 30_000.0, 3_000, 0, 0,
+            1_000, 3_000, 1_000.0, 3_000, 0, 0,
+            1_000, 1_000, 0.0, 0, 0, 0));
+
+    new HtmlReportWriter(tempDir).write(config, List.of(result));
+
+    String html = Files.readString(tempDir.resolve(
+        "bench-missing-operator-metrics/runs/" + plan.runId() + "/report.html"));
+    assertThat(html)
+        .contains("<tr><th>Operator Metrics Validity</th><td>unavailable")
+        .contains("<td>Source: chr-source</td><td>source</td><td>4</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>")
+        .contains("<td>Business Latency Mapping</td><td>0/1 operators</td><td>shown</td>")
+        .contains("unmapped business probe")
+        .contains("no probe")
+        .doesNotContain("P95 N/A")
+        .contains("out/s=N/A")
+        .contains("bp=N/A");
+  }
+
+  @Test
+  void operator_table_hides_all_empty_optional_columns_and_reports_metric_coverage() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-optional-coverage",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+    BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
+    BenchmarkRunResult result = new BenchmarkRunResult(plan, BenchmarkStatus.STABLE,
+        "all thresholds healthy",
+        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1_200, 1_100, 1, 4, List.of(
+            new FlinkOperatorSnapshot("source-1", "Source: chr-source", 4,
+                300, 300, 600, 600, 8_192, 8_192, 0.2, 0.8, 0.0,
+                0, 123456L, -1L))),
+        new FdbMetricsSnapshot(1, 2, -1, -1, 0, 0, List.of(
+            new StageLatencySnapshot("chr-source", 1, 2, 3, 4)), List.of()),
+        new StorageSnapshot(true, "healthy", 0, 0, 0),
+        TopologyMetricsSnapshot.empty(),
+        new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 0, 0,
+            100, 1000, 100.0, 10_000, 0, 0,
+            250, 1000, 1000.0, 0, 0, 0));
+
+    new HtmlReportWriter(tempDir).write(config, List.of(result));
+
+    String html = Files.readString(tempDir.resolve(
+        "bench-optional-coverage/runs/" + plan.runId() + "/report.html"));
+    assertThat(html)
+        .contains("Metric Coverage")
+        .contains("<td>Flink Operator Metrics</td><td>1/1 operators</td><td>shown</td>")
+        .contains("<td>Input Watermark</td><td>1/1 operators</td><td>shown</td>")
+        .contains("<td>Output Watermark</td><td>0/1 operators</td><td>hidden")
+        .contains("<td>Flink Marker P95</td><td>0/1 operators</td><td>hidden")
+        .contains("<th>Input Watermark</th>")
+        .doesNotContain("<th>Input Watermark</th><th>Output Watermark</th><th>Backpressure</th>")
+        .doesNotContain("<th>Watermark Lag</th><th>Flink Marker P95</th>");
+  }
+
+  @Test
+  void sink_storage_table_marks_low_latency_sample_confidence() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-low-confidence",
+        "FDB_BENCHMARK_SINKS", "starrocks",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+    BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
+    BenchmarkRunResult result = new BenchmarkRunResult(plan, BenchmarkStatus.STABLE,
+        "all thresholds healthy",
+        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1_200, 1_100, 1, 4),
+        new FdbMetricsSnapshot(1, 2, -1, 12, 0, 0, List.of(),
+            List.of(new SinkLatencySnapshot("starrocks-cell-anomaly", 6, 1_024, 10, 12, 12, 0))),
+        new StorageSnapshot(true, "starrocks rows=6", 6, 0, 0),
+        TopologyMetricsSnapshot.empty(),
+        new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 0, 0,
+            100, 1000, 100.0, 10_000, 0, 0,
+            250, 1000, 1000.0, 0, 0, 0));
+
+    new HtmlReportWriter(tempDir).write(config, List.of(result));
+
+    String html = Files.readString(tempDir.resolve("bench-low-confidence/runs/" + plan.runId() + "/report.html"));
+    assertThat(html)
+        .contains("Latency Confidence")
+        .contains("<td>low (&lt;30 records)</td>");
   }
 
   @Test
@@ -256,11 +361,10 @@ class HtmlReportWriterTest {
     assertThat(html)
         .contains("1m Window Diagnostics")
         .contains("<td>1m Window Materialization</td><td>CHR=0, PM=4, KPI=0 closed minutes</td><td>&gt;= 4 closed minutes</td><td><span class=\"health health-warn\">UNSTABLE</span></td>")
+        .contains("<thead><tr><th>Stage</th><th>Records In Total</th><th>Records Out Total</th><th>Closed Minutes</th><th>Expected Closed Minutes</th><th>Health</th></tr></thead>")
         .contains("<tr><td>CHR 1m</td><td>0</td><td>0</td><td>0</td><td>4</td>")
         .contains("<tr><td>PM 1m</td><td>0</td><td>40000</td><td>4</td><td>4</td>")
-        .contains("<tr><td>KPI 1m</td><td>0</td><td>0</td><td>0</td><td>4</td>")
-        .contains("Input Watermark")
-        .contains("Output Watermark");
+        .contains("<tr><td>KPI 1m</td><td>0</td><td>0</td><td>0</td><td>4</td>");
   }
 
   private static SinkLatencySnapshot windowMaterialization(

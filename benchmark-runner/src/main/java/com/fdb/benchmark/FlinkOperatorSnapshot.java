@@ -19,7 +19,8 @@ public record FlinkOperatorSnapshot(
     long currentInputWatermarkMs,
     long currentOutputWatermarkMs,
     long flinkMarkerP95Ms,
-    List<FlinkMarkerLatencySnapshot> flinkMarkerLatencies) {
+    List<FlinkMarkerLatencySnapshot> flinkMarkerLatencies,
+    boolean metricsAvailable) {
 
   private static final long UNKNOWN_WATERMARK_MS = -1L;
 
@@ -43,7 +44,7 @@ public record FlinkOperatorSnapshot(
       long pendingRecords) {
     this(id, name, parallelism, recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal,
         bytesInPerSec, bytesOutPerSec, busyRatio, idleRatio, backpressureRatio, pendingRecords,
-        UNKNOWN_WATERMARK_MS, UNKNOWN_WATERMARK_MS, -1L, List.of());
+        UNKNOWN_WATERMARK_MS, UNKNOWN_WATERMARK_MS, -1L, List.of(), true);
   }
 
   public FlinkOperatorSnapshot(
@@ -61,7 +62,7 @@ public record FlinkOperatorSnapshot(
       double backpressureRatio) {
     this(id, name, parallelism, recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal,
         bytesInPerSec, bytesOutPerSec, busyRatio, idleRatio, backpressureRatio, 0,
-        UNKNOWN_WATERMARK_MS, UNKNOWN_WATERMARK_MS, -1L, List.of());
+        UNKNOWN_WATERMARK_MS, UNKNOWN_WATERMARK_MS, -1L, List.of(), true);
   }
 
   public FlinkOperatorSnapshot(
@@ -77,7 +78,7 @@ public record FlinkOperatorSnapshot(
       double backpressureRatio) {
     this(id, name, parallelism, recordsInPerSec, recordsOutPerSec, 0, 0,
         bytesInPerSec, bytesOutPerSec, busyRatio, idleRatio, backpressureRatio, 0,
-        UNKNOWN_WATERMARK_MS, UNKNOWN_WATERMARK_MS, -1L, List.of());
+        UNKNOWN_WATERMARK_MS, UNKNOWN_WATERMARK_MS, -1L, List.of(), true);
   }
 
   public FlinkOperatorSnapshot(
@@ -98,7 +99,7 @@ public record FlinkOperatorSnapshot(
       long currentOutputWatermarkMs) {
     this(id, name, parallelism, recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal,
         bytesInPerSec, bytesOutPerSec, busyRatio, idleRatio, backpressureRatio, pendingRecords,
-        currentInputWatermarkMs, currentOutputWatermarkMs, -1L, List.of());
+        currentInputWatermarkMs, currentOutputWatermarkMs, -1L, List.of(), true);
   }
 
   public FlinkOperatorSnapshot(
@@ -120,6 +121,29 @@ public record FlinkOperatorSnapshot(
       long flinkMarkerP95Ms) {
     this(id, name, parallelism, recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal,
         bytesInPerSec, bytesOutPerSec, busyRatio, idleRatio, backpressureRatio, pendingRecords,
-        currentInputWatermarkMs, currentOutputWatermarkMs, flinkMarkerP95Ms, List.of());
+        currentInputWatermarkMs, currentOutputWatermarkMs, flinkMarkerP95Ms, List.of(), true);
+  }
+
+  public FlinkOperatorSnapshot(
+      String id,
+      String name,
+      int parallelism,
+      double recordsInPerSec,
+      double recordsOutPerSec,
+      double recordsInTotal,
+      double recordsOutTotal,
+      double bytesInPerSec,
+      double bytesOutPerSec,
+      double busyRatio,
+      double idleRatio,
+      double backpressureRatio,
+      long pendingRecords,
+      long currentInputWatermarkMs,
+      long currentOutputWatermarkMs,
+      long flinkMarkerP95Ms,
+      List<FlinkMarkerLatencySnapshot> flinkMarkerLatencies) {
+    this(id, name, parallelism, recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal,
+        bytesInPerSec, bytesOutPerSec, busyRatio, idleRatio, backpressureRatio, pendingRecords,
+        currentInputWatermarkMs, currentOutputWatermarkMs, flinkMarkerP95Ms, flinkMarkerLatencies, true);
   }
 }

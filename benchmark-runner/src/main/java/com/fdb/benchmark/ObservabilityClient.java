@@ -33,7 +33,8 @@ public final class ObservabilityClient {
         long latencyP95Ms = firstLongOrDefault(stage, -1, "latencyP95Ms", "p95Ms");
         long latencyP99Ms = firstLongOrDefault(stage, -1, "latencyP99Ms", "p99Ms");
         long stageWatermarkLagMs = stage.path("watermarkLagMs").asLong(0);
-        if (isDefaultStagePlaceholder(status, latencyP50Ms, latencyP95Ms, latencyP99Ms, stageWatermarkLagMs)) {
+        if (isDefaultStagePlaceholder(status, latencyP50Ms, latencyP95Ms, latencyP99Ms, stageWatermarkLagMs)
+            || isZeroOnlyStagePlaceholder(latencyP50Ms, latencyP95Ms, latencyP99Ms, stageWatermarkLagMs)) {
           continue;
         }
         stageLatencies.add(new StageLatencySnapshot(stageId, latencyP50Ms, latencyP95Ms, latencyP99Ms,
@@ -54,9 +55,14 @@ public final class ObservabilityClient {
     JsonNode sinks = readOrEmpty("/api/results/sink-latency");
     List<SinkLatencySnapshot> sinkLatencies = new ArrayList<>();
     long sinkP95Ms = -1;
+    long connectorWriteP95Ms = -1;
+    long connectorCommitP95Ms = -1;
     long sinkFailures = 0;
     if (sinks.isArray()) {
       for (JsonNode sink : sinks) {
+        String sinkName = sink.path("sinkName").asText(sink.path("sink").asText(""));
+        String scope = sink.path("scope").asText(SinkLatencySnapshot.inferScope(sinkName));
+        String sinkType = sink.path("sinkType").asText("");
         long latencyP50Ms = firstLongOrDefault(sink, -1, "latencyP50Ms", "p50Ms");
         long latencyP95Ms = firstLongOrDefault(sink, -1, "latencyP95Ms", "p95Ms");
         long latencyP99Ms = firstLongOrDefault(sink, -1, "latencyP99Ms", "p99Ms");
@@ -67,8 +73,9 @@ public final class ObservabilityClient {
           continue;
         }
         sinkLatencies.add(new SinkLatencySnapshot(
-            sink.path("sinkName").asText(sink.path("sink").asText("")),
-            sink.path("sinkType").asText(""),
+            sinkName,
+            scope,
+            sinkType,
             sink.path("dataset").asText(""),
             sink.path("windowKind").asText(""),
             records,
@@ -77,14 +84,20 @@ public final class ObservabilityClient {
             latencyP95Ms,
             latencyP99Ms,
             failures));
-        if (!"window-materialization".equalsIgnoreCase(sink.path("sinkType").asText(""))) {
-          sinkP95Ms = maxAvailable(sinkP95Ms, latencyP95Ms);
+        if (!"window-materialization".equalsIgnoreCase(sinkType)) {
+          if ("connector-write".equalsIgnoreCase(scope)) {
+            connectorWriteP95Ms = maxAvailable(connectorWriteP95Ms, latencyP95Ms);
+          } else if ("connector-commit".equalsIgnoreCase(scope)) {
+            connectorCommitP95Ms = maxAvailable(connectorCommitP95Ms, latencyP95Ms);
+          } else {
+            sinkP95Ms = maxAvailable(sinkP95Ms, latencyP95Ms);
+          }
           sinkFailures += failures;
         }
       }
     }
-    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures,
-        watermarkLagMs, stageLatencies, sinkLatencies);
+    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, connectorWriteP95Ms,
+        connectorCommitP95Ms, sinkFailures, watermarkLagMs, stageLatencies, sinkLatencies);
   }
 
   private JsonNode readStages() {
@@ -147,6 +160,17 @@ public final class ObservabilityClient {
         && latencyP50Ms < 0
         && latencyP95Ms <= 0
         && latencyP99Ms < 0
+        && watermarkLagMs == 0;
+  }
+
+  private static boolean isZeroOnlyStagePlaceholder(
+      long latencyP50Ms,
+      long latencyP95Ms,
+      long latencyP99Ms,
+      long watermarkLagMs) {
+    return latencyP50Ms == 0
+        && latencyP95Ms == 0
+        && latencyP99Ms == 0
         && watermarkLagMs == 0;
   }
 

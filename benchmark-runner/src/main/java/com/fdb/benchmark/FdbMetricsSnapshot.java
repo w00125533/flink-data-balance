@@ -7,6 +7,8 @@ public record FdbMetricsSnapshot(
     long kpi1mP95Ms,
     long kpi5mP95Ms,
     long sinkP95Ms,
+    long connectorWriteP95Ms,
+    long connectorCommitP95Ms,
     long sinkFailures,
     long watermarkLagMs,
     List<StageLatencySnapshot> stageLatencies,
@@ -19,8 +21,21 @@ public record FdbMetricsSnapshot(
       long sinkP95Ms,
       long sinkFailures,
       long watermarkLagMs) {
-    this(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, sinkFailures, watermarkLagMs,
+    this(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, -1L, -1L, sinkFailures, watermarkLagMs,
         List.of(), List.of());
+  }
+
+  public FdbMetricsSnapshot(
+      long sourceDelayP95Ms,
+      long kpi1mP95Ms,
+      long kpi5mP95Ms,
+      long sinkP95Ms,
+      long sinkFailures,
+      long watermarkLagMs,
+      List<StageLatencySnapshot> stageLatencies,
+      List<SinkLatencySnapshot> sinkLatencies) {
+    this(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, -1L, -1L, sinkFailures, watermarkLagMs,
+        stageLatencies, sinkLatencies);
   }
 
   public FdbMetricsSnapshot {
@@ -29,12 +44,22 @@ public record FdbMetricsSnapshot(
   }
 
   public FdbMetricsSnapshot withKpi1mP95Ms(long value) {
-    return new FdbMetricsSnapshot(sourceDelayP95Ms, value, kpi5mP95Ms, sinkP95Ms, sinkFailures, watermarkLagMs,
-        stageLatencies, sinkLatencies);
+    return new FdbMetricsSnapshot(sourceDelayP95Ms, value, kpi5mP95Ms, sinkP95Ms, connectorWriteP95Ms,
+        connectorCommitP95Ms, sinkFailures, watermarkLagMs, stageLatencies, sinkLatencies);
   }
 
   public FdbMetricsSnapshot withSinkP95Ms(long value) {
-    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, value, sinkFailures, watermarkLagMs,
-        stageLatencies, sinkLatencies);
+    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, value, connectorWriteP95Ms,
+        connectorCommitP95Ms, sinkFailures, watermarkLagMs, stageLatencies, sinkLatencies);
+  }
+
+  public FdbMetricsSnapshot withConnectorWriteP95Ms(long value) {
+    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, value,
+        connectorCommitP95Ms, sinkFailures, watermarkLagMs, stageLatencies, sinkLatencies);
+  }
+
+  public FdbMetricsSnapshot withConnectorCommitP95Ms(long value) {
+    return new FdbMetricsSnapshot(sourceDelayP95Ms, kpi1mP95Ms, kpi5mP95Ms, sinkP95Ms, connectorWriteP95Ms,
+        value, sinkFailures, watermarkLagMs, stageLatencies, sinkLatencies);
   }
 }

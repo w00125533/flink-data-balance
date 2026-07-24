@@ -104,6 +104,7 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
         MetricRuntimeConfig metricConfig,
         int subtaskIndex,
         long nowMs) {
+        long latencyMs = Math.max(0L, nowMs - windowEndTs);
         return StageMetricSample.sinkLatency(
                 stageId,
                 displayName,
@@ -114,9 +115,9 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
                 records,
                 0L,
                 0L,
-                0L,
-                0L,
-                0L,
+                latencyMs,
+                latencyMs,
+                latencyMs,
                 0L,
                 "",
                 -1L,

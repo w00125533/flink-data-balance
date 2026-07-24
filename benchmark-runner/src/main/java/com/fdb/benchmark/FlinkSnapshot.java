@@ -178,9 +178,14 @@ public record FlinkSnapshot(
           last.currentInputWatermarkMs(),
           last.currentOutputWatermarkMs(),
           maxLongOperator(samples, FlinkOperatorSnapshot::flinkMarkerP95Ms),
-          maxMarkerLatencies(samples)));
+          maxMarkerLatencies(samples),
+          samples.stream().anyMatch(FlinkOperatorSnapshot::metricsAvailable)));
     }
     return List.copyOf(operators);
+  }
+
+  public boolean hasOperatorMetrics() {
+    return operators.stream().anyMatch(FlinkOperatorSnapshot::metricsAvailable);
   }
 
   private static List<FlinkMarkerLatencySnapshot> maxMarkerLatencies(List<FlinkOperatorSnapshot> samples) {

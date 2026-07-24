@@ -244,6 +244,39 @@ class BenchmarkOrchestratorTest {
   }
 
   @Test
+  void refreshes_flink_operator_metrics_after_cleanup_when_drain_snapshot_has_no_metric_values() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-a",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000",
+        "FDB_BENCHMARK_WARMUP_SEC", "0",
+        "FDB_BENCHMARK_SIMULATION_DURATION_SEC", "0",
+        "FDB_BENCHMARK_DRAIN_TIMEOUT_SEC", "0",
+        "FDB_BENCHMARK_POLL_INTERVAL_SEC", "0"));
+    List<String> events = new ArrayList<>();
+    RunObservation beforeCleanup = healthy().withFlink(flinkWithoutOperatorMetrics());
+    RunObservation afterCleanup = healthy().withFlink(flinkWithOperatorMetrics());
+    FakeObservationSource observations = new FakeObservationSource(List.of(beforeCleanup, afterCleanup), events);
+
+    List<BenchmarkRunResult> results = new BenchmarkOrchestrator(
+        config,
+        new RecordingDeploy(events),
+        new RecordingSimulators(events),
+        observations,
+        new BenchmarkDecisionEngine(config.thresholds())).run();
+
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).status()).isEqualTo(BenchmarkStatus.STABLE);
+    assertThat(results.get(0).flink().jobStatus()).isEqualTo("RUNNING");
+    assertThat(results.get(0).flink().hasOperatorMetrics()).isTrue();
+    assertThat(results.get(0).flink().recordsOutTotal()).isEqualTo(2000);
+    assertThat(events).containsSubsequence(
+        "observe:bench-a-none-cells1000-chr-eps30",
+        "stop:bench-a-none-cells1000-chr-eps30",
+        "observe:bench-a-none-cells1000-chr-eps30");
+  }
+
+  @Test
   void waits_for_simulators_to_self_complete_before_drain_observation() throws Exception {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-a",
@@ -306,6 +339,18 @@ class BenchmarkOrchestratorTest {
     return new SourceMetricsSnapshot(true, 600, 1200, 588.0, 2_000, 0, 0,
         200, 2000, 200.0, 10_000, 0, 0,
         500, 2000, 500.0, 4_000, 0, 0);
+  }
+
+  private static FlinkSnapshot flinkWithoutOperatorMetrics() {
+    return new FlinkSnapshot("RUNNING", 0.0, 20_000, 0, 0, 0, 0, 0, 1, 4,
+        List.of(new FlinkOperatorSnapshot(
+            "v1", "source", 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, List.of(), false)));
+  }
+
+  private static FlinkSnapshot flinkWithOperatorMetrics() {
+    return new FlinkSnapshot("CANCELED", 0.0, 20_000, 0, 100, 200, 1000, 2000, 1, 4,
+        List.of(new FlinkOperatorSnapshot(
+            "v1", "source", 4, 100, 200, 1000, 2000, 1024, 2048, 0.2, 0.8, 0.0)));
   }
 
   static final class RecordingDeploy implements DeployCommandClient {

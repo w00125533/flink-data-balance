@@ -5,13 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class FlinkRestClient {
   private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final String VERTEX_RATE_METRICS = String.join(",",
+  private static final int METRIC_QUERY_BATCH_SIZE = 32;
+  private static final String[] VERTEX_METRIC_NAMES = {
       "numRecordsInPerSecond",
       "numRecordsOutPerSecond",
       "numBytesInPerSecond",
@@ -20,6 +23,18 @@ public final class FlinkRestClient {
       "idleTimeMsPerSecond",
       "backPressuredTimeMsPerSecond",
       "pendingRecords",
+      "currentInputWatermark",
+      "currentOutputWatermark",
+      "numRecordsIn",
+      "numRecordsOut",
+      "numBytesIn",
+      "numBytesOut"};
+  private static final String VERTEX_METRICS = String.join(",", VERTEX_METRIC_NAMES);
+  private static final Set<String> AVERAGE_VERTEX_METRICS = Set.of(
+      "busyTimeMsPerSecond",
+      "idleTimeMsPerSecond",
+      "backPressuredTimeMsPerSecond");
+  private static final Set<String> WATERMARK_VERTEX_METRICS = Set.of(
       "currentInputWatermark",
       "currentOutputWatermark");
 
@@ -72,15 +87,13 @@ public final class FlinkRestClient {
       if (vertices.isArray()) {
         for (JsonNode vertex : vertices) {
           String vertexId = text(vertex, "id", "");
-          JsonNode metrics = vertex.path("metrics");
-          JsonNode rateMetrics = vertexId.isBlank()
+          JsonNode vertexMetrics = vertexId.isBlank()
               ? MAPPER.createObjectNode()
-              : metricMap(readOrEmpty("/jobs/" + jobId + "/vertices/" + vertexId + "/metrics?get="
-                  + VERTEX_RATE_METRICS));
+              : vertexMetrics(jobId, vertexId, vertex.path("parallelism").asInt(0));
           List<FlinkMarkerLatencySnapshot> markerLatencies = vertexId.isBlank()
               ? List.of()
               : flinkMarkerLatencies(jobId, vertexId, inputSourcesByTarget.getOrDefault(vertexId, List.of()));
-          FlinkOperatorSnapshot operator = operatorSnapshot(vertex, metrics, rateMetrics,
+          FlinkOperatorSnapshot operator = operatorSnapshot(vertex, vertexMetrics,
               flinkMarkerP95Ms(markerLatencies), markerLatencies);
           operators.add(operator);
           recordsInPerSec += operator.recordsInPerSec();
@@ -104,14 +117,32 @@ public final class FlinkRestClient {
     if (!jobs.isArray() || jobs.isEmpty()) {
       return MAPPER.createObjectNode();
     }
+    JsonNode newestActive = null;
+    long newestActiveStartTime = Long.MIN_VALUE;
     for (JsonNode job : jobs) {
       String state = text(job, "state", "");
       if (!"FINISHED".equalsIgnoreCase(state) && !"FAILED".equalsIgnoreCase(state)
           && !"CANCELED".equalsIgnoreCase(state)) {
-        return job;
+        long startTime = longValue(job, "start-time", Long.MIN_VALUE);
+        if (newestActive == null || startTime > newestActiveStartTime) {
+          newestActive = job;
+          newestActiveStartTime = startTime;
+        }
       }
     }
-    return jobs.get(0);
+    if (newestActive != null) {
+      return newestActive;
+    }
+    JsonNode newest = jobs.get(0);
+    long newestStartTime = longValue(newest, "start-time", Long.MIN_VALUE);
+    for (JsonNode job : jobs) {
+      long startTime = longValue(job, "start-time", Long.MIN_VALUE);
+      if (startTime > newestStartTime) {
+        newest = job;
+        newestStartTime = startTime;
+      }
+    }
+    return newest;
   }
 
   private JsonNode read(String path) throws IOException, InterruptedException {
@@ -175,6 +206,24 @@ public final class FlinkRestClient {
     return defaultValue;
   }
 
+  private static long longValue(JsonNode node, String field, long defaultValue) {
+    JsonNode value = node.path(field);
+    if (value.isIntegralNumber()) {
+      return value.asLong();
+    }
+    if (value.isNumber()) {
+      return (long) value.asDouble();
+    }
+    if (value.isTextual()) {
+      try {
+        return Long.parseLong(value.asText());
+      } catch (NumberFormatException ignored) {
+        return defaultValue;
+      }
+    }
+    return defaultValue;
+  }
+
   private static JsonNode metricMap(JsonNode metricsResponse) {
     if (!metricsResponse.isArray()) {
       return MAPPER.createObjectNode();
@@ -182,15 +231,213 @@ public final class FlinkRestClient {
     var metrics = MAPPER.createObjectNode();
     for (JsonNode metric : metricsResponse) {
       String id = text(metric, "id", "");
-      if (!id.isBlank()) {
+      if (!id.isBlank() && hasMetric(metric, "value")) {
         metrics.put(id, text(metric, "value", "0"));
       }
     }
     return metrics;
   }
 
-  private static double metricNumberOrFallback(JsonNode metrics, JsonNode fallback, String field) {
-    return hasMetric(metrics, field) ? metricNumber(metrics, field) : metricNumber(fallback, field);
+  private JsonNode vertexMetrics(String jobId, String vertexId, int parallelism) {
+    String metricPath = "/jobs/" + jobId + "/vertices/" + vertexId + "/metrics";
+    Map<String, List<String>> prefixedMetricIdsByName = prefixedMetricIdsByName(parallelism);
+    JsonNode prefixedMetrics = aggregateMetricMap(readMetricValues(metricPath,
+        selectedMetricIds(prefixedMetricIdsByName)), prefixedMetricIdsByName);
+    if (hasAnyMetric(prefixedMetrics, VERTEX_METRIC_NAMES)) {
+      return prefixedMetrics;
+    }
+
+    Map<String, List<String>> metricIdsByName = vertexMetricIdsByName(readOrEmpty(metricPath));
+    if (!metricIdsByName.isEmpty()) {
+      JsonNode aggregated = aggregateMetricMap(
+          readMetricValues(metricPath, selectedMetricIds(metricIdsByName)),
+          metricIdsByName);
+      if (hasAnyMetric(aggregated, VERTEX_METRIC_NAMES)) {
+        return aggregated;
+      }
+    }
+    return metricMap(readOrEmpty(metricPath + "?get=" + VERTEX_METRICS));
+  }
+
+  private static Map<String, List<String>> prefixedMetricIdsByName(int parallelism) {
+    if (parallelism <= 0) {
+      return Map.of();
+    }
+    Map<String, List<String>> values = new LinkedHashMap<>();
+    for (String metricName : VERTEX_METRIC_NAMES) {
+      List<String> ids = new ArrayList<>();
+      for (int subtask = 0; subtask < parallelism; subtask++) {
+        ids.add(subtask + "." + metricName);
+      }
+      values.put(metricName, List.copyOf(ids));
+    }
+    return values;
+  }
+
+  private JsonNode readMetricValues(String metricPath, List<String> metricIds) {
+    var values = MAPPER.createArrayNode();
+    for (int start = 0; start < metricIds.size(); start += METRIC_QUERY_BATCH_SIZE) {
+      int end = Math.min(metricIds.size(), start + METRIC_QUERY_BATCH_SIZE);
+      JsonNode batch = readOrEmpty(metricPath + "?get=" + String.join(",", metricIds.subList(start, end)));
+      if (batch.isArray()) {
+        for (JsonNode metric : batch) {
+          values.add(metric);
+        }
+      }
+    }
+    return values;
+  }
+
+  private static Map<String, List<String>> vertexMetricIdsByName(JsonNode metricsResponse) {
+    if (!metricsResponse.isArray()) {
+      return Map.of();
+    }
+    Map<String, List<String>> exactIds = emptyMetricIdMap();
+    Map<String, List<String>> subtaskIds = emptyMetricIdMap();
+    Map<String, List<String>> operatorScopedIds = emptyMetricIdMap();
+    for (JsonNode metric : metricsResponse) {
+      String id = text(metric, "id", "");
+      if (id.isBlank()) {
+        continue;
+      }
+      for (String metricName : VERTEX_METRIC_NAMES) {
+        if (id.equals(metricName)) {
+          exactIds.get(metricName).add(id);
+        } else if (isSubtaskMetricId(id, metricName)) {
+          subtaskIds.get(metricName).add(id);
+        } else if (isOperatorScopedMetricId(id, metricName)) {
+          operatorScopedIds.get(metricName).add(id);
+        }
+      }
+    }
+
+    Map<String, List<String>> selected = new LinkedHashMap<>();
+    for (String metricName : VERTEX_METRIC_NAMES) {
+      List<String> ids = firstNonEmpty(exactIds.get(metricName), subtaskIds.get(metricName),
+          operatorScopedIds.get(metricName));
+      if (!ids.isEmpty()) {
+        selected.put(metricName, List.copyOf(ids));
+      }
+    }
+    return selected;
+  }
+
+  private static Map<String, List<String>> emptyMetricIdMap() {
+    Map<String, List<String>> values = new LinkedHashMap<>();
+    for (String metricName : VERTEX_METRIC_NAMES) {
+      values.put(metricName, new ArrayList<>());
+    }
+    return values;
+  }
+
+  @SafeVarargs
+  private static <T> List<T> firstNonEmpty(List<T>... values) {
+    for (List<T> value : values) {
+      if (value != null && !value.isEmpty()) {
+        return value;
+      }
+    }
+    return List.of();
+  }
+
+  private static boolean isSubtaskMetricId(String id, String metricName) {
+    int dot = id.indexOf('.');
+    return dot > 0 && allDigits(id.substring(0, dot)) && id.substring(dot + 1).equals(metricName);
+  }
+
+  private static boolean isOperatorScopedMetricId(String id, String metricName) {
+    int dot = id.indexOf('.');
+    return dot > 0 && allDigits(id.substring(0, dot)) && id.endsWith("." + metricName);
+  }
+
+  private static boolean allDigits(String value) {
+    if (value.isBlank()) {
+      return false;
+    }
+    for (int i = 0; i < value.length(); i++) {
+      if (!Character.isDigit(value.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static List<String> selectedMetricIds(Map<String, List<String>> metricIdsByName) {
+    Set<String> ids = new LinkedHashSet<>();
+    for (List<String> metricIds : metricIdsByName.values()) {
+      ids.addAll(metricIds);
+    }
+    return List.copyOf(ids);
+  }
+
+  private static JsonNode aggregateMetricMap(JsonNode metricsResponse, Map<String, List<String>> metricIdsByName) {
+    if (!metricsResponse.isArray()) {
+      return MAPPER.createObjectNode();
+    }
+    Map<String, List<Double>> valuesByName = new LinkedHashMap<>();
+    for (String metricName : VERTEX_METRIC_NAMES) {
+      valuesByName.put(metricName, new ArrayList<>());
+    }
+    for (JsonNode metric : metricsResponse) {
+      String id = text(metric, "id", "");
+      String metricName = metricNameForId(id, metricIdsByName);
+      if (metricName.isBlank() || !hasMetric(metric, "value")) {
+        continue;
+      }
+      double value = metricDouble(metric, "value", Double.NaN);
+      if (Double.isFinite(value)) {
+        valuesByName.get(metricName).add(value);
+      }
+    }
+
+    var metrics = MAPPER.createObjectNode();
+    for (Map.Entry<String, List<Double>> entry : valuesByName.entrySet()) {
+      if (!entry.getValue().isEmpty()) {
+        metrics.put(entry.getKey(), aggregateMetric(entry.getKey(), entry.getValue()));
+      }
+    }
+    return metrics;
+  }
+
+  private static String metricNameForId(String id, Map<String, List<String>> metricIdsByName) {
+    for (Map.Entry<String, List<String>> entry : metricIdsByName.entrySet()) {
+      if (entry.getValue().contains(id)) {
+        return entry.getKey();
+      }
+    }
+    return "";
+  }
+
+  private static double metricDouble(JsonNode metrics, String field, double defaultValue) {
+    JsonNode value = metrics.path(field);
+    if (value.isNumber()) {
+      return value.asDouble();
+    }
+    if (value.isTextual()) {
+      try {
+        return Double.parseDouble(value.asText());
+      } catch (NumberFormatException ignored) {
+        return defaultValue;
+      }
+    }
+    return defaultValue;
+  }
+
+  private static double aggregateMetric(String metricName, List<Double> values) {
+    if (AVERAGE_VERTEX_METRICS.contains(metricName)) {
+      return values.stream().mapToDouble(Double::doubleValue).average().orElse(0.0d);
+    }
+    if (WATERMARK_VERTEX_METRICS.contains(metricName)) {
+      double minNonNegative = values.stream()
+          .mapToDouble(Double::doubleValue)
+          .filter(value -> value >= 0.0d)
+          .min()
+          .orElse(Double.NaN);
+      return Double.isFinite(minNonNegative)
+          ? minNonNegative
+          : values.stream().mapToDouble(Double::doubleValue).max().orElse(-1.0d);
+    }
+    return values.stream().mapToDouble(Double::doubleValue).sum();
   }
 
   private static boolean hasMetric(JsonNode metrics, String field) {
@@ -198,29 +445,39 @@ public final class FlinkRestClient {
     return !value.isMissingNode() && !value.isNull();
   }
 
-  private static FlinkOperatorSnapshot operatorSnapshot(JsonNode vertex, JsonNode cumulativeMetrics,
-      JsonNode rateMetrics, long flinkMarkerP95Ms, List<FlinkMarkerLatencySnapshot> markerLatencies) {
-    double busyMs = metricNumberOrFallback(rateMetrics, cumulativeMetrics, "busyTimeMsPerSecond");
-    double idleMs = metricNumberOrFallback(rateMetrics, cumulativeMetrics, "idleTimeMsPerSecond");
-    double backpressureMs = metricNumberOrFallback(rateMetrics, cumulativeMetrics, "backPressuredTimeMsPerSecond");
+  private static boolean hasAnyMetric(JsonNode metrics, String... fields) {
+    for (String field : fields) {
+      if (hasMetric(metrics, field)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static FlinkOperatorSnapshot operatorSnapshot(JsonNode vertex, JsonNode vertexMetrics,
+      long flinkMarkerP95Ms, List<FlinkMarkerLatencySnapshot> markerLatencies) {
+    double busyMs = metricNumber(vertexMetrics, "busyTimeMsPerSecond");
+    double idleMs = metricNumber(vertexMetrics, "idleTimeMsPerSecond");
+    double backpressureMs = metricNumber(vertexMetrics, "backPressuredTimeMsPerSecond");
     return new FlinkOperatorSnapshot(
         text(vertex, "id", ""),
         text(vertex, "name", ""),
         vertex.path("parallelism").asInt(0),
-        metricNumber(rateMetrics, "numRecordsInPerSecond"),
-        metricNumber(rateMetrics, "numRecordsOutPerSecond"),
-        metricNumber(cumulativeMetrics, "read-records"),
-        metricNumber(cumulativeMetrics, "write-records"),
-        metricNumber(rateMetrics, "numBytesInPerSecond"),
-        metricNumber(rateMetrics, "numBytesOutPerSecond"),
+        metricNumber(vertexMetrics, "numRecordsInPerSecond"),
+        metricNumber(vertexMetrics, "numRecordsOutPerSecond"),
+        metricNumber(vertexMetrics, "numRecordsIn"),
+        metricNumber(vertexMetrics, "numRecordsOut"),
+        metricNumber(vertexMetrics, "numBytesInPerSecond"),
+        metricNumber(vertexMetrics, "numBytesOutPerSecond"),
         ratioFromMillisPerSecond(busyMs),
         ratioFromMillisPerSecond(idleMs),
         ratioFromMillisPerSecond(backpressureMs),
-        metricLong(rateMetrics, "pendingRecords"),
-        metricLong(rateMetrics, "currentInputWatermark", -1),
-        metricLong(rateMetrics, "currentOutputWatermark", -1),
+        metricLong(vertexMetrics, "pendingRecords"),
+        metricLong(vertexMetrics, "currentInputWatermark", -1),
+        metricLong(vertexMetrics, "currentOutputWatermark", -1),
         flinkMarkerP95Ms,
-        markerLatencies);
+        markerLatencies,
+        hasAnyMetric(vertexMetrics, VERTEX_METRIC_NAMES));
   }
 
   private static long flinkMarkerP95Ms(List<FlinkMarkerLatencySnapshot> markers) {
@@ -302,6 +559,7 @@ public final class FlinkRestClient {
   private static boolean isFlinkMarkerP95Metric(String metricId) {
     String value = metricId == null ? "" : metricId.toLowerCase(java.util.Locale.ROOT);
     return value.contains("latency")
+        && !value.contains("mailbox")
         && !value.contains("watermark")
         && (value.contains("p95")
             || value.contains("95th")

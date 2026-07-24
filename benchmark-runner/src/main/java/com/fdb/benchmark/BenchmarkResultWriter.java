@@ -39,7 +39,7 @@ public final class BenchmarkResultWriter {
   private static String csv(List<BenchmarkRunResult> results) {
     StringBuilder out = new StringBuilder();
     out.append("sink,cellLevel,targetChrEpsPerCell,targetChrTotalEps,targetPmEpsPerCell,targetPmTotalEps,status,recordsInPerSec,recordsOutPerSec,recordsInTotal,recordsOutTotal,kpi1mP95Ms,kpi5mP95Ms,")
-        .append("sinkP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId\n");
+        .append("sinkP95Ms,connectorWriteP95Ms,connectorCommitP95Ms,checkpointDurationMs,backpressureRatio,bottleneckReason,runId\n");
     for (BenchmarkRunResult result : results) {
       BenchmarkRunPlan plan = result.plan();
       out.append(plan.sink().value()).append(',')
@@ -56,6 +56,8 @@ public final class BenchmarkResultWriter {
           .append(result.fdb().kpi1mP95Ms()).append(',')
           .append(result.fdb().kpi5mP95Ms()).append(',')
           .append(result.fdb().sinkP95Ms()).append(',')
+          .append(result.fdb().connectorWriteP95Ms()).append(',')
+          .append(result.fdb().connectorCommitP95Ms()).append(',')
           .append(result.flink().checkpointDurationMs()).append(',')
           .append(result.flink().backpressureRatio()).append(',')
           .append(csvValue(result.bottleneckReason())).append(',')

@@ -34,4 +34,8 @@ public record BenchmarkRunResult(
   public BenchmarkRunResult withStorage(StorageSnapshot value) {
     return new BenchmarkRunResult(plan, status, bottleneckReason, flink, fdb, value, topology, source);
   }
+
+  public BenchmarkRunResult withFlink(FlinkSnapshot value) {
+    return new BenchmarkRunResult(plan, status, bottleneckReason, value, fdb, storage, topology, source);
+  }
 }

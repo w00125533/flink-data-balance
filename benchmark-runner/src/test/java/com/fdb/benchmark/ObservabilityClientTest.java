@@ -59,6 +59,53 @@ class ObservabilityClientTest {
   }
 
   @Test
+  void separates_sink_front_latency_from_connector_internal_latency() {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/status", "[]",
+        "/api/results/sink-latency",
+            """
+                [
+                  {
+                    "sinkName":"starrocks-kpi-1m",
+                    "sinkType":"starrocks",
+                    "dataset":"kpi_1m",
+                    "windowKind":"MIN_1",
+                    "records":100,
+                    "latencyP95Ms":90,
+                    "failureCount":0
+                  },
+                  {
+                    "sinkName":"starrocks-kpi-1m.connector-write",
+                    "sinkType":"starrocks",
+                    "dataset":"kpi_1m",
+                    "windowKind":"MIN_1",
+                    "records":100,
+                    "latencyP95Ms":12,
+                    "failureCount":0
+                  },
+                  {
+                    "sinkName":"starrocks-kpi-1m.connector-commit",
+                    "sinkType":"starrocks",
+                    "dataset":"kpi_1m",
+                    "windowKind":"MIN_1",
+                    "records":3,
+                    "latencyP95Ms":250,
+                    "failureCount":0
+                  }
+                ]
+                """));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.sinkP95Ms()).isEqualTo(90L);
+    assertThat(snapshot.connectorWriteP95Ms()).isEqualTo(12L);
+    assertThat(snapshot.connectorCommitP95Ms()).isEqualTo(250L);
+    assertThat(snapshot.sinkLatencies())
+        .extracting(SinkLatencySnapshot::scope)
+        .containsExactly("sink-front", "connector-write", "connector-commit");
+  }
+
+  @Test
   void returns_empty_metrics_when_observability_requests_timeout() throws Exception {
     HttpGateway http = uri -> {
       throw new HttpTimeoutException("request timed out");
@@ -70,6 +117,8 @@ class ObservabilityClientTest {
     assertThat(snapshot.kpi1mP95Ms()).isEqualTo(-1);
     assertThat(snapshot.kpi5mP95Ms()).isEqualTo(-1);
     assertThat(snapshot.sinkP95Ms()).isEqualTo(-1);
+    assertThat(snapshot.connectorWriteP95Ms()).isEqualTo(-1);
+    assertThat(snapshot.connectorCommitP95Ms()).isEqualTo(-1);
     assertThat(snapshot.sinkFailures()).isZero();
     assertThat(snapshot.watermarkLagMs()).isZero();
     assertThat(snapshot.stageLatencies()).isEmpty();
@@ -150,5 +199,25 @@ class ObservabilityClientTest {
         .extracting(SinkLatencySnapshot::sinkName)
         .containsExactly("starrocks-cell-anomaly");
     assertThat(snapshot.kpi1mP95Ms()).isEqualTo(-1);
+  }
+
+  @Test
+  void skips_zero_only_stage_latency_placeholders_even_when_status_is_healthy() {
+    FakeHttpGateway http = new FakeHttpGateway(Map.of(
+        "/api/flow/status",
+            """
+                [
+                  {"stageId":"kpi-5m","status":"healthy","latencyP50Ms":0,"latencyP95Ms":0,"latencyP99Ms":0,"watermarkLagMs":0},
+                  {"stageId":"kpi-1m","status":"healthy","latencyP50Ms":4,"latencyP95Ms":8,"latencyP99Ms":12,"watermarkLagMs":5}
+                ]
+                """,
+        "/api/results/sink-latency", "[]"));
+
+    FdbMetricsSnapshot snapshot = new ObservabilityClient(URI.create("http://api:18080"), http).snapshot();
+
+    assertThat(snapshot.stageLatencies())
+        .extracting(StageLatencySnapshot::stageId)
+        .containsExactly("kpi-1m");
+    assertThat(snapshot.kpi5mP95Ms()).isEqualTo(-1);
   }
 }
