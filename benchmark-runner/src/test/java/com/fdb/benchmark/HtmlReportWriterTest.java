@@ -218,6 +218,38 @@ class HtmlReportWriterTest {
   }
 
   @Test
+  void run_report_includes_taskmanager_cpu_and_operator_pressure_ms_per_second() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-cpu-pressure",
+        "FDB_BENCHMARK_SINKS", "none",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+    BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
+    BenchmarkRunResult result = new BenchmarkRunResult(plan, BenchmarkStatus.STABLE,
+        "all thresholds healthy",
+        new FlinkSnapshot("RUNNING", 0.25, 10_000, 0, 300, 300, 1_200, 1_100, 1, 4,
+            0.73, List.of(
+                new FlinkOperatorSnapshot("source-1", "Source: chr-source", 4,
+                    300, 300, 600, 600, 8_192, 8_192, 0.8, 0.15, 0.05))),
+        new FdbMetricsSnapshot(1, 2, -1, -1, 0, 0, List.of(
+            new StageLatencySnapshot("chr-source", 1, 2, 3, 4)), List.of()),
+        new StorageSnapshot(true, "healthy", 0, 0, 0),
+        TopologyMetricsSnapshot.empty(),
+        new SourceMetricsSnapshot(true, 300, 600, 294.0, 2_000, 0, 0,
+            100, 1000, 100.0, 10_000, 0, 0,
+            250, 1000, 1000.0, 0, 0, 0));
+
+    new HtmlReportWriter(tempDir).write(config, List.of(result));
+
+    String html = Files.readString(tempDir.resolve(
+        "bench-cpu-pressure/runs/" + plan.runId() + "/report.html"));
+    assertThat(html)
+        .contains("<tr><th>TaskManager CPU Load</th><td>73.00%</td></tr>")
+        .contains("<th>Busy ms/s</th>")
+        .contains("<th>Backpressure ms/s</th>")
+        .contains("<td>80.00%</td><td>800 ms/s</td><td>15.00%</td><td>5.00%</td><td>50 ms/s</td>");
+  }
+
+  @Test
   void sink_storage_table_marks_low_latency_sample_confidence() throws Exception {
     BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
         "FDB_BENCHMARK_ID", "bench-low-confidence",

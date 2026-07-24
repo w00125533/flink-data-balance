@@ -562,6 +562,7 @@ public final class HtmlReportWriter {
         row("Job Status", flink.jobStatus()),
         row("TaskManagers", String.valueOf(flink.taskManagers())),
         row("Slots", String.valueOf(flink.slots())),
+        row("TaskManager CPU Load", formatOptionalRatio(flink.taskManagerCpuLoad())),
         row("Operator Metrics Validity", operatorMetricsValidity(result)),
         row("Sampled Avg Records In/s", trusted ? formatNumber(flink.recordsInPerSec()) : "N/A"),
         row("Sampled Avg Records Out/s", trusted ? formatNumber(flink.recordsOutPerSec()) : "N/A"),
@@ -652,9 +653,10 @@ public final class HtmlReportWriter {
           .append(formatNumber(flink.recordsOutPerSec())).append("</td><td>")
           .append(formatNumber(flink.recordsInTotal())).append("</td><td>")
           .append(formatNumber(flink.recordsOutTotal()))
-          .append("</td><td>-</td><td>-</td><td>-</td><td>-</td>");
+          .append("</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>");
       appendOptionalWatermarkCells(rows, columns, "-", "-");
       rows.append("<td>").append(formatRatio(flink.backpressureRatio()))
+          .append("</td><td>").append(formatMsPerSecond(flink.backpressureRatio()))
           .append("</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>");
       if (columns.showFlinkMarker()) {
         rows.append("<td>N/A</td>");
@@ -676,12 +678,14 @@ public final class HtmlReportWriter {
             .append(formatOperatorNumber(operator, operator.bytesInPerSec(), trusted)).append("</td><td>")
             .append(formatOperatorNumber(operator, operator.bytesOutPerSec(), trusted)).append("</td><td>")
             .append(formatOperatorRatio(operator, operator.busyRatio(), trusted)).append("</td><td>")
+            .append(formatOperatorMsPerSecond(operator, operator.busyRatio(), trusted)).append("</td><td>")
             .append(formatOperatorRatio(operator, operator.idleRatio(), trusted)).append("</td>");
         appendOptionalWatermarkCells(rows, columns,
             escape(formatOperatorWatermark(operator, operator.currentInputWatermarkMs(), trusted)),
             escape(formatOperatorWatermark(operator, operator.currentOutputWatermarkMs(), trusted)));
         rows.append("<td>")
-            .append(formatOperatorRatio(operator, operator.backpressureRatio(), trusted)).append("</td>");
+            .append(formatOperatorRatio(operator, operator.backpressureRatio(), trusted)).append("</td><td>")
+            .append(formatOperatorMsPerSecond(operator, operator.backpressureRatio(), trusted)).append("</td>");
         if (latency.available()) {
           rows.append("<td>")
               .append(formatMs(latency.p50Ms())).append("</td><td>")
@@ -717,14 +721,14 @@ public final class HtmlReportWriter {
         "<thead><tr><th>Operator</th><th>Role</th><th>Parallelism</th>"
             + "<th>Sampled Avg Records In/s</th><th>Sampled Avg Records Out/s</th>"
             + "<th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th>"
-            + "<th>Busy</th><th>Idle</th>");
+            + "<th>Busy</th><th>Busy ms/s</th><th>Idle</th>");
     if (columns.showInputWatermark()) {
       header.append("<th>Input Watermark</th>");
     }
     if (columns.showOutputWatermark()) {
       header.append("<th>Output Watermark</th>");
     }
-    header.append("<th>Backpressure</th><th>Cumulative Business Age P50</th>"
+    header.append("<th>Backpressure</th><th>Backpressure ms/s</th><th>Cumulative Business Age P50</th>"
         + "<th>Cumulative Business Age P95</th><th>Cumulative Business Age P99</th><th>Watermark Lag</th>");
     if (columns.showFlinkMarker()) {
       header.append("<th>Flink Marker P95</th>");
@@ -761,9 +765,9 @@ public final class HtmlReportWriter {
           .append("marker: ").append(escape(marker.sourceOperatorId())).append(" -> ")
           .append(escape(marker.targetOperatorId())).append("</td><td>marker</td><td>-</td>")
           .append("<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>")
-          .append("<td>-</td><td>-</td>");
+          .append("<td>-</td><td>-</td><td>-</td>");
       appendOptionalWatermarkCells(rows, columns, "-", "-");
-      rows.append("<td>-</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>");
+      rows.append("<td>-</td><td>-</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>");
       if (columns.showFlinkMarker()) {
         rows.append("<td>").append(formatMs(marker.p95Ms())).append("</td>");
       }
@@ -987,6 +991,9 @@ public final class HtmlReportWriter {
           <table>
             <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
             <tbody>
+              <tr><td>TaskManager CPU Load</td><td>Maximum Status.JVM.CPU.Load across TaskManagers from Flink REST. Flink does not expose exact operator-level CPU in the default REST metrics used here.</td></tr>
+              <tr><td>Busy / Busy ms/s</td><td>Operator busyTimeMsPerSecond from Flink REST, shown as both percentage of one second and raw milliseconds per second.</td></tr>
+              <tr><td>Backpressure / Backpressure ms/s</td><td>Operator backPressuredTimeMsPerSecond from Flink REST, shown as both percentage of one second and raw milliseconds per second.</td></tr>
               <tr><td>Cumulative Business Age P50/P95/P99</td><td>Custom stage or sink-front age mapped to this operator row. It is based on business event/window time and is cumulative to the probe point, not the operator's own processing time.</td></tr>
               <tr><td>Watermark Lag</td><td>Custom stage watermark lag from the same mapped stage metric. N/A means no stage metric is mapped to this operator.</td></tr>
               <tr><td>Flink Marker P95</td><td>Flink latency marker P95 observed on this downstream operator. Marker detail rows show each source-to-target input when Flink exposes it. N/A means latency marker unavailable because the Flink REST metrics for this job/operator did not expose marker percentiles.</td></tr>
@@ -1434,6 +1441,10 @@ public final class HtmlReportWriter {
     return trusted && operator.metricsAvailable() ? formatRatio(value) : "N/A";
   }
 
+  private static String formatOperatorMsPerSecond(FlinkOperatorSnapshot operator, double ratio, boolean trusted) {
+    return trusted && operator.metricsAvailable() ? formatMsPerSecond(ratio) : "N/A";
+  }
+
   private static String formatOperatorWatermark(FlinkOperatorSnapshot operator, long value, boolean trusted) {
     return trusted && operator.metricsAvailable() ? formatWatermark(value) : "N/A";
   }
@@ -1537,6 +1548,20 @@ public final class HtmlReportWriter {
 
   private static String formatRatio(double value) {
     return String.format(Locale.ROOT, "%.2f%%", value * 100.0);
+  }
+
+  private static String formatOptionalRatio(Double value) {
+    if (value == null || !Double.isFinite(value) || value < 0.0d) {
+      return "N/A";
+    }
+    return formatRatio(value);
+  }
+
+  private static String formatMsPerSecond(double ratio) {
+    if (!Double.isFinite(ratio) || ratio < 0.0d) {
+      return "N/A";
+    }
+    return formatNumber(ratio * 1000.0d) + " ms/s";
   }
 
   private static String formatNumber(double value) {

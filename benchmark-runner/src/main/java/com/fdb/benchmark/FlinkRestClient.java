@@ -14,6 +14,7 @@ import java.util.Set;
 public final class FlinkRestClient {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final int METRIC_QUERY_BATCH_SIZE = 32;
+  private static final String TASKMANAGER_CPU_LOAD_METRIC = "Status.JVM.CPU.Load";
   private static final String[] VERTEX_METRIC_NAMES = {
       "numRecordsInPerSecond",
       "numRecordsOutPerSecond",
@@ -61,6 +62,7 @@ public final class FlinkRestClient {
     double backpressureRatio = 0;
     int taskManagers = 0;
     int slots = 0;
+    double taskManagerCpuLoad = -1.0d;
     List<FlinkOperatorSnapshot> operators = new ArrayList<>();
     List<FlinkOperatorEdge> operatorEdges = List.of();
 
@@ -69,6 +71,7 @@ public final class FlinkRestClient {
       taskManagers = taskManagersNode.size();
       for (JsonNode taskManager : taskManagersNode) {
         slots += firstInt(taskManager, "slotsNumber", "slots");
+        taskManagerCpuLoad = Math.max(taskManagerCpuLoad, taskManagerCpuLoad(taskManager));
       }
     }
 
@@ -109,8 +112,20 @@ public final class FlinkRestClient {
     }
 
     return new FlinkSnapshot(status, backpressureRatio, checkpointDurationMs, consecutiveCheckpointFailures,
-        recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal, taskManagers, slots, operators,
+        recordsInPerSec, recordsOutPerSec, recordsInTotal, recordsOutTotal, taskManagers, slots,
+        taskManagerCpuLoad, operators,
         operatorEdges, sourceBacklogRecords);
+  }
+
+  private double taskManagerCpuLoad(JsonNode taskManager) {
+    String taskManagerId = text(taskManager, "id", text(taskManager, "path", ""));
+    if (taskManagerId.isBlank()) {
+      return -1.0d;
+    }
+    JsonNode metrics = metricMap(readOrEmpty(
+        "/taskmanagers/" + taskManagerId + "/metrics?get=" + TASKMANAGER_CPU_LOAD_METRIC));
+    double value = metricNumber(metrics, TASKMANAGER_CPU_LOAD_METRIC, -1.0d);
+    return Double.isFinite(value) && value >= 0.0d ? value : -1.0d;
   }
 
   private JsonNode selectJob(JsonNode jobs) {
@@ -166,6 +181,10 @@ public final class FlinkRestClient {
   }
 
   private static double metricNumber(JsonNode metrics, String field) {
+    return metricNumber(metrics, field, 0.0d);
+  }
+
+  private static double metricNumber(JsonNode metrics, String field, double defaultValue) {
     JsonNode value = metrics.path(field);
     if (value.isNumber()) {
       return value.asDouble();
@@ -174,10 +193,10 @@ public final class FlinkRestClient {
       try {
         return Double.parseDouble(value.asText());
       } catch (NumberFormatException ignored) {
-        return 0;
+        return defaultValue;
       }
     }
-    return 0;
+    return defaultValue;
   }
 
   private static long metricLong(JsonNode metrics, String field) {

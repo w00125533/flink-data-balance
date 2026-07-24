@@ -14,6 +14,18 @@ class FlinkRestClientTest {
         "/jobs/overview", "{\"jobs\":[{\"jid\":\"job-a\",\"state\":\"RUNNING\"}]}",
         "/jobs/job-a/checkpoints", "{\"latest\":{\"completed\":{\"end_to_end_duration\":42000}},\"counts\":{\"failed\":1}}",
         "/taskmanagers", "{\"taskmanagers\":[{\"id\":\"tm-1\",\"slotsNumber\":4},{\"id\":\"tm-2\",\"slotsNumber\":4}]}",
+        "/taskmanagers/tm-1/metrics?get=Status.JVM.CPU.Load",
+            """
+                [
+                  {"id":"Status.JVM.CPU.Load","value":"0.25"}
+                ]
+                """,
+        "/taskmanagers/tm-2/metrics?get=Status.JVM.CPU.Load",
+            """
+                [
+                  {"id":"Status.JVM.CPU.Load","value":"0.75"}
+                ]
+                """,
         "/jobs/job-a",
             """
                 {"vertices":[{
@@ -96,6 +108,7 @@ class FlinkRestClientTest {
     assertThat(snapshot.sourceBacklogRecords()).isEqualTo(42);
     assertThat(snapshot.taskManagers()).isEqualTo(2);
     assertThat(snapshot.slots()).isEqualTo(8);
+    assertThat(snapshot.taskManagerCpuLoad()).isEqualTo(0.75);
     assertThat(snapshot.backpressureRatio()).isCloseTo(0.025, within(0.0001));
     assertThat(snapshot.operators()).hasSize(2);
     assertThat(snapshot.operatorEdges()).containsExactly(new FlinkOperatorEdge("v1", "v2"));
