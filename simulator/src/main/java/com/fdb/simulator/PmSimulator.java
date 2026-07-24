@@ -145,6 +145,7 @@ public class PmSimulator {
             .setCellId(cell.getCellId().toString())
             .setWindowStartTs(windowStart)
             .setWindowEndTs(windowEnd)
+            .setEventTs(windowStart + ((windowEnd - windowStart) / 2L))
             .setPrbUsageDl((float) Math.min(1.0, load + rng.nextFloat() * 0.1))
             .setPrbUsageUl((float) Math.min(1.0, load * 0.6 + rng.nextFloat() * 0.1))
             .setActiveUsers(activeUsers)

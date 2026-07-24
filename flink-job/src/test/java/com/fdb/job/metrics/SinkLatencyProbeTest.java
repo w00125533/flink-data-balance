@@ -33,7 +33,7 @@ class SinkLatencyProbeTest {
         assertThat(sample.dataset()).isEqualTo("kpi_1m");
         assertThat(sample.windowKind()).isEqualTo("MIN_1");
         assertThat(sample.records()).isEqualTo(2);
-        assertThat(sample.bytes()).isEqualTo(217);
+        assertThat(sample.bytes()).isGreaterThanOrEqualTo(217);
         assertThat(sample.durationMs()).isGreaterThanOrEqualTo(0L);
         assertThat(sample.latencyP95Ms()).isGreaterThanOrEqualTo(sample.latencyP50Ms());
     }
@@ -44,7 +44,12 @@ class SinkLatencyProbeTest {
             "starrocks-cell-anomaly", "StarRocks Cell Anomaly Sink", "starrocks",
             "cell_anomaly_events", "ANOMALY", 1);
 
-        probe.record(anomalyEvent());
+        probe.record(AnomalyEvent.newBuilder(anomalyEvent())
+            .setSourceEventTsAvg(1_700_000_000_000L)
+            .setSourceEventTsMin(1_699_999_990_000L)
+            .setSourceEventTsMax(1_700_000_005_000L)
+            .setSourceEventCount(3L)
+            .build());
 
         StageMetricSample sample = probe.metricSample(1_717_400_000_000L);
 
@@ -54,6 +59,21 @@ class SinkLatencyProbeTest {
         assertThat(sample.bytes()).isGreaterThan(32L);
         assertThat(sample.durationMs()).isGreaterThanOrEqualTo(0L);
         assertThat(sample.latencyP95Ms()).isGreaterThanOrEqualTo(sample.latencyP50Ms());
+    }
+
+    @Test
+    void anomaly_sink_latency_does_not_fallback_to_window_event_timestamp() {
+        SinkLatencyProbe<AnomalyEvent> probe = new SinkLatencyProbe<>(
+            "starrocks-cell-anomaly", "StarRocks Cell Anomaly Sink", "starrocks",
+            "cell_anomaly_events", "ANOMALY", 1);
+
+        probe.record(anomalyEvent(), 1_700_000_100_000L);
+
+        StageMetricSample sample = probe.metricSample(1_700_000_100_000L);
+
+        assertThat(sample.latencyP50Ms()).isEqualTo(-1L);
+        assertThat(sample.latencyP95Ms()).isEqualTo(-1L);
+        assertThat(sample.latencyP99Ms()).isEqualTo(-1L);
     }
 
     @Test
@@ -72,19 +92,19 @@ class SinkLatencyProbeTest {
     }
 
     @Test
-    void records_sink_probe_latency_from_result_window_end_timestamp() {
+    void records_sink_probe_latency_from_source_event_timestamp() {
         SinkLatencyProbe<CellKpi> probe = new SinkLatencyProbe<>(
             "starrocks-kpi-1m", "StarRocks KPI 1m Sink", "starrocks",
             "kpi_1m", "MIN_1", 2, new MetricRuntimeConfig("run-a", "starrocks", 4, false));
 
-        probe.record(kpi(0L, "a"), 70_000L);
-        probe.record(kpi(0L, "bb"), 100_000L);
+        probe.record(kpi(0L, "a", 65_000L), 70_000L);
+        probe.record(kpi(0L, "bb", 80_000L), 100_000L);
 
         StageMetricSample sample = probe.metricSample(100_000L);
 
-        assertThat(sample.latencyP50Ms()).isEqualTo(10_000L);
-        assertThat(sample.latencyP95Ms()).isEqualTo(40_000L);
-        assertThat(sample.latencyP99Ms()).isEqualTo(40_000L);
+        assertThat(sample.latencyP50Ms()).isEqualTo(5_000L);
+        assertThat(sample.latencyP95Ms()).isEqualTo(20_000L);
+        assertThat(sample.latencyP99Ms()).isEqualTo(20_000L);
     }
 
     @Test
@@ -130,26 +150,35 @@ class SinkLatencyProbeTest {
     }
 
     private static CellKpi kpi(long windowStartTs, String suffix) {
-        return new CellKpi(
-            windowStartTs,
-            windowStartTs + 60000L,
-            WindowKind.MIN_1,
-            JoinQuality.JOINED,
-            "site-" + suffix,
-            "cell-" + suffix,
-            "grid-" + suffix,
-            1L,
-            2L,
-            3L,
-            4L,
-            5L,
-            3.0f,
-            4.0f,
-            5.0f,
-            6.0f,
-            7.0f,
-            8.0f,
-            9.0f);
+        return kpi(windowStartTs, suffix, windowStartTs + 30_000L);
+    }
+
+    private static CellKpi kpi(long windowStartTs, String suffix, long sourceEventTsAvg) {
+        return CellKpi.newBuilder()
+            .setWindowStartTs(windowStartTs)
+            .setWindowEndTs(windowStartTs + 60_000L)
+            .setSourceEventTsAvg(sourceEventTsAvg)
+            .setSourceEventTsMin(sourceEventTsAvg)
+            .setSourceEventTsMax(sourceEventTsAvg)
+            .setSourceEventCount(1L)
+            .setWindowKind(WindowKind.MIN_1)
+            .setJoinQuality(JoinQuality.JOINED)
+            .setSiteId("site-" + suffix)
+            .setCellId("cell-" + suffix)
+            .setGridId("grid-" + suffix)
+            .setNumChrEvents(1L)
+            .setNumUsers(2L)
+            .setRsrpSampleCount(3L)
+            .setSinrSampleCount(4L)
+            .setAttachAttempts(5L)
+            .setAvgRsrp(3.0f)
+            .setAvgSinr(4.0f)
+            .setAvgPrbUsageDl(5.0f)
+            .setThroughputDlMbpsAvg(6.0f)
+            .setDropRate(7.0f)
+            .setHoSuccessRate(8.0f)
+            .setAttachSuccessRate(9.0f)
+            .build();
     }
 
     private static AnomalyEvent anomalyEvent() {

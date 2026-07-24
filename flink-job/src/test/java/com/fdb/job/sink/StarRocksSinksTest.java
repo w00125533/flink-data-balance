@@ -130,6 +130,10 @@ class StarRocksSinksTest {
                 "window_kind",
                 "cell_id",
                 "window_end_ts",
+                "source_event_ts_avg",
+                "source_event_ts_min",
+                "source_event_ts_max",
+                "source_event_count",
                 "join_quality",
                 "site_id",
                 "grid_id",
@@ -158,6 +162,10 @@ class StarRocksSinksTest {
             "MIN_1",
             "cell-a",
             1_700_000_060_000L,
+            1_700_000_030_000L,
+            1_700_000_001_000L,
+            1_700_000_059_000L,
+            100L,
             "JOINED",
             "site-a",
             "grid-a",
@@ -229,6 +237,10 @@ class StarRocksSinksTest {
             anomalyId,
             1_700_000_010_000L,
             1_700_000_000_000L,
+            1_699_999_970_000L,
+            1_699_999_940_000L,
+            1_699_999_999_000L,
+            100L,
             "CELL",
             "cell-a",
             1_699_999_940_000L,
@@ -255,6 +267,10 @@ class StarRocksSinksTest {
             anomalyId,
             1_700_000_010_000L,
             1_700_000_000_000L,
+            1_699_999_700_000L,
+            1_699_999_410_000L,
+            1_699_999_999_000L,
+            30L,
             "USER",
             "460001234567890",
             1_699_999_400_000L,
@@ -281,6 +297,10 @@ class StarRocksSinksTest {
             anomalyId,
             1_700_000_010_000L,
             1_700_000_000_000L,
+            1_699_999_970_000L,
+            1_699_999_940_000L,
+            1_699_999_999_000L,
+            100L,
             "CELL",
             "cell-a",
             1_699_999_940_000L,
@@ -309,13 +329,13 @@ class StarRocksSinksTest {
 
         List<Object> cellValues = StarRocksSinks.cellAnomalyValues(event);
         assertThat(cellValues).containsSubsequence("", "", "", "");
-        assertThat(cellValues.get(10)).isEqualTo("");
+        assertThat(cellValues.get(14)).isEqualTo("");
 
         List<Object> gridValues = StarRocksSinks.gridAnomalyValues(event);
-        assertThat(gridValues.get(7)).isEqualTo("");
-        assertThat(gridValues.get(8)).isEqualTo("");
-        assertThat(gridValues.get(9)).isEqualTo("");
-        assertThat(gridValues.get(10)).isEqualTo("");
+        assertThat(gridValues.get(11)).isEqualTo("");
+        assertThat(gridValues.get(12)).isEqualTo("");
+        assertThat(gridValues.get(13)).isEqualTo("");
+        assertThat(gridValues.get(14)).isEqualTo("");
     }
 
     @Test
@@ -359,6 +379,8 @@ class StarRocksSinksTest {
         assertThat(ddl).contains("anomaly_id VARCHAR(128) NOT NULL");
         assertThat(ddl).contains("entity_type VARCHAR(16) NOT NULL");
         assertThat(ddl).contains("entity_id VARCHAR(128) NOT NULL");
+        assertThat(ddl).contains("source_event_ts_avg BIGINT NOT NULL");
+        assertThat(ddl).contains("source_event_count BIGINT NOT NULL");
         assertThat(ddl).contains("window_start_ts BIGINT NOT NULL");
         assertThat(ddl).contains("CREATE TABLE IF NOT EXISTS user_anomaly_events");
         assertThat(ddl).contains("PRIMARY KEY(anomaly_id)");
@@ -371,7 +393,11 @@ class StarRocksSinksTest {
         String deploy = readDeployScript();
 
         assertThat(deploy)
-            .contains("ADD COLUMN join_quality VARCHAR(16) NOT NULL DEFAULT 'JOINED' AFTER window_end_ts")
+            .contains("ADD COLUMN source_event_ts_avg BIGINT NOT NULL DEFAULT \"0\" AFTER window_end_ts")
+            .contains("ADD COLUMN source_event_ts_min BIGINT NOT NULL DEFAULT \"0\" AFTER source_event_ts_avg")
+            .contains("ADD COLUMN source_event_ts_max BIGINT NOT NULL DEFAULT \"0\" AFTER source_event_ts_min")
+            .contains("ADD COLUMN source_event_count BIGINT NOT NULL DEFAULT \"0\" AFTER source_event_ts_max")
+            .contains("ADD COLUMN join_quality VARCHAR(16) NOT NULL DEFAULT 'JOINED' AFTER source_event_count")
             .contains("ADD COLUMN rsrp_sample_count BIGINT NOT NULL DEFAULT \"0\" AFTER num_users")
             .contains("ADD COLUMN sinr_sample_count BIGINT NOT NULL DEFAULT \"0\" AFTER rsrp_sample_count")
             .contains("ADD COLUMN attach_attempts BIGINT NOT NULL DEFAULT \"0\" AFTER sinr_sample_count");
@@ -381,6 +407,10 @@ class StarRocksSinksTest {
         return AnomalyEvent.newBuilder()
             .setDetectionTs(1_700_000_010_000L)
             .setEventTs(1_700_000_000_000L)
+            .setSourceEventTsAvg(1_699_999_970_000L)
+            .setSourceEventTsMin(1_699_999_940_000L)
+            .setSourceEventTsMax(1_699_999_999_000L)
+            .setSourceEventCount(100L)
             .setEntityType(EntityType.CELL)
             .setEntityId("cell-a")
             .setWindowStartTs(1_699_999_940_000L)
@@ -402,6 +432,10 @@ class StarRocksSinksTest {
         return CellKpi.newBuilder()
             .setWindowStartTs(1_700_000_000_000L)
             .setWindowEndTs(1_700_000_060_000L)
+            .setSourceEventTsAvg(1_700_000_030_000L)
+            .setSourceEventTsMin(1_700_000_001_000L)
+            .setSourceEventTsMax(1_700_000_059_000L)
+            .setSourceEventCount(100L)
             .setWindowKind(WindowKind.MIN_1)
             .setJoinQuality(JoinQuality.JOINED)
             .setSiteId("site-a")
@@ -426,6 +460,10 @@ class StarRocksSinksTest {
         return AnomalyEvent.newBuilder()
             .setDetectionTs(1_700_000_010_000L)
             .setEventTs(1_700_000_000_000L)
+            .setSourceEventTsAvg(1_699_999_700_000L)
+            .setSourceEventTsMin(1_699_999_410_000L)
+            .setSourceEventTsMax(1_699_999_999_000L)
+            .setSourceEventCount(30L)
             .setEntityType(EntityType.USER)
             .setEntityId("460001234567890")
             .setWindowStartTs(1_699_999_400_000L)

@@ -34,7 +34,7 @@ public final class ObservabilityClient {
         long latencyP99Ms = firstLongOrDefault(stage, -1, "latencyP99Ms", "p99Ms");
         long stageWatermarkLagMs = stage.path("watermarkLagMs").asLong(0);
         if (isDefaultStagePlaceholder(status, latencyP50Ms, latencyP95Ms, latencyP99Ms, stageWatermarkLagMs)
-            || isZeroOnlyStagePlaceholder(latencyP50Ms, latencyP95Ms, latencyP99Ms, stageWatermarkLagMs)) {
+            || isZeroOnlyStagePlaceholder(status, latencyP50Ms, latencyP95Ms, latencyP99Ms, stageWatermarkLagMs)) {
           continue;
         }
         stageLatencies.add(new StageLatencySnapshot(stageId, latencyP50Ms, latencyP95Ms, latencyP99Ms,
@@ -164,11 +164,13 @@ public final class ObservabilityClient {
   }
 
   private static boolean isZeroOnlyStagePlaceholder(
+      String status,
       long latencyP50Ms,
       long latencyP95Ms,
       long latencyP99Ms,
       long watermarkLagMs) {
-    return latencyP50Ms == 0
+    return "unknown".equalsIgnoreCase(status)
+        && latencyP50Ms == 0
         && latencyP95Ms == 0
         && latencyP99Ms == 0
         && watermarkLagMs == 0;

@@ -22,28 +22,32 @@ public final class CellKpiIcebergMapper implements MapFunction<CellKpi, RowData>
     @Override
     public RowData map(CellKpi kpi) {
         Instant windowStart = Instant.ofEpochMilli(kpi.getWindowStartTs());
-        GenericRowData row = new GenericRowData(21);
+        GenericRowData row = new GenericRowData(25);
         row.setField(0, kpi.getWindowStartTs());
         row.setField(1, kpi.getWindowEndTs());
-        row.setField(2, string(kpi.getSiteId()));
-        row.setField(3, string(kpi.getCellId()));
-        row.setField(4, string(kpi.getGridId()));
-        row.setField(5, kpi.getNumChrEvents());
-        row.setField(6, kpi.getNumUsers());
-        row.setField(7, kpi.getRsrpSampleCount());
-        row.setField(8, kpi.getSinrSampleCount());
-        row.setField(9, kpi.getAttachAttempts());
-        row.setField(10, kpi.getAvgRsrp());
-        row.setField(11, kpi.getAvgSinr());
-        row.setField(12, kpi.getAvgPrbUsageDl());
-        row.setField(13, kpi.getThroughputDlMbpsAvg());
-        row.setField(14, kpi.getDropRate());
-        row.setField(15, kpi.getHoSuccessRate());
-        row.setField(16, kpi.getAttachSuccessRate());
-        row.setField(17, string(kpi.getJoinQuality().name()));
-        row.setField(18, string(kpi.getWindowKind().toString()));
-        row.setField(19, string(DATE_FORMATTER.format(windowStart)));
-        row.setField(20, string(HOUR_FORMATTER.format(windowStart)));
+        row.setField(2, kpi.getSourceEventTsAvg());
+        row.setField(3, kpi.getSourceEventTsMin());
+        row.setField(4, kpi.getSourceEventTsMax());
+        row.setField(5, kpi.getSourceEventCount());
+        row.setField(6, string(kpi.getSiteId()));
+        row.setField(7, string(kpi.getCellId()));
+        row.setField(8, string(kpi.getGridId()));
+        row.setField(9, kpi.getNumChrEvents());
+        row.setField(10, kpi.getNumUsers());
+        row.setField(11, kpi.getRsrpSampleCount());
+        row.setField(12, kpi.getSinrSampleCount());
+        row.setField(13, kpi.getAttachAttempts());
+        row.setField(14, kpi.getAvgRsrp());
+        row.setField(15, kpi.getAvgSinr());
+        row.setField(16, kpi.getAvgPrbUsageDl());
+        row.setField(17, kpi.getThroughputDlMbpsAvg());
+        row.setField(18, kpi.getDropRate());
+        row.setField(19, kpi.getHoSuccessRate());
+        row.setField(20, kpi.getAttachSuccessRate());
+        row.setField(21, string(kpi.getJoinQuality().name()));
+        row.setField(22, string(kpi.getWindowKind().toString()));
+        row.setField(23, string(DATE_FORMATTER.format(windowStart)));
+        row.setField(24, string(HOUR_FORMATTER.format(windowStart)));
         return row;
     }
 

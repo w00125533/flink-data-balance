@@ -18,6 +18,10 @@ public class ChrMinuteFactAccumulator implements Serializable {
     private long sinrCount;
     private long attachAttempts;
     private long attachSuccess;
+    private long sourceEventTsSum;
+    private long sourceEventTsMin;
+    private long sourceEventTsMax;
+    private long sourceEventCount;
 
     public String getCellId() {
         return cellId;
@@ -99,6 +103,48 @@ public class ChrMinuteFactAccumulator implements Serializable {
         this.attachSuccess = attachSuccess;
     }
 
+    public long getSourceEventTsSum() {
+        return sourceEventTsSum;
+    }
+
+    public void setSourceEventTsSum(long sourceEventTsSum) {
+        this.sourceEventTsSum = sourceEventTsSum;
+    }
+
+    public long getSourceEventTsMin() {
+        return sourceEventTsMin;
+    }
+
+    public void setSourceEventTsMin(long sourceEventTsMin) {
+        this.sourceEventTsMin = sourceEventTsMin;
+    }
+
+    public long getSourceEventTsMax() {
+        return sourceEventTsMax;
+    }
+
+    public void setSourceEventTsMax(long sourceEventTsMax) {
+        this.sourceEventTsMax = sourceEventTsMax;
+    }
+
+    public long getSourceEventCount() {
+        return sourceEventCount;
+    }
+
+    public void setSourceEventCount(long sourceEventCount) {
+        this.sourceEventCount = sourceEventCount;
+    }
+
+    void addSourceEventTs(long eventTs) {
+        if (eventTs <= 0L) {
+            return;
+        }
+        sourceEventTsSum += eventTs;
+        sourceEventTsMin = sourceEventCount == 0L ? eventTs : Math.min(sourceEventTsMin, eventTs);
+        sourceEventTsMax = sourceEventCount == 0L ? eventTs : Math.max(sourceEventTsMax, eventTs);
+        sourceEventCount++;
+    }
+
     void addUser(String imsi) {
         users.add(imsi);
     }
@@ -110,6 +156,10 @@ public class ChrMinuteFactAccumulator implements Serializable {
     ChrMinuteFact toMinuteFact(String fallbackCellId, long minuteTs) {
         String effectiveCellId = cellId == null || cellId.isBlank() ? fallbackCellId : cellId;
         return new ChrMinuteFact(effectiveCellId, siteId, minuteTs, count, users.size(),
-            rsrpSum, sinrSum, attachAttempts, attachSuccess, rsrpCount, sinrCount);
+            rsrpSum, sinrSum, attachAttempts, attachSuccess, rsrpCount, sinrCount,
+            sourceEventCount > 0L ? sourceEventTsSum / sourceEventCount : 0L,
+            sourceEventCount > 0L ? sourceEventTsMin : 0L,
+            sourceEventCount > 0L ? sourceEventTsMax : 0L,
+            sourceEventCount);
     }
 }

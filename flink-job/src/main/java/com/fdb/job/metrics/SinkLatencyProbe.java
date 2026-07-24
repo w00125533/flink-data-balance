@@ -156,22 +156,16 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
 
     private static long latencyBaseTimestamp(Object value) {
         if (value instanceof CellKpi kpi) {
-            return kpi.getWindowEndTs();
+            return kpi.getSourceEventTsAvg() > 0L ? kpi.getSourceEventTsAvg() : Long.MIN_VALUE;
         }
         if (value instanceof AnomalyEvent anomaly) {
-            if (anomaly.getWindowEndTs() > 0L) {
-                return anomaly.getWindowEndTs();
-            }
-            if (anomaly.getDetectionTs() > 0L) {
-                return anomaly.getDetectionTs();
-            }
-            return anomaly.getEventTs();
+            return anomaly.getSourceEventTsAvg() > 0L ? anomaly.getSourceEventTsAvg() : Long.MIN_VALUE;
         }
         return Long.MIN_VALUE;
     }
 
     private static long estimateCellKpiBytes(CellKpi value) {
-        return 8L * 7L
+        return 8L * 11L
             + 4L * 7L
             + utf8Bytes(value.getSiteId())
             + utf8Bytes(value.getCellId())
@@ -180,7 +174,7 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
     }
 
     private static long estimateAnomalyBytes(AnomalyEvent value) {
-        return 8L * 4L
+        return 8L * 8L
             + utf8Bytes(value.getImsi())
             + utf8Bytes(value.getSiteId())
             + utf8Bytes(value.getCellId())

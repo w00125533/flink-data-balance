@@ -3,6 +3,7 @@ package com.fdb.job.metrics;
 import com.fdb.common.metrics.StageMetricSample;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,5 +79,26 @@ class StageMetricsProbeTest {
             assertThat(sample.latencyP99Ms()).isEqualTo(1_000L);
             assertThat(sample.watermarkLagMs()).isEqualTo(500L);
         });
+    }
+
+    @Test
+    void snapshot_checkpoint_drains_sparse_stage_samples_without_later_records() throws Exception {
+        StageMetricsProbe<String> probe = new StageMetricsProbe<>(
+            "kpi-5m", "KPI 5m Rollup", "healthy", 5_000L,
+            new MetricRuntimeConfig("run-a", "starrocks", 4, false),
+            value -> 1_000L);
+
+        probe.record("only-value", 1_000L);
+
+        probe.snapshotState(null);
+
+        assertThat(longField(probe, "eventsSinceLastEmit")).isZero();
+        assertThat(longField(probe, "lastEmitAtMs")).isGreaterThanOrEqualTo(1_000L);
+    }
+
+    private static long longField(StageMetricsProbe<?> probe, String name) throws Exception {
+        Field field = StageMetricsProbe.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.getLong(probe);
     }
 }

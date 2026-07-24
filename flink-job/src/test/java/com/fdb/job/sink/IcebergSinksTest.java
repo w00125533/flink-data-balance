@@ -26,10 +26,11 @@ class IcebergSinksTest {
 
         assertThat(identifier.toString()).isEqualTo("iceberg_db.cell_kpi");
         assertThat(IcebergSinks.tableIdentifier(config)).isEqualTo(identifier);
-        assertThat(schema.columns()).hasSize(21);
+        assertThat(schema.columns()).hasSize(25);
         assertThat(schema.columns().stream().map(field -> field.name()))
             .containsExactly(
-                "window_start_ts", "window_end_ts", "site_id", "cell_id", "grid_id",
+                "window_start_ts", "window_end_ts", "source_event_ts_avg", "source_event_ts_min",
+                "source_event_ts_max", "source_event_count", "site_id", "cell_id", "grid_id",
                 "num_chr_events", "num_users", "rsrp_sample_count", "sinr_sample_count",
                 "attach_attempts", "avg_rsrp", "avg_sinr", "avg_prb_usage_dl",
                 "throughput_dl_mbps_avg", "drop_rate", "ho_success_rate",
@@ -63,10 +64,11 @@ class IcebergSinksTest {
         Schema schema = IcebergSinks.anomalySchema();
         PartitionSpec spec = IcebergSinks.anomalyPartitionSpec(schema);
 
-        assertThat(schema.columns()).hasSize(18);
+        assertThat(schema.columns()).hasSize(22);
         assertThat(schema.columns().stream().map(field -> field.name()))
             .containsExactly(
-                "detection_ts", "event_ts", "entity_type", "entity_id", "window_start_ts",
+                "detection_ts", "event_ts", "source_event_ts_avg", "source_event_ts_min",
+                "source_event_ts_max", "source_event_count", "entity_type", "entity_id", "window_start_ts",
                 "window_end_ts", "imsi", "site_id", "cell_id", "grid_id", "latitude",
                 "longitude", "anomaly_type", "severity", "rule_version", "context_json",
                 "dt", "hour");

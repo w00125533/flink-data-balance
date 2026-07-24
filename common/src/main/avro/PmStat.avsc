@@ -8,6 +8,7 @@
     { "name": "cellId",              "type": "string" },
     { "name": "windowStartTs",       "type": "long" },
     { "name": "windowEndTs",         "type": "long" },
+    { "name": "eventTs",             "type": "long",  "default": 0 },
     { "name": "prbUsageDl",          "type": "float" },
     { "name": "prbUsageUl",          "type": "float" },
     { "name": "activeUsers",         "type": "int" },

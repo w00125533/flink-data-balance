@@ -18,6 +18,10 @@ class AnomalyEventSchemaTest {
         AnomalyEvent original = AnomalyEvent.newBuilder()
             .setDetectionTs(1714387210000L)
             .setEventTs(1714387200000L)
+            .setSourceEventTsAvg(1714387150000L)
+            .setSourceEventTsMin(1714387140000L)
+            .setSourceEventTsMax(1714387160000L)
+            .setSourceEventCount(3L)
             .setEntityType(EntityType.CELL)
             .setEntityId("CELL-001-1")
             .setWindowStartTs(1714387080000L)
@@ -40,6 +44,10 @@ class AnomalyEventSchemaTest {
         assertThat(decoded.getEntityType()).isEqualTo(EntityType.CELL);
         assertThat(decoded.getEntityId()).isEqualTo("CELL-001-1");
         assertThat(decoded.getAnomalyType()).isEqualTo(AnomalyType.CELL_RADIO_BAD);
+        assertThat(decoded.getSourceEventTsAvg()).isEqualTo(1714387150000L);
+        assertThat(decoded.getSourceEventTsMin()).isEqualTo(1714387140000L);
+        assertThat(decoded.getSourceEventTsMax()).isEqualTo(1714387160000L);
+        assertThat(decoded.getSourceEventCount()).isEqualTo(3L);
         assertThat(decoded.getImsi()).isNull();
         assertThat(decoded.getLatitude()).isNull();
     }

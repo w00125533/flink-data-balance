@@ -20,6 +20,7 @@ class PmStatSchemaTest {
             .setCellId("CELL-001")
             .setWindowStartTs(1_000L)
             .setWindowEndTs(11_000L)
+            .setEventTs(6_000L)
             .setPrbUsageDl(0.65f)
             .setPrbUsageUl(0.25f)
             .setActiveUsers(42)
@@ -52,6 +53,7 @@ class PmStatSchemaTest {
 
         assertThat(decoded).isEqualTo(original);
         assertThat(decoded.getCellId()).isEqualTo("CELL-001");
+        assertThat(decoded.getEventTs()).isEqualTo(6_000L);
         assertThat(decoded.getPrbUsageDl()).isEqualTo(0.65f);
         assertThat(decoded.getActiveUsers()).isEqualTo(42);
     }

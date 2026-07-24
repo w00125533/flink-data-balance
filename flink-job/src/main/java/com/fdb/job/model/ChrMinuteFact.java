@@ -16,6 +16,10 @@ public class ChrMinuteFact implements Serializable {
     private long attachSuccess;
     private long rsrpCount;
     private long sinrCount;
+    private long sourceEventTsAvg;
+    private long sourceEventTsMin;
+    private long sourceEventTsMax;
+    private long sourceEventCount;
 
     public ChrMinuteFact() {
     }
@@ -46,6 +50,26 @@ public class ChrMinuteFact implements Serializable {
         long attachSuccess,
         long rsrpCount,
         long sinrCount) {
+        this(cellId, siteId, minuteTs, count, uniqueUsers, rsrpSum, sinrSum,
+            attachAttempts, attachSuccess, rsrpCount, sinrCount, 0L, 0L, 0L, 0L);
+    }
+
+    public ChrMinuteFact(
+        String cellId,
+        String siteId,
+        long minuteTs,
+        long count,
+        long uniqueUsers,
+        double rsrpSum,
+        double sinrSum,
+        long attachAttempts,
+        long attachSuccess,
+        long rsrpCount,
+        long sinrCount,
+        long sourceEventTsAvg,
+        long sourceEventTsMin,
+        long sourceEventTsMax,
+        long sourceEventCount) {
         this.cellId = cellId;
         this.siteId = siteId;
         this.minuteTs = minuteTs;
@@ -57,6 +81,10 @@ public class ChrMinuteFact implements Serializable {
         this.attachSuccess = attachSuccess;
         this.rsrpCount = rsrpCount;
         this.sinrCount = sinrCount;
+        this.sourceEventTsAvg = sourceEventTsAvg;
+        this.sourceEventTsMin = sourceEventTsMin;
+        this.sourceEventTsMax = sourceEventTsMax;
+        this.sourceEventCount = sourceEventCount;
     }
 
     public String cellId() {
@@ -191,6 +219,54 @@ public class ChrMinuteFact implements Serializable {
         this.sinrCount = sinrCount;
     }
 
+    public long sourceEventTsAvg() {
+        return sourceEventTsAvg;
+    }
+
+    public long getSourceEventTsAvg() {
+        return sourceEventTsAvg;
+    }
+
+    public void setSourceEventTsAvg(long sourceEventTsAvg) {
+        this.sourceEventTsAvg = sourceEventTsAvg;
+    }
+
+    public long sourceEventTsMin() {
+        return sourceEventTsMin;
+    }
+
+    public long getSourceEventTsMin() {
+        return sourceEventTsMin;
+    }
+
+    public void setSourceEventTsMin(long sourceEventTsMin) {
+        this.sourceEventTsMin = sourceEventTsMin;
+    }
+
+    public long sourceEventTsMax() {
+        return sourceEventTsMax;
+    }
+
+    public long getSourceEventTsMax() {
+        return sourceEventTsMax;
+    }
+
+    public void setSourceEventTsMax(long sourceEventTsMax) {
+        this.sourceEventTsMax = sourceEventTsMax;
+    }
+
+    public long sourceEventCount() {
+        return sourceEventCount;
+    }
+
+    public long getSourceEventCount() {
+        return sourceEventCount;
+    }
+
+    public void setSourceEventCount(long sourceEventCount) {
+        this.sourceEventCount = sourceEventCount;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -208,6 +284,10 @@ public class ChrMinuteFact implements Serializable {
             && attachSuccess == that.attachSuccess
             && rsrpCount == that.rsrpCount
             && sinrCount == that.sinrCount
+            && sourceEventTsAvg == that.sourceEventTsAvg
+            && sourceEventTsMin == that.sourceEventTsMin
+            && sourceEventTsMax == that.sourceEventTsMax
+            && sourceEventCount == that.sourceEventCount
             && Objects.equals(cellId, that.cellId)
             && Objects.equals(siteId, that.siteId);
     }
@@ -215,7 +295,8 @@ public class ChrMinuteFact implements Serializable {
     @Override
     public int hashCode() {
         return Objects.hash(cellId, siteId, minuteTs, count, uniqueUsers, rsrpSum, sinrSum,
-            attachAttempts, attachSuccess, rsrpCount, sinrCount);
+            attachAttempts, attachSuccess, rsrpCount, sinrCount, sourceEventTsAvg,
+            sourceEventTsMin, sourceEventTsMax, sourceEventCount);
     }
 
     @Override
@@ -232,6 +313,10 @@ public class ChrMinuteFact implements Serializable {
             + ", attachSuccess=" + attachSuccess
             + ", rsrpCount=" + rsrpCount
             + ", sinrCount=" + sinrCount
+            + ", sourceEventTsAvg=" + sourceEventTsAvg
+            + ", sourceEventTsMin=" + sourceEventTsMin
+            + ", sourceEventTsMax=" + sourceEventTsMax
+            + ", sourceEventCount=" + sourceEventCount
             + '}';
     }
 }

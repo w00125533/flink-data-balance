@@ -110,6 +110,31 @@ class CellKpiRollupAggregatorTest {
     }
 
     @Test
+    void rolls_source_event_time_statistics_by_child_source_event_count() {
+        CellKpi left = CellKpi.newBuilder(kpi(0, JoinQuality.JOINED, 100L, 10L,
+                -100.0f, 5.0f, 0.50f, 50.0f, 0.01f, 0.90f, 0.95f))
+            .setSourceEventTsAvg(10_000L)
+            .setSourceEventTsMin(1_000L)
+            .setSourceEventTsMax(20_000L)
+            .setSourceEventCount(2L)
+            .build();
+        CellKpi right = CellKpi.newBuilder(kpi(1, JoinQuality.JOINED, 100L, 10L,
+                -100.0f, 5.0f, 0.50f, 50.0f, 0.01f, 0.90f, 0.95f))
+            .setSourceEventTsAvg(40_000L)
+            .setSourceEventTsMin(30_000L)
+            .setSourceEventTsMax(50_000L)
+            .setSourceEventCount(4L)
+            .build();
+
+        CellKpi rolled = CellKpiRollupAggregator.rollUp("cell-a", FIVE_MINUTE_WINDOW, List.of(left, right));
+
+        assertThat(rolled.getSourceEventTsAvg()).isEqualTo(30_000L);
+        assertThat(rolled.getSourceEventTsMin()).isEqualTo(1_000L);
+        assertThat(rolled.getSourceEventTsMax()).isEqualTo(50_000L);
+        assertThat(rolled.getSourceEventCount()).isEqualTo(6L);
+    }
+
+    @Test
     void rejects_non_minute_child_rows() {
         CellKpi child = CellKpi.newBuilder(kpi(0, JoinQuality.JOINED, 100L, 10L,
                 -100.0f, 5.0f, 0.50f, 50.0f, 0.01f, 0.90f, 0.95f))

@@ -35,10 +35,16 @@ class FlinkJobE2ETest {
 
         assertThat(cell).extracting(AnomalyEvent::getAnomalyType)
             .contains(AnomalyType.CELL_RADIO_BAD);
+        assertThat(cell.get(0).getSourceEventTsAvg()).isGreaterThan(0L);
+        assertThat(cell.get(0).getSourceEventCount()).isGreaterThan(0L);
         assertThat(user).extracting(AnomalyEvent::getAnomalyType)
             .contains(AnomalyType.USER_FAILURE);
+        assertThat(user.get(0).getSourceEventTsAvg()).isEqualTo(BASE_TS + 120_000L);
+        assertThat(user.get(0).getSourceEventCount()).isEqualTo(1L);
         assertThat(grid).extracting(AnomalyEvent::getAnomalyType)
             .containsExactly(AnomalyType.COVERAGE_HOLE);
+        assertThat(grid.get(0).getSourceEventTsAvg()).isEqualTo(BASE_TS);
+        assertThat(grid.get(0).getSourceEventCount()).isEqualTo(1L);
     }
 
     // ─────────────────────────────────────────────────
@@ -211,6 +217,10 @@ class FlinkJobE2ETest {
         return CellKpi.newBuilder()
             .setWindowStartTs(startTs)
             .setWindowEndTs(startTs + 60_000)
+            .setSourceEventTsAvg(startTs + 30_000)
+            .setSourceEventTsMin(startTs + 1_000)
+            .setSourceEventTsMax(startTs + 59_000)
+            .setSourceEventCount(100)
             .setWindowKind(WindowKind.MIN_1)
             .setJoinQuality(JoinQuality.JOINED)
             .setSiteId(SITE_ID)

@@ -60,7 +60,11 @@ public class CoverageHoleDetector extends KeyedProcessFunction<String, EnrichedC
                 "lowSignalCount",
                 rules.coverageHoleThreshold(),
                 count,
-                String.format("{\"low_signal_count\":%d,\"window_ms\":%d}", count, WINDOW_MS));
+                String.format("{\"low_signal_count\":%d,\"window_ms\":%d}", count, WINDOW_MS),
+                chr.getEventTs(),
+                chr.getEventTs(),
+                chr.getEventTs(),
+                1L);
             out.collect(AnomalyEventFactory.fromEvaluation(evaluation));
         }
     }

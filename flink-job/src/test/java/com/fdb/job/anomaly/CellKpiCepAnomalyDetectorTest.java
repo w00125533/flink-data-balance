@@ -51,6 +51,8 @@ class CellKpiCepAnomalyDetectorTest {
         assertThat(output.get(0).getEntityType()).isEqualTo(EntityType.CELL);
         assertThat(output.get(0).getEntityId()).isEqualTo("CELL-001");
         assertThat(output.get(0).getAnomalyType()).isEqualTo(AnomalyType.CELL_RADIO_BAD);
+        assertThat(output.get(0).getEventTs()).isEqualTo(180_000L);
+        assertThat(output.get(0).getSourceEventTsAvg()).isEqualTo(150_000L);
     }
 
     @Test
@@ -139,6 +141,10 @@ class CellKpiCepAnomalyDetectorTest {
         return CellKpi.newBuilder()
             .setWindowStartTs(startTs)
             .setWindowEndTs(startTs + 60_000)
+            .setSourceEventTsAvg(startTs + 30_000L)
+            .setSourceEventTsMin(startTs + 1_000L)
+            .setSourceEventTsMax(startTs + 59_000L)
+            .setSourceEventCount(100L)
             .setWindowKind(WindowKind.MIN_1)
             .setJoinQuality(JoinQuality.JOINED)
             .setSiteId("SITE-001")

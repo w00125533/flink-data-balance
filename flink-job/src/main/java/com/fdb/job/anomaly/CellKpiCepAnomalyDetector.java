@@ -135,7 +135,11 @@ public final class CellKpiCepAnomalyDetector {
             metric,
             threshold,
             observed,
-            contextJson(metric, threshold, observed, value(kpi.getWindowKind())));
+            contextJson(metric, threshold, observed, value(kpi.getWindowKind())),
+            kpi.getSourceEventTsAvg(),
+            kpi.getSourceEventTsMin(),
+            kpi.getSourceEventTsMax(),
+            kpi.getSourceEventCount());
     }
 
     private static String contextJson(String metric, double threshold, double observed, String windowKind) {

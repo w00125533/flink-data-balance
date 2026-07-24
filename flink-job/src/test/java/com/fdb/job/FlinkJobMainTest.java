@@ -7,7 +7,11 @@ import com.fdb.job.metrics.StageMetricsProbe;
 import com.fdb.job.model.InputEnvelope;
 import com.fdb.job.model.RoutedEnvelope;
 import com.fdb.job.sink.IcebergConfig;
+import com.fdb.common.avro.AnomalyEvent;
+import com.fdb.common.avro.AnomalyType;
+import com.fdb.common.avro.EntityType;
 import com.fdb.common.avro.PmStat;
+import com.fdb.common.avro.Severity;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -247,6 +251,32 @@ class FlinkJobMainTest {
         assertThat(routed.envelope()).isSameAs(envelope);
         assertThat(routed.stateKey()).isEqualTo("cell-a");
         assertThat(routed.vbucketId()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    void latency_timestamp_helpers_use_envelope_and_anomaly_source_event_time() {
+        InputEnvelope envelope = new InputEnvelope(1_234L, "cell-a") {};
+        RoutedEnvelope routed = new RoutedEnvelope(envelope, 7);
+        AnomalyEvent anomaly = AnomalyEvent.newBuilder()
+            .setDetectionTs(2_000L)
+            .setEventTs(1_900L)
+            .setSourceEventTsAvg(1_111L)
+            .setSourceEventTsMin(1_000L)
+            .setSourceEventTsMax(1_200L)
+            .setSourceEventCount(3L)
+            .setEntityType(EntityType.CELL)
+            .setEntityId("cell-a")
+            .setWindowStartTs(1_000L)
+            .setWindowEndTs(2_000L)
+            .setAnomalyType(AnomalyType.CELL_RADIO_BAD)
+            .setSeverity(Severity.MEDIUM)
+            .setRuleVersion("test")
+            .setContextJson("{}")
+            .build();
+
+        assertThat(FlinkJobMain.inputEnvelopeLatencyTimestamp(envelope)).isEqualTo(1_234L);
+        assertThat(FlinkJobMain.routedEnvelopeLatencyTimestamp(routed)).isEqualTo(1_234L);
+        assertThat(FlinkJobMain.anomalyEventLatencyTimestamp(anomaly)).isEqualTo(1_111L);
     }
 
     @Test

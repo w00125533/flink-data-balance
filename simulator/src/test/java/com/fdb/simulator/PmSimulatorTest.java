@@ -29,6 +29,14 @@ class PmSimulatorTest {
     }
 
     @Test
+    void event_timestamp_uses_pm_window_midpoint_not_window_end() {
+        PmStat stat = new PmSimulator("unused").generatePmStat(cell("cell-a"), 1_000L, 11_000L, 0.0d);
+
+        assertThat(stat.getEventTs()).isEqualTo(6_000L);
+        assertThat(stat.getEventTs()).isNotEqualTo(stat.getWindowEndTs());
+    }
+
+    @Test
     void caps_pm_window_end_lag_to_configured_out_of_order_bound() {
         assertThat(PmSimulator.boundedWindowEnd(101_000L, 2_000L)).isEqualTo(100_000L);
         assertThat(PmSimulator.boundedWindowEnd(109_000L, 2_000L)).isEqualTo(107_000L);

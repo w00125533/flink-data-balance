@@ -4,6 +4,9 @@ import com.fdb.common.metrics.StageMetricSample;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
+import org.apache.flink.runtime.state.FunctionInitializationContext;
+import org.apache.flink.runtime.state.FunctionSnapshotContext;
+import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
@@ -12,7 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
+public class StageMetricsProbe<T> extends ProcessFunction<T, T> implements CheckpointedFunction {
     private static final Logger log = LoggerFactory.getLogger(StageMetricsProbe.class);
 
     private final String stageId;
@@ -75,6 +78,15 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     }
 
     @Override
+    public void snapshotState(FunctionSnapshotContext context) {
+        publish(drainPendingSamples(System.currentTimeMillis()));
+    }
+
+    @Override
+    public void initializeState(FunctionInitializationContext context) {
+    }
+
+    @Override
     public void close() {
         if (metricPublisher != null) {
             metricPublisher.close();
@@ -101,7 +113,21 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> {
     }
 
     List<StageMetricSample> drainDueSamples(long nowMs) {
+        return drainSamples(nowMs, false);
+    }
+
+    List<StageMetricSample> drainPendingSamples(long nowMs) {
+        return drainSamples(nowMs, true);
+    }
+
+    private List<StageMetricSample> drainSamples(long nowMs, boolean force) {
         if (lastEmitAtMs < 0L || nowMs - lastEmitAtMs < emitIntervalMs) {
+            if (!force) {
+                return List.of();
+            }
+        }
+        if (eventsSinceLastEmit <= 0L) {
+            lastEmitAtMs = nowMs;
             return List.of();
         }
         double elapsedSeconds = Math.max((nowMs - lastEmitAtMs) / 1000.0d, 0.001d);

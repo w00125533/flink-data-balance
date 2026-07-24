@@ -232,6 +232,8 @@ KPI 由 CHR/PM 分钟事实 Full JOIN 后生成。
 | 字段 | 说明 |
 |---|---|
 | `windowStartTs` / `windowEndTs` | KPI 窗口 |
+| `sourceEventTsAvg` / `sourceEventTsMin` / `sourceEventTsMax` | 参与该 KPI 的原始 CHR/PM 事件时间统计；用于累计延迟统计，不使用窗口结束时间替代 |
+| `sourceEventCount` | 参与 `sourceEventTs*` 统计的原始事件数量 |
 | `windowKind` | `MIN_1` / `MIN_5` |
 | `joinQuality` | `JOINED` / `CHR_ONLY` / `PM_ONLY` |
 | `siteId` / `cellId` / `gridId` | 空间维度 |
@@ -252,6 +254,8 @@ KPI 由 CHR/PM 分钟事实 Full JOIN 后生成。
 |---|---|
 | `detectionTs` | 检测时间 |
 | `eventTs` | 触发事件时间；聚合类异常使用窗口结束时间 |
+| `sourceEventTsAvg` / `sourceEventTsMin` / `sourceEventTsMax` | 触发异常的原始事件时间统计；用户/栅格事件来自 CHR，小区聚合异常来自 `CellKpi` |
+| `sourceEventCount` | 参与 `sourceEventTs*` 统计的原始事件数量 |
 | `entityType` | `CELL` / `USER` / `GRID` |
 | `entityId` | 小区异常为 `cellId`，用户异常为 `imsi`，栅格异常为 `gridId` 或 geohash |
 | `windowStartTs` / `windowEndTs` | 检测窗口起止时间 |
@@ -623,8 +627,9 @@ Flink metrics
 时延指标口径：
 
 - Source delay：CHR/PM/CFG 入口按 `processing_time - source_event_time` 统计 p50/p95/p99。
-- KPI availability delay：`kpi-1m` 与 `kpi-5m` 按 `processing_time - CellKpi.windowEndTs` 统计出数时延。
-- Sink commit/visibility delay：业务结果增加 sink 写入打点字段，按结果窗口结束或异常检测时间到目标系统可查/可消费时间统计 p50/p95/p99。connector handoff 只能作为调试指标，不能替代 commit/visibility 口径。
+- KPI availability delay：`kpi-1m` 与 `kpi-5m` 按 `processing_time - CellKpi.sourceEventTsAvg` 统计累计可用延迟；窗口等待、Join 等待和算子排队都会体现在该值里。
+- Operator latency：单轮报告的 Operator 表展示 `累计延迟` 和 `算子延迟`。`累计延迟` 表示当前算子输出相对原始 `eventTs/sourceEventTsAvg` 的 P95；`算子延迟` 用当前算子累计延迟减去直接上游最大累计延迟近似得到。传输延迟来自 Flink latency marker，仅显示在流程图边上。
+- Sink commit/write delay：业务结果增加 connector 写入与提交打点。`sink-front` 是进入 connector 前的累计延迟；`connector-write` 是 writer/invoke 耗时；`connector-commit` 是 flush/prepare/commit/checkpoint 耗时，不包含 `connector-write`。
 
 Iceberg/Hive 额外展示 checkpoint commit、文件数量、平均文件大小、小于 1MB 文件数量，因为 file-based sink 的数据可见性和小文件成本会直接影响性能规格。
 
@@ -683,12 +688,12 @@ Run ID | Result Sink | Metrics | DLQ | Parallelism | Checkpoint | Job Status | R
 右侧显示瓶颈候选：
 
 ```text
-Backpressure
-Checkpoint duration
+反压
+Checkpoint 耗时
 Sink P95
-Input lag
-Small files
-Failures / restarts
+输入积压
+小文件
+失败 / 重启
 ```
 
 `Report` 显示 `collecting / ready / failed`；ready 时可打开 API 渲染后的临时摘要。benchmark-runner 压测交付以 `index.html` 和单轮 `report.html` 为准。
@@ -964,9 +969,7 @@ Benchmark source pacing and latency rules:
 - Kafka/Flink source backlog is part of stability judgment. A run is
   `unstable` when source lag/backlog grows beyond the configured threshold even
   if downstream sink latency has not crossed its threshold yet.
-- Latency is split into source delay, KPI availability delay, and sink commit or
-  visibility delay. Window waiting and watermark lag are shown separately from
-  producer/source backlog.
+- 时延拆成 source delay、KPI availability delay、算子累计/增量延迟、connector write/commit delay。KPI 与 sink 的累计延迟使用原始 `eventTs/sourceEventTsAvg`，不使用窗口结束时间。窗口等待和 watermark lag 与 producer/source backlog 分开展示。
 - p50/p95/p99 must be calculated from observed samples. When there are no
   samples, reports display `N/A`, not `0 ms`.
 - Result sink checkpoint cadence is shown in the report. Default checkpoint
@@ -1436,7 +1439,7 @@ DLQ：
 - 异常结果拆为 `cell_anomaly_events`、`user_anomaly_events`、`grid_anomaly_events` 三张表和三类 topic。
 - dev 初始化直接重建三张异常表；当前没有存量部署，不编写升级说明。
 
-### 12.3 2026-07-16 Sink Upper-Bound Benchmark Runner Design
+### 12.3 2026-07-16 Sink 上限压测 Runner 设计
 
 目标态刷新为 Java `benchmark-runner` 承载压测编排，`scripts/benchmark.sh`
 仅作为启动入口。`deploy.sh` 继续负责部署动作，不再承载复杂压测状态机。

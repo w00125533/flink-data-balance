@@ -3,6 +3,10 @@ CREATE DATABASE IF NOT EXISTS fdb;
 CREATE EXTERNAL TABLE IF NOT EXISTS fdb.cell_kpi (
     window_start_ts BIGINT,
     window_end_ts BIGINT,
+    source_event_ts_avg BIGINT,
+    source_event_ts_min BIGINT,
+    source_event_ts_max BIGINT,
+    source_event_count BIGINT,
     site_id STRING,
     cell_id STRING,
     grid_id STRING,
@@ -31,6 +35,10 @@ MSCK REPAIR TABLE fdb.cell_kpi;
 CREATE EXTERNAL TABLE IF NOT EXISTS fdb.cell_anomaly_events (
     detection_ts BIGINT,
     event_ts BIGINT,
+    source_event_ts_avg BIGINT,
+    source_event_ts_min BIGINT,
+    source_event_ts_max BIGINT,
+    source_event_count BIGINT,
     entity_type STRING,
     entity_id STRING,
     window_start_ts BIGINT,
@@ -53,6 +61,10 @@ LOCATION 'hdfs://namenode:8020/warehouse/fdb/cell_anomaly_events';
 CREATE EXTERNAL TABLE IF NOT EXISTS fdb.user_anomaly_events (
     detection_ts BIGINT,
     event_ts BIGINT,
+    source_event_ts_avg BIGINT,
+    source_event_ts_min BIGINT,
+    source_event_ts_max BIGINT,
+    source_event_count BIGINT,
     entity_type STRING,
     entity_id STRING,
     window_start_ts BIGINT,
@@ -75,6 +87,10 @@ LOCATION 'hdfs://namenode:8020/warehouse/fdb/user_anomaly_events';
 CREATE EXTERNAL TABLE IF NOT EXISTS fdb.grid_anomaly_events (
     detection_ts BIGINT,
     event_ts BIGINT,
+    source_event_ts_avg BIGINT,
+    source_event_ts_min BIGINT,
+    source_event_ts_max BIGINT,
+    source_event_count BIGINT,
     entity_type STRING,
     entity_id STRING,
     window_start_ts BIGINT,

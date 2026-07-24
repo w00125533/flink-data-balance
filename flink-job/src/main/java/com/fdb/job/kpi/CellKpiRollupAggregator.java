@@ -41,6 +41,10 @@ public class CellKpiRollupAggregator
         String siteId = "";
         String cellId = "";
         String gridId = "";
+        long sourceEventTsWeightedSum = 0L;
+        long sourceEventTsMin = 0L;
+        long sourceEventTsMax = 0L;
+        long sourceEventCount = 0L;
 
         for (CellKpi child : children) {
             if (child == null) {
@@ -51,6 +55,16 @@ public class CellKpiRollupAggregator
             siteId = firstNonBlank(siteId, child.getSiteId());
             cellId = firstNonBlank(cellId, child.getCellId());
             gridId = firstNonBlank(gridId, child.getGridId());
+            if (child.getSourceEventCount() > 0L && child.getSourceEventTsAvg() > 0L) {
+                sourceEventTsWeightedSum += child.getSourceEventTsAvg() * child.getSourceEventCount();
+                sourceEventTsMin = sourceEventCount == 0L
+                    ? child.getSourceEventTsMin()
+                    : Math.min(sourceEventTsMin, child.getSourceEventTsMin());
+                sourceEventTsMax = sourceEventCount == 0L
+                    ? child.getSourceEventTsMax()
+                    : Math.max(sourceEventTsMax, child.getSourceEventTsMax());
+                sourceEventCount += child.getSourceEventCount();
+            }
 
             JoinQuality joinQuality = child.getJoinQuality();
             allJoined &= joinQuality == JoinQuality.JOINED;
@@ -97,6 +111,10 @@ public class CellKpiRollupAggregator
         return CellKpi.newBuilder()
             .setWindowStartTs(window.getStart())
             .setWindowEndTs(window.getEnd())
+            .setSourceEventTsAvg(sourceEventCount > 0L ? sourceEventTsWeightedSum / sourceEventCount : 0L)
+            .setSourceEventTsMin(sourceEventCount > 0L ? sourceEventTsMin : 0L)
+            .setSourceEventTsMax(sourceEventCount > 0L ? sourceEventTsMax : 0L)
+            .setSourceEventCount(sourceEventCount)
             .setWindowKind(WindowKind.MIN_5)
             .setJoinQuality(rollupJoinQuality(allJoined, allChrOnly, allPmOnly, hasChrEvidence, hasPmEvidence))
             .setSiteId(siteId)

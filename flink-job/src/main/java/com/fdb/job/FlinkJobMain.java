@@ -132,7 +132,7 @@ public class FlinkJobMain {
                 .withTimestampAssigner((pm, ts) -> pmEventTimestamp(pm)),
             "pm-source")
             .process(stageMetricsProbe("pm-source", "PM Source", "healthy", resultSinkConfig, metricConfig,
-                PmStat::getWindowEndTs))
+                PmStat::getEventTs))
             .name("pm-source-metrics");
 
         DataStream<CfgConfig> cfgStream = env.fromSource(cfgSource,
@@ -159,7 +159,8 @@ public class FlinkJobMain {
             .name("to-cfg-env");
 
         DataStream<InputEnvelope> mergedInput = chrEnv.union(pmEnv, cfgEnv)
-            .process(stageMetricsProbe("kafka", "Kafka Topics", "healthy", resultSinkConfig, metricConfig))
+            .process(stageMetricsProbe("kafka", "Kafka Topics", "healthy", resultSinkConfig, metricConfig,
+                FlinkJobMain::inputEnvelopeLatencyTimestamp))
             .name("kafka-topics-metrics");
 
         DataStream<RoutedEnvelope> assigned;
@@ -199,12 +200,18 @@ public class FlinkJobMain {
 
         RuleConfig rules = JobConfig.load().rules();
         DataStream<AnomalyEvent> userAnomalies = UserEventCepAnomalyDetector
-            .detect(enriched, rules);
+            .detect(enriched, rules)
+            .process(stageMetricsProbe("user-anomaly", "User Anomaly Detection", "healthy",
+                resultSinkConfig, metricConfig, FlinkJobMain::anomalyEventLatencyTimestamp))
+            .name("user-anomaly-metrics");
         DataStream<AnomalyEvent> coverageAnomalies = enriched
             .keyBy(ec -> Geohash.encode(ec.chrEvent().getLatitude(), ec.chrEvent().getLongitude(), 6))
             .process(new CoverageHoleDetector(rules), new GenericTypeInfo<>(AnomalyEvent.class))
             .name("coverage-hole-detector")
-            .uid("coverage-hole-detector");
+            .uid("coverage-hole-detector")
+            .process(stageMetricsProbe("grid-anomaly", "Grid Anomaly Detection", "healthy",
+                resultSinkConfig, metricConfig, FlinkJobMain::anomalyEventLatencyTimestamp))
+            .name("grid-anomaly-metrics");
 
         // KPI aggregation (1-minute CHR/PM event-time full join)
 
@@ -220,7 +227,7 @@ public class FlinkJobMain {
             .name("chr-1m-fact")
             .process(windowMaterializationProbe(
                 "window-chr-1m", "CHR 1m Materialization", "chr-1m", "MIN_1",
-                fact -> fact.minuteTs() + 60_000L, metricConfig))
+                fact -> fact.minuteTs() + 60_000L, ChrMinuteFact::sourceEventTsAvg, metricConfig))
             .name("window-chr-1m-materialization");
 
         DataStream<PmMinuteFact> pmMinuteFacts = pmStream
@@ -230,7 +237,7 @@ public class FlinkJobMain {
             .name("pm-1m-fact")
             .process(windowMaterializationProbe(
                 "window-pm-1m", "PM 1m Materialization", "pm-1m", "MIN_1",
-                fact -> fact.minuteTs() + 60_000L, metricConfig))
+                fact -> fact.minuteTs() + 60_000L, PmMinuteFact::sourceEventTsAvg, metricConfig))
             .name("window-pm-1m-materialization");
 
         DataStream<MinuteFactEnvelope> chrFactEnv = chrMinuteFacts
@@ -265,13 +272,16 @@ public class FlinkJobMain {
             .uid("kpi-1m-full-join")
             .process(windowMaterializationProbe(
                 "window-kpi-1m", "KPI 1m Materialization", "kpi-1m", "MIN_1",
-                CellKpi::getWindowEndTs, metricConfig))
+                CellKpi::getWindowEndTs, CellKpi::getSourceEventTsAvg, metricConfig))
             .name("window-kpi-1m-materialization")
             .process(stageMetricsProbe("kpi-1m", "KPI 1m Full Join", "healthy", resultSinkConfig, metricConfig,
-                CellKpi::getWindowEndTs))
+                CellKpi::getSourceEventTsAvg))
             .name("kpi-1m-metrics");
         DataStream<AnomalyEvent> cellAnomalies = CellKpiCepAnomalyDetector
-            .detect(cellKpi1m, rules);
+            .detect(cellKpi1m, rules)
+            .process(stageMetricsProbe("cell-anomaly", "Cell Anomaly Detection", "healthy",
+                resultSinkConfig, metricConfig, FlinkJobMain::anomalyEventLatencyTimestamp))
+            .name("cell-anomaly-metrics");
 
         DataStream<CellKpi> cellKpi5m = cellKpi1m
             .assignTimestampsAndWatermarks(
@@ -284,7 +294,7 @@ public class FlinkJobMain {
             .name("kpi-5m-rollup")
             .uid("kpi-5m-rollup")
             .process(stageMetricsProbe("kpi-5m", "KPI 5m Rollup", "healthy", resultSinkConfig, metricConfig,
-                CellKpi::getWindowEndTs))
+                CellKpi::getSourceEventTsAvg))
             .name("kpi-5m-metrics");
 
         ResultSinks.attachBusinessResultSinks(
@@ -316,7 +326,8 @@ public class FlinkJobMain {
             .process(new VBucketLoadMeter(), new GenericTypeInfo<>(RoutedEnvelope.class))
             .name("vbucket-load-meter");
         DataStream<RoutedEnvelope> assigned = metered
-            .process(stageMetricsProbe("assigner", "VBucket Assigner", "healthy", resultSinkConfig, metricConfig))
+            .process(stageMetricsProbe("assigner", "VBucket Assigner", "healthy", resultSinkConfig, metricConfig,
+                FlinkJobMain::routedEnvelopeLatencyTimestamp))
             .name("vbucket-assigner-metrics");
 
         KafkaSink<String> heartbeatKafkaSink = KafkaSink.<String>builder()
@@ -385,6 +396,20 @@ public class FlinkJobMain {
 
     static RoutedEnvelope directRoute(InputEnvelope envelope) {
         return new RoutedEnvelope(envelope, Hashes.toVBucket(envelope.cellId(), DIRECT_ROUTE_VBUCKETS));
+    }
+
+    static long inputEnvelopeLatencyTimestamp(InputEnvelope envelope) {
+        return envelope == null ? Long.MIN_VALUE : envelope.ts();
+    }
+
+    static long routedEnvelopeLatencyTimestamp(RoutedEnvelope routed) {
+        return routed == null ? Long.MIN_VALUE : inputEnvelopeLatencyTimestamp(routed.envelope());
+    }
+
+    static long anomalyEventLatencyTimestamp(AnomalyEvent anomaly) {
+        return anomaly == null || anomaly.getSourceEventTsAvg() <= 0L
+            ? Long.MIN_VALUE
+            : anomaly.getSourceEventTsAvg();
     }
 
     static boolean resolveDynamicBalancingEnabled(Map<String, String> env, Properties properties) {
@@ -537,8 +562,10 @@ public class FlinkJobMain {
         String dataset,
         String windowKind,
         WindowMaterializationProbe.WindowEndTimestampExtractor<T> windowEndTimestampExtractor,
+        LatencyTimestampExtractor<T> latencyTimestampExtractor,
         MetricRuntimeConfig metricConfig) {
         return new WindowMaterializationProbe<>(
-            stageId, displayName, dataset, windowKind, windowEndTimestampExtractor, metricConfig);
+            stageId, displayName, dataset, windowKind, windowEndTimestampExtractor, latencyTimestampExtractor,
+            metricConfig);
     }
 }

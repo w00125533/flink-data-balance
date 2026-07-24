@@ -202,12 +202,32 @@ class ObservabilityClientTest {
   }
 
   @Test
-  void skips_zero_only_stage_latency_placeholders_even_when_status_is_healthy() {
+  void keeps_healthy_zero_latency_stage_samples() {
+    ObservabilityClient client = new ObservabilityClient(URI.create("http://localhost:18080"), uri -> switch (uri.getPath()) {
+      case "/api/flow/status" -> """
+          {"stages":[
+            {"stageId":"cfg-source","status":"healthy","latencyP50Ms":0,"latencyP95Ms":0,"latencyP99Ms":0,"watermarkLagMs":0}
+          ]}
+          """;
+      case "/api/results/sink-latency" -> "[]";
+      default -> "[]";
+    });
+
+    FdbMetricsSnapshot snapshot = client.snapshot();
+
+    assertThat(snapshot.stageLatencies()).singleElement().satisfies(stage -> {
+      assertThat(stage.stageId()).isEqualTo("cfg-source");
+      assertThat(stage.latencyP95Ms()).isEqualTo(0);
+    });
+  }
+
+  @Test
+  void skips_zero_only_stage_latency_placeholders_when_status_is_unknown() {
     FakeHttpGateway http = new FakeHttpGateway(Map.of(
         "/api/flow/status",
             """
                 [
-                  {"stageId":"kpi-5m","status":"healthy","latencyP50Ms":0,"latencyP95Ms":0,"latencyP99Ms":0,"watermarkLagMs":0},
+                  {"stageId":"kpi-5m","status":"unknown","latencyP50Ms":0,"latencyP95Ms":0,"latencyP99Ms":0,"watermarkLagMs":0},
                   {"stageId":"kpi-1m","status":"healthy","latencyP50Ms":4,"latencyP95Ms":8,"latencyP99Ms":12,"watermarkLagMs":5}
                 ]
                 """,

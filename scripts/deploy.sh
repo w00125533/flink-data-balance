@@ -376,8 +376,20 @@ shared_starrocks_mysql() {
 starrocks_cell_kpi_connector_column_sql() {
   local column=$1
   case "$column" in
+    source_event_ts_avg)
+      echo 'ADD COLUMN source_event_ts_avg BIGINT NOT NULL DEFAULT "0" AFTER window_end_ts'
+      ;;
+    source_event_ts_min)
+      echo 'ADD COLUMN source_event_ts_min BIGINT NOT NULL DEFAULT "0" AFTER source_event_ts_avg'
+      ;;
+    source_event_ts_max)
+      echo 'ADD COLUMN source_event_ts_max BIGINT NOT NULL DEFAULT "0" AFTER source_event_ts_min'
+      ;;
+    source_event_count)
+      echo 'ADD COLUMN source_event_count BIGINT NOT NULL DEFAULT "0" AFTER source_event_ts_max'
+      ;;
     join_quality)
-      echo "ADD COLUMN join_quality VARCHAR(16) NOT NULL DEFAULT 'JOINED' AFTER window_end_ts"
+      echo "ADD COLUMN join_quality VARCHAR(16) NOT NULL DEFAULT 'JOINED' AFTER source_event_count"
       ;;
     rsrp_sample_count)
       echo 'ADD COLUMN rsrp_sample_count BIGINT NOT NULL DEFAULT "0" AFTER num_users'
@@ -394,16 +406,44 @@ starrocks_cell_kpi_connector_column_sql() {
   esac
 }
 
+starrocks_anomaly_connector_column_sql() {
+  local column=$1
+  case "$column" in
+    source_event_ts_avg)
+      echo 'ADD COLUMN source_event_ts_avg BIGINT NOT NULL DEFAULT "0" AFTER event_ts'
+      ;;
+    source_event_ts_min)
+      echo 'ADD COLUMN source_event_ts_min BIGINT NOT NULL DEFAULT "0" AFTER source_event_ts_avg'
+      ;;
+    source_event_ts_max)
+      echo 'ADD COLUMN source_event_ts_max BIGINT NOT NULL DEFAULT "0" AFTER source_event_ts_min'
+      ;;
+    source_event_count)
+      echo 'ADD COLUMN source_event_count BIGINT NOT NULL DEFAULT "0" AFTER source_event_ts_max'
+      ;;
+    *)
+      die "unsupported StarRocks anomaly connector column: $column"
+      ;;
+  esac
+}
+
 local_starrocks_column_exists() {
   local column=$1
   shared_starrocks_mysql -N -B -e "SHOW COLUMNS FROM cell_kpi LIKE '$column';" \
     | grep -Eq "^${column}[[:space:]]"
 }
 
+local_starrocks_table_column_exists() {
+  local table=$1
+  local column=$2
+  shared_starrocks_mysql -N -B -e "SHOW COLUMNS FROM ${table} LIKE '$column';" \
+    | grep -Eq "^${column}[[:space:]]"
+}
+
 ensure_local_starrocks_cell_kpi_connector_schema() {
   local column
   local alter_sql
-  local columns=(join_quality rsrp_sample_count sinr_sample_count attach_attempts)
+  local columns=(source_event_ts_avg source_event_ts_min source_event_ts_max source_event_count join_quality rsrp_sample_count sinr_sample_count attach_attempts)
 
   for column in "${columns[@]}"; do
     if ! local_starrocks_column_exists "$column"; then
@@ -411,6 +451,24 @@ ensure_local_starrocks_cell_kpi_connector_schema() {
       log "adding StarRocks cell_kpi connector column: $column"
       shared_starrocks_mysql -e "ALTER TABLE cell_kpi ${alter_sql};"
     fi
+  done
+}
+
+ensure_local_starrocks_anomaly_connector_schema() {
+  local table
+  local column
+  local alter_sql
+  local tables=(cell_anomaly_events user_anomaly_events grid_anomaly_events)
+  local columns=(source_event_ts_avg source_event_ts_min source_event_ts_max source_event_count)
+
+  for table in "${tables[@]}"; do
+    for column in "${columns[@]}"; do
+      if ! local_starrocks_table_column_exists "$table" "$column"; then
+        alter_sql="$(starrocks_anomaly_connector_column_sql "$column")"
+        log "adding StarRocks ${table} connector column: $column"
+        shared_starrocks_mysql -e "ALTER TABLE ${table} ${alter_sql};"
+      fi
+    done
   done
 }
 
@@ -973,6 +1031,7 @@ local_init() {
   log "initializing shared StarRocks tables"
   shared_starrocks_mysql --no-database < scripts/init-starrocks.sql
   ensure_local_starrocks_cell_kpi_connector_schema
+  ensure_local_starrocks_anomaly_connector_schema
 
   log "initializing shared Hive table"
   bash scripts/init-hive.sh
@@ -1031,6 +1090,9 @@ local_prepare() {
 
   case "${FDB_RESULT_SINK:-starrocks}" in
     starrocks)
+      log "ensuring shared StarRocks connector schema"
+      ensure_local_starrocks_cell_kpi_connector_schema
+      ensure_local_starrocks_anomaly_connector_schema
       log "resetting shared StarRocks benchmark tables"
       reset_starrocks_sql | shared_starrocks_mysql
       ;;
@@ -1491,10 +1553,23 @@ SHOW COLUMNS FROM cell_kpi LIKE '${column}';
 SQL
 }
 
+external_starrocks_table_column_exists() {
+  local table=$1
+  local column=$2
+  external_mysql_run_sql \
+    "$(external_starrocks_host)" \
+    "$(external_starrocks_port)" \
+    "${FDB_STARROCKS_USER:-root}" \
+    "${FDB_STARROCKS_PASSWORD:-}" \
+    "${FDB_STARROCKS_DATABASE:-fdb}" <<SQL | grep -Eq "^${column}[[:space:]]"
+SHOW COLUMNS FROM ${table} LIKE '${column}';
+SQL
+}
+
 ensure_external_starrocks_cell_kpi_connector_schema() {
   local column
   local alter_sql
-  local columns=(join_quality rsrp_sample_count sinr_sample_count attach_attempts)
+  local columns=(source_event_ts_avg source_event_ts_min source_event_ts_max source_event_count join_quality rsrp_sample_count sinr_sample_count attach_attempts)
 
   for column in "${columns[@]}"; do
     if ! external_starrocks_column_exists "$column"; then
@@ -1509,6 +1584,31 @@ ensure_external_starrocks_cell_kpi_connector_schema() {
 ALTER TABLE cell_kpi ${alter_sql};
 SQL
     fi
+  done
+}
+
+ensure_external_starrocks_anomaly_connector_schema() {
+  local table
+  local column
+  local alter_sql
+  local tables=(cell_anomaly_events user_anomaly_events grid_anomaly_events)
+  local columns=(source_event_ts_avg source_event_ts_min source_event_ts_max source_event_count)
+
+  for table in "${tables[@]}"; do
+    for column in "${columns[@]}"; do
+      if ! external_starrocks_table_column_exists "$table" "$column"; then
+        alter_sql="$(starrocks_anomaly_connector_column_sql "$column")"
+        log "adding external StarRocks ${table} connector column: $column"
+        external_mysql_run_sql \
+          "$(external_starrocks_host)" \
+          "$(external_starrocks_port)" \
+          "${FDB_STARROCKS_USER:-root}" \
+          "${FDB_STARROCKS_PASSWORD:-}" \
+          "${FDB_STARROCKS_DATABASE:-fdb}" <<SQL
+ALTER TABLE ${table} ${alter_sql};
+SQL
+      fi
+    done
   done
 }
 
@@ -1909,6 +2009,7 @@ external_init() {
     "" \
     scripts/init-starrocks.sql
   ensure_external_starrocks_cell_kpi_connector_schema
+  ensure_external_starrocks_anomaly_connector_schema
 
   ok "external-yarn dependencies initialized"
 }

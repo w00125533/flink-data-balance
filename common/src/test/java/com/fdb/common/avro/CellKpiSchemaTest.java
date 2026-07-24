@@ -18,6 +18,10 @@ class CellKpiSchemaTest {
         CellKpi original = CellKpi.newBuilder()
             .setWindowStartTs(1714387200000L)
             .setWindowEndTs(1714387260000L)
+            .setSourceEventTsAvg(1714387230000L)
+            .setSourceEventTsMin(1714387205000L)
+            .setSourceEventTsMax(1714387255000L)
+            .setSourceEventCount(1234L)
             .setWindowKind(WindowKind.MIN_1)
             .setJoinQuality(JoinQuality.JOINED)
             .setSiteId("SITE-001")
@@ -47,6 +51,10 @@ class CellKpiSchemaTest {
 
         assertThat(decoded).isEqualTo(original);
         assertThat(decoded.getWindowKind()).isEqualTo(WindowKind.MIN_1);
+        assertThat(decoded.getSourceEventTsAvg()).isEqualTo(1714387230000L);
+        assertThat(decoded.getSourceEventTsMin()).isEqualTo(1714387205000L);
+        assertThat(decoded.getSourceEventTsMax()).isEqualTo(1714387255000L);
+        assertThat(decoded.getSourceEventCount()).isEqualTo(1234L);
         assertThat(decoded.getJoinQuality()).isEqualTo(JoinQuality.JOINED);
         assertThat(decoded.getNumChrEvents()).isEqualTo(1234L);
         assertThat(decoded.getRsrpSampleCount()).isEqualTo(1200L);

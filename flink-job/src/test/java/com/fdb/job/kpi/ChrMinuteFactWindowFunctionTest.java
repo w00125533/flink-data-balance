@@ -32,7 +32,21 @@ class ChrMinuteFactWindowFunctionTest {
         function.process("cell-a", context(function, window), List.of(acc), collector(output));
 
         assertThat(output).containsExactly(new ChrMinuteFact(
-            "cell-a", "site-a", 120_000L, 3L, 2L, -190.0, 24.0, 2L, 1L, 2L, 2L));
+            "cell-a",
+            "site-a",
+            120_000L,
+            3L,
+            2L,
+            -190.0,
+            24.0,
+            2L,
+            1L,
+            2L,
+            2L,
+            120_001L,
+            120_001L,
+            120_001L,
+            3L));
     }
 
     private static ProcessWindowFunction<ChrMinuteFactAccumulator, ChrMinuteFact, String, TimeWindow>.Context context(

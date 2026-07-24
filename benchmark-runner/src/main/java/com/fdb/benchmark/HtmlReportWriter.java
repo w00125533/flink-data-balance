@@ -54,17 +54,17 @@ public final class HtmlReportWriter {
           .append("<td>").append(escape(result.storage().summary())).append("</td>")
           .append("<td>").append(escape(result.bottleneckReason())).append("</td>")
           .append("<td><a href=\"runs/").append(escape(plan.runId()))
-          .append("/report.html\">report</a></td>")
+          .append("/report.html\">单轮报告</a></td>")
           .append("</tr>\n");
     }
 
     return """
         <!doctype html>
-        <html lang="en">
+        <html lang="zh-CN">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Sink Upper-Bound Benchmark</title>
+          <title>Sink 上限压测</title>
           <style>
             body { margin: 0; font-family: Arial, sans-serif; color: #1f2937; background: #f7f8fa; }
             main { max-width: 1180px; margin: 0 auto; padding: 32px 24px; }
@@ -90,34 +90,34 @@ public final class HtmlReportWriter {
         </head>
         <body>
           <main>
-            <h1>Sink Upper-Bound Benchmark</h1>
-            <div class="meta">Benchmark: %s | Target: %s | Warmup: %ss | Duration: %ss</div>
+            <h1>Sink 上限压测</h1>
+            <div class="meta">压测: %s | 目标: %s | 预热: %ss | 观测: %ss</div>
             <div class="cards">
               %s
               %s
               %s
               %s
             </div>
-            <h2>Stable upper bounds</h2>
+            <h2>稳定上限</h2>
             %s
-            <h2>Runs</h2>
+            <h2>运行明细</h2>
             <table>
               <thead>
-                <tr><th>Sink</th><th>Cells</th><th>CHR EPS/cell/s</th><th>Global CHR EPS</th><th>Status</th><th>Sampled Avg Out EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Connector Commit P95</th><th>Checkpoint</th><th>Backpressure</th><th>Watermark Lag</th><th>Storage</th><th>Reason</th><th>Report</th></tr>
+                <tr><th>Sink</th><th>小区数</th><th>CHR EPS/小区/s</th><th>全局 CHR EPS</th><th>状态</th><th>采样输出 EPS</th><th>KPI 1m P95</th><th>Sink P95</th><th>Connector 提交 P95</th><th>Checkpoint</th><th>反压</th><th>Watermark 滞后</th><th>存储</th><th>原因</th><th>报告</th></tr>
               </thead>
               <tbody>
         """.formatted(escape(config.benchmarkId()), escape(config.target()), config.warmupSec(), config.durationSec(),
-            metricCard("Total Runs", String.valueOf(results.size()), "All attempted levels"),
-            metricCard("Stable Runs", String.valueOf(countStatus(results, BenchmarkStatus.STABLE)),
-                "Healthy through measurement"),
-            metricCard("Unstable/Failed", String.valueOf(countNonStable(results)), "Stopped escalation points"),
-            metricCard("Best Stable Bound", bestStableBound(results), "Highest stable cell level"),
+            metricCard("运行轮次", String.valueOf(results.size()), "已尝试的全部档位"),
+            metricCard("稳定轮次", String.valueOf(countStatus(results, BenchmarkStatus.STABLE)),
+                "观测期内满足门限"),
+            metricCard("不稳定/失败", String.valueOf(countNonStable(results)), "压测停止或瓶颈档位"),
+            metricCard("最佳稳定上限", bestStableBound(results), "最高稳定小区档位"),
             stableBounds(results))
         + rows
         + """
               </tbody>
             </table>
-            <h2>Recommendations</h2>
+            <h2>建议</h2>
             <div class="recommendations">
               %s
             </div>
@@ -134,7 +134,7 @@ public final class HtmlReportWriter {
     StorageSnapshot storage = result.storage();
     return """
         <!doctype html>
-        <html lang="en">
+        <html lang="zh-CN">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -186,8 +186,6 @@ public final class HtmlReportWriter {
             .flow-edge-marker-label-warn { fill: #875400; }
             .flow-edge.active { stroke: #1d4ed8; stroke-width: 2.4; }
             tr.active-row td { background: #e8f1ff; }
-            .operator-marker-row td { background: #fbfcfe; color: #475467; font-size: 12px; }
-            .operator-marker-row td:first-child { padding-left: 24px; font-weight: 700; }
             .operator-section { display: flex; flex-direction: column; gap: 12px; }
             .column-guide { background: #fff; border: 1px solid #d9dee7; padding: 12px; }
             .column-guide h3 { font-size: 15px; margin: 0 0 8px; }
@@ -197,9 +195,9 @@ public final class HtmlReportWriter {
         </head>
         <body>
           <main>
-            <a href="../../index.html">Back to benchmark</a>
+            <a href="../../index.html">返回压测汇总</a>
             <h1>%s</h1>
-            <p class="meta">Benchmark %s | Target %s | Sink %s | Cells %s | CHR EPS %s records/cell/s</p>
+            <p class="meta">压测 %s | 目标 %s | Sink %s | 小区数 %s | CHR EPS %s 条/小区/s</p>
             <p><span class="status %s">%s</span> %s</p>
             <div class="cards">
               %s
@@ -211,25 +209,25 @@ public final class HtmlReportWriter {
               %s
               %s
             </div>
-            <h2>Run Summary</h2>
+            <h2>运行摘要</h2>
             %s
-            <h2>Stability Gates</h2>
+            <h2>稳定性门禁</h2>
             %s
-            <h2>Source Density</h2>
+            <h2>Source 密度</h2>
             %s
-            <h2>1m Window Diagnostics</h2>
+            <h2>1m 窗口诊断</h2>
             %s
-            <h2>Run Notes</h2>
+            <h2>运行说明</h2>
             %s
-            <h2>Topology Generation</h2>
+            <h2>拓扑生成</h2>
             %s
-            <h2>Flink Resources</h2>
+            <h2>Flink 资源</h2>
             %s
-            <h2>Operator Flow &amp; Metrics</h2>
+            <h2>算子流程与指标</h2>
             %s
-            <h2>Sink &amp; Storage</h2>
+            <h2>Sink 与存储</h2>
             %s
-            <h2>Raw Artifacts</h2>
+            <h2>原始文件</h2>
             <div class="raw-links">
               <a href="run.json">run.json</a>
               <a href="flink-snapshot.json">flink-snapshot.json</a>
@@ -270,16 +268,16 @@ public final class HtmlReportWriter {
             statusClass(result.status()),
             result.status(),
             escape(result.bottleneckReason()),
-            metricCard("Status", result.status().name(), result.bottleneckReason()),
-            metricCard("Sampled Avg Out EPS", formatFlinkMetric(result, flink.recordsOutPerSec()),
-                "Flink sampled window avg records/s"),
+            metricCard("状态", result.status().name(), result.bottleneckReason()),
+            metricCard("采样输出 EPS", formatFlinkMetric(result, flink.recordsOutPerSec()),
+                "Flink 采样窗口平均 records/s"),
             metricCard("Checkpoint", formatMs(flink.checkpointDurationMs()),
-                "Failures " + flink.consecutiveCheckpointFailures()),
-            metricCard("Backpressure", formatRatio(flink.backpressureRatio()), "Job-level ratio"),
-            metricCard("KPI 1m P95", formatMs(fdb.kpi1mP95Ms()), "KPI availability"),
-            metricCard("Sink P95", formatMs(fdb.sinkP95Ms()), "Failures " + fdb.sinkFailures()),
-            metricCard("Connector Write P95", formatMs(fdb.connectorWriteP95Ms()), "Connector write/invoke duration"),
-            metricCard("Connector Commit P95", formatMs(fdb.connectorCommitP95Ms()), "Flush, prepare, commit, checkpoint"),
+                "失败 " + flink.consecutiveCheckpointFailures() + " 次"),
+            metricCard("反压", formatRatio(flink.backpressureRatio()), "Job 级比例"),
+            metricCard("KPI 1m P95", formatMs(fdb.kpi1mP95Ms()), "KPI 可用延迟"),
+            metricCard("Sink P95", formatMs(fdb.sinkP95Ms()), "失败 " + fdb.sinkFailures() + " 次"),
+            metricCard("Connector 写入 P95", formatMs(fdb.connectorWriteP95Ms()), "connector writer/invoke 耗时"),
+            metricCard("Connector 提交 P95", formatMs(fdb.connectorCommitP95Ms()), "flush、prepare、commit、checkpoint 耗时"),
             runSummaryTable(config, result),
             stabilityGateTable(config, result),
             sourceDensity(result.source(), plan.cellLevel()),
@@ -312,37 +310,37 @@ public final class HtmlReportWriter {
     boolean operatorMetricsTrusted = operatorMetricsTrusted(result);
 
     List<HealthGateRow> rows = List.of(
-        gate("Flink Job Status", flink.jobStatus(), "RUNNING",
+        gate("Flink 作业状态", flink.jobStatus(), "RUNNING",
             "RUNNING".equalsIgnoreCase(flink.jobStatus()) ? GateHealth.HEALTHY : GateHealth.FAILED),
-        gate("Source Metrics", source.present() ? "present" : "missing", "present",
+        gate("Source 指标", source.present() ? "存在" : "缺失", "存在",
             source.present() ? GateHealth.HEALTHY : GateHealth.UNSTABLE),
-        gate("CHR Source Metrics", source.hasChrMetrics() ? "present" : "missing", "present",
+        gate("CHR Source 指标", source.hasChrMetrics() ? "存在" : "缺失", "存在",
             source.hasChrMetrics() ? GateHealth.HEALTHY : GateHealth.UNSTABLE),
-        gate("Operator Metrics Validity", operatorMetricsTrusted ? "available" : operatorMetricsValidity(result),
-            "available when source records are published",
+        gate("算子指标有效性", operatorMetricsTrusted ? "可用" : operatorMetricsValidity(result),
+            "Source 已发布记录时可用",
             operatorMetricsTrusted ? GateHealth.HEALTHY : GateHealth.NA),
-        gate("Source Throughput Attainment", source.hasChrMetrics() ? formatRatio(source.producerDeliveryRatio()) : "N/A",
+        gate("Source 吞吐达成率", source.hasChrMetrics() ? formatRatio(source.producerDeliveryRatio()) : "N/A",
             ">= " + formatRatio(thresholds.minProducerDeliveryRatio()),
             source.hasChrMetrics()
                 ? health(source.producerDeliveryRatio() >= thresholds.minProducerDeliveryRatio())
                 : GateHealth.NA),
-        gate("1m Window Materialization", windows.observedClosedMinutes(), windows.thresholdText(),
+        gate("1m 窗口物化", windows.observedClosedMinutes(), windows.thresholdText(),
             windows.applicable() ? health(windows.healthy()) : GateHealth.NA),
-        gate("Source Operator Backlog", operatorMetricsTrusted ? flink.sourceBacklogRecords() + " records" : "N/A",
-            "<= " + thresholds.maxSourceBacklogRecords() + " records",
+        gate("Source 算子积压", operatorMetricsTrusted ? flink.sourceBacklogRecords() + " 条" : "N/A",
+            "<= " + thresholds.maxSourceBacklogRecords() + " 条",
             operatorMetricsTrusted
                 ? health(flink.sourceBacklogRecords() <= thresholds.maxSourceBacklogRecords())
                 : GateHealth.NA),
-        gate("Backpressure Ratio", operatorMetricsTrusted ? formatRatio(flink.backpressureRatio()) : "N/A",
+        gate("反压比例", operatorMetricsTrusted ? formatRatio(flink.backpressureRatio()) : "N/A",
             "<= " + formatRatio(thresholds.maxBackpressureRatio()),
             operatorMetricsTrusted ? health(flink.backpressureRatio() <= thresholds.maxBackpressureRatio()) : GateHealth.NA),
-        gate("Consecutive Checkpoint Failures", flink.consecutiveCheckpointFailures() + " failures",
-            "< " + thresholds.maxConsecutiveCheckpointFailures() + " failures",
+        gate("连续 Checkpoint 失败", flink.consecutiveCheckpointFailures() + " 次",
+            "< " + thresholds.maxConsecutiveCheckpointFailures() + " 次",
             health(flink.consecutiveCheckpointFailures() < thresholds.maxConsecutiveCheckpointFailures())),
-        gate("Checkpoint Duration", formatMs(flink.checkpointDurationMs()),
+        gate("Checkpoint 耗时", formatMs(flink.checkpointDurationMs()),
             "<= " + formatMs(thresholds.maxCheckpointDurationMs()),
             health(flink.checkpointDurationMs() <= thresholds.maxCheckpointDurationMs())),
-        gate("KPI Availability P95", formatMs(kpiAvailabilityP95Ms),
+        gate("KPI 可用延迟 P95", formatMs(kpiAvailabilityP95Ms),
             "<= " + formatMs(thresholds.maxKpiAvailabilityP95Ms()),
             kpiAvailabilityP95Ms >= 0
                 ? health(kpiAvailabilityP95Ms <= thresholds.maxKpiAvailabilityP95Ms())
@@ -350,22 +348,22 @@ public final class HtmlReportWriter {
         gate("Sink P95", formatMs(fdb.sinkP95Ms()),
             "<= " + formatMs(thresholds.maxSinkP95Ms()),
             fdb.sinkP95Ms() >= 0 ? health(fdb.sinkP95Ms() <= thresholds.maxSinkP95Ms()) : GateHealth.NA),
-        gate("Connector Write P95", formatMs(fdb.connectorWriteP95Ms()),
+        gate("Connector 写入 P95", formatMs(fdb.connectorWriteP95Ms()),
             "<= " + formatMs(thresholds.maxSinkP95Ms()),
             fdb.connectorWriteP95Ms() >= 0
                 ? health(fdb.connectorWriteP95Ms() <= thresholds.maxSinkP95Ms())
                 : GateHealth.NA),
-        gate("Connector Commit P95", formatMs(fdb.connectorCommitP95Ms()),
+        gate("Connector 提交 P95", formatMs(fdb.connectorCommitP95Ms()),
             "<= " + formatMs(thresholds.maxSinkP95Ms()),
             fdb.connectorCommitP95Ms() >= 0
                 ? health(fdb.connectorCommitP95Ms() <= thresholds.maxSinkP95Ms())
                 : GateHealth.NA),
-        gate("Sink Failures", fdb.sinkFailures() + " failures", "<= 0 failures",
+        gate("Sink 失败数", fdb.sinkFailures() + " 次", "<= 0 次",
             health(fdb.sinkFailures() <= 0)),
-        gate("Watermark Lag", formatMs(fdb.watermarkLagMs()),
+        gate("Watermark 滞后", formatMs(fdb.watermarkLagMs()),
             "<= " + formatMs(thresholds.maxWatermarkLagMs()),
             health(fdb.watermarkLagMs() <= thresholds.maxWatermarkLagMs())),
-        gate("Storage Health", storage.healthy() ? "healthy" : "unhealthy", "healthy",
+        gate("存储健康", storage.healthy() ? "健康" : "异常", "健康",
             storage.healthy() ? GateHealth.HEALTHY : GateHealth.UNSTABLE));
 
     StringBuilder body = new StringBuilder();
@@ -377,7 +375,7 @@ public final class HtmlReportWriter {
     }
     return """
         <table>
-          <thead><tr><th>Metric</th><th>Observed</th><th>Threshold</th><th>Health</th></tr></thead>
+          <thead><tr><th>指标</th><th>观测值</th><th>门限</th><th>健康状态</th></tr></thead>
           <tbody>%s</tbody>
         </table>
         """.formatted(body);
@@ -401,53 +399,55 @@ public final class HtmlReportWriter {
     SourceMetricsSnapshot source = result.source();
     WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, result.fdb());
     return twoColumnTable(List.of(
-        row("Benchmark", config.benchmarkId()),
-        row("Target", config.target()),
-        row("Run ID", plan.runId()),
-        row("Run Label", plan.runLabel()),
+        row("压测 ID", config.benchmarkId()),
+        row("目标环境", config.target()),
+        row("运行 ID", plan.runId()),
+        row("运行标签", plan.runLabel()),
         row("Sink", plan.sink().value()),
-        row("Cell Level", String.valueOf(plan.cellLevel())),
-        row("Target CHR EPS", rateValue(plan.targetChrEpsPerCell()) + " records/cell/s"),
-        row("Global CHR EPS", formatNumber(plan.targetChrTotalEps()) + " records/s"),
-        row("Target PM EPS", rateValue(plan.targetPmEpsPerCell()) + " records/cell/s"),
-        row("Global PM EPS", formatNumber(plan.targetPmTotalEps()) + " records/s"),
-        row("Status", result.status().name()),
-        row("Reason", result.bottleneckReason()),
-        row("Source Throughput Attainment", formatRatio(source.producerDeliveryRatio())),
-        row("Source Backlog", source.chrBacklogRecords() + " CHR records"),
-        row("Expected 1m Closed Windows", String.valueOf(windows.expectedClosedMinuteWindows())),
-        row("Checkpoint Interval", formatMs(effectiveCheckpointIntervalMs(plan.sink(), config.checkpointIntervalMs()))),
-        row("Checkpoint Duration", formatMs(flink.checkpointDurationMs())),
-        row("Checkpoint Failures", String.valueOf(flink.consecutiveCheckpointFailures()))));
+        row("小区档位", String.valueOf(plan.cellLevel())),
+        row("目标 CHR EPS", rateValue(plan.targetChrEpsPerCell()) + " 条/小区/s"),
+        row("全局 CHR EPS", formatNumber(plan.targetChrTotalEps()) + " 条/s"),
+        row("目标 PM EPS", rateValue(plan.targetPmEpsPerCell()) + " 条/小区/s"),
+        row("全局 PM EPS", formatNumber(plan.targetPmTotalEps()) + " 条/s"),
+        row("状态", result.status().name()),
+        row("原因", result.bottleneckReason()),
+        row("Source 吞吐达成率", formatRatio(source.producerDeliveryRatio())),
+        row("Source 积压", source.chrBacklogRecords() + " 条 CHR"),
+        row("预期 1m 关闭窗口", String.valueOf(windows.expectedClosedMinuteWindows())),
+        row("Checkpoint 间隔", formatMs(effectiveCheckpointIntervalMs(plan.sink(), config.checkpointIntervalMs()))),
+        row("Checkpoint 耗时", formatMs(flink.checkpointDurationMs())),
+        row("Checkpoint 失败数", String.valueOf(flink.consecutiveCheckpointFailures()))));
   }
 
   private static String runNotes(BenchmarkRunResult result) {
     boolean hasKpi5mSinkRows = result.fdb().sinkLatencies().stream()
-        .anyMatch(sink -> lower(sink.sinkName()).contains("kpi-5m") && sink.records() > 0);
+        .anyMatch(sink -> isBusinessSinkFront(sink)
+            && lower(sink.sinkName()).contains("kpi-5m")
+            && sink.records() > 0);
     boolean hasKpi5mOperatorInput = result.flink().operators().stream()
         .anyMatch(operator -> lower(operator.name()).contains("kpi-5m") && operator.recordsInTotal() > 0);
     String fiveMinuteNote = hasKpi5mSinkRows
-        ? "KPI 5m has sink samples in this run."
+        ? "本轮 KPI 5m 已采到 sink 样本。"
         : hasKpi5mOperatorInput
-            ? "KPI 5m rollup received 1m input, but the 5-minute event-time window had not emitted sink rows when sampled."
-            : "KPI 5m needs a 5-minute event-time window plus watermark progress; short or early-stopped runs may show zero rows.";
+            ? "KPI 5m rollup 已收到 1m 输入，但采样时 5 分钟事件时间窗口尚未输出 sink 行。"
+            : "KPI 5m 需要 5 分钟事件时间窗口和 watermark 推进；短跑或提前停止的运行可能显示 0 行。";
     return twoColumnTable(List.of(
-        row("Topology Generation Duration",
-            "Only local topology object generation time; Kafka publish and total duration are listed separately."),
-        row("Terminal Sink Records Out",
-            "Flink terminal sink operators commonly show Records Out Total as 0; use Records In Total and Sink & Storage records for write volume."),
-        row("Sink Probe Scope",
-            "sink-front is measured before connector write. connector-write is connector writer/invoke duration. connector-commit is flush/prepare/commit/checkpoint duration and does not include connector-write."),
-        row("KPI 5m Output", fiveMinuteNote),
-        row("Anomaly Output",
-            "Rules emit only after consecutive abnormal evaluations; zero rows means no activation or no committed sink rows in this run.")));
+        row("拓扑生成耗时", "仅表示本地拓扑对象生成耗时；Kafka 发布耗时和总耗时在其它字段展示。"),
+        row("终端 Sink 输出记录", "Flink 终端 sink 算子的 Records Out Total 常见为 0；写入量请看 Records In Total 和 Sink 与存储。"),
+        row("Sink 探针范围", "sink-front 是进入 connector 前的累计延迟；connector-write 是 writer/invoke 耗时；connector-commit 是 flush/prepare/commit/checkpoint 耗时，不包含 connector-write。"),
+        row("KPI 5m 输出", fiveMinuteNote),
+        row("异常输出", "异常规则连续满足后才输出；0 行表示未激活，或本轮还没有提交到 sink。")));
+  }
+
+  private static boolean isBusinessSinkFront(SinkLatencySnapshot sink) {
+    return "sink-front".equals(lower(sink.scope()));
   }
 
   private static String sourceDensity(SourceMetricsSnapshot source, int cellLevel) {
     return """
         <table>
           <thead>
-            <tr><th>Source</th><th>Total</th><th>Records/s</th><th>Total/cell</th><th>Records/s/cell</th></tr>
+            <tr><th>Source</th><th>总记录</th><th>Records/s</th><th>每小区总记录</th><th>每小区 Records/s</th></tr>
           </thead>
           <tbody>
             %s
@@ -456,9 +456,9 @@ public final class HtmlReportWriter {
           </tbody>
         </table>
         """.formatted(
-            densityRow("CHR total", source.chrPublished(), source.chrObservedEps(),
+            densityRow("CHR 总量", source.chrPublished(), source.chrObservedEps(),
                 source.chrTotalPerCell(cellLevel), source.chrPerSecondPerCell(cellLevel)),
-            densityRow("PM total", source.pmPublished(), source.pmObservedEps(),
+            densityRow("PM 总量", source.pmPublished(), source.pmObservedEps(),
                 source.pmTotalPerCell(cellLevel), source.pmPerSecondPerCell(cellLevel)),
             cfgDensityRow(source, cellLevel));
   }
@@ -471,9 +471,9 @@ public final class HtmlReportWriter {
   }
 
   private static String cfgDensityRow(SourceMetricsSnapshot source, int cellLevel) {
-    return "<tr><th>CFG total</th><td>" + source.cfgPublished() + "</td><td>"
+    return "<tr><th>CFG 总量</th><td>" + source.cfgPublished() + "</td><td>"
         + formatDouble(source.cfgObservedEps()) + "</td><td>" + formatDouble(source.cfgTotalPerCell(cellLevel))
-        + "</td><td>N/A (one-time init)</td></tr>";
+        + "</td><td>N/A (一次性初始化)</td></tr>";
   }
 
   private static String windowDiagnosticsTable(BenchmarkRunPlan plan, SourceMetricsSnapshot source,
@@ -511,15 +511,15 @@ public final class HtmlReportWriter {
   }
 
   private static String windowDiagnosticsHeader(WindowDiagnosticColumns columns) {
-    StringBuilder header = new StringBuilder("<thead><tr><th>Stage</th><th>Records In Total</th>"
-        + "<th>Records Out Total</th><th>Closed Minutes</th><th>Expected Closed Minutes</th>");
+    StringBuilder header = new StringBuilder("<thead><tr><th>阶段</th><th>输入总记录</th>"
+        + "<th>输出总记录</th><th>已关闭分钟窗口</th><th>预期关闭分钟窗口</th>");
     if (columns.showInputWatermark()) {
-      header.append("<th>Input Watermark</th>");
+      header.append("<th>输入 Watermark</th>");
     }
     if (columns.showOutputWatermark()) {
-      header.append("<th>Output Watermark</th>");
+      header.append("<th>输出 Watermark</th>");
     }
-    return header.append("<th>Health</th></tr></thead>").toString();
+    return header.append("<th>健康状态</th></tr></thead>").toString();
   }
 
   private static WindowDiagnosticColumns windowDiagnosticColumns(WindowMaterializationSnapshot windows) {
@@ -540,37 +540,37 @@ public final class HtmlReportWriter {
 
   private static String topologyTable(TopologyMetricsSnapshot topology) {
     if (topology == null || !topology.present()) {
-      return twoColumnTable(List.of(row("Status", "No topology metrics file captured")));
+      return twoColumnTable(List.of(row("状态", "未采集到 topology metrics 文件")));
     }
     return twoColumnTable(List.of(
-        row("Generated Records", formatNumber(topology.generatedRecords())),
-        row("Site Count", formatNumber(topology.siteCount())),
-        row("Frequency Bands", formatNumber(topology.frequencyBandCount())),
-        row("Topology Generation Duration", formatMs(topology.generationDurationMs())),
-        row("Kafka Publish Duration", formatMs(topology.publishDurationMs())),
-        row("Total Duration", formatMs(topology.totalDurationMs())),
-        row("Published Topology Records", formatNumber(topology.publishedRecords())),
-        row("Publish Failures", formatNumber(topology.publishFailures())),
-        row("Latitude Range", formatRange(topology.minLatitude(), topology.maxLatitude())),
-        row("Longitude Range", formatRange(topology.minLongitude(), topology.maxLongitude()))));
+        row("生成记录数", formatNumber(topology.generatedRecords())),
+        row("站点数", formatNumber(topology.siteCount())),
+        row("频段数", formatNumber(topology.frequencyBandCount())),
+        row("拓扑生成耗时", formatMs(topology.generationDurationMs())),
+        row("Kafka 发布耗时", formatMs(topology.publishDurationMs())),
+        row("总耗时", formatMs(topology.totalDurationMs())),
+        row("已发布拓扑记录", formatNumber(topology.publishedRecords())),
+        row("发布失败数", formatNumber(topology.publishFailures())),
+        row("纬度范围", formatRange(topology.minLatitude(), topology.maxLatitude())),
+        row("经度范围", formatRange(topology.minLongitude(), topology.maxLongitude()))));
   }
 
   private static String flinkResourcesTable(BenchmarkRunResult result) {
     FlinkSnapshot flink = result.flink();
     boolean trusted = operatorMetricsTrusted(result);
     return twoColumnTable(List.of(
-        row("Job Status", flink.jobStatus()),
+        row("作业状态", flink.jobStatus()),
         row("TaskManagers", String.valueOf(flink.taskManagers())),
         row("Slots", String.valueOf(flink.slots())),
-        row("TaskManager CPU Load", formatOptionalRatio(flink.taskManagerCpuLoad())),
-        row("Operator Metrics Validity", operatorMetricsValidity(result)),
-        row("Sampled Avg Records In/s", trusted ? formatNumber(flink.recordsInPerSec()) : "N/A"),
-        row("Sampled Avg Records Out/s", trusted ? formatNumber(flink.recordsOutPerSec()) : "N/A"),
-        row("Operator Aggregate Records In Total", trusted ? formatNumber(flink.recordsInTotal()) : "N/A"),
-        row("Operator Aggregate Records Out Total", trusted ? formatNumber(flink.recordsOutTotal()) : "N/A"),
-        row("Backpressure", trusted ? formatRatio(flink.backpressureRatio()) : "N/A"),
-        row("Checkpoint Duration", formatMs(flink.checkpointDurationMs())),
-        row("Checkpoint Failures", String.valueOf(flink.consecutiveCheckpointFailures()))));
+        row("TaskManager CPU 负载", formatOptionalRatio(flink.taskManagerCpuLoad())),
+        row("算子指标有效性", operatorMetricsValidity(result)),
+        row("采样平均输入 Records/s", trusted ? formatNumber(flink.recordsInPerSec()) : "N/A"),
+        row("采样平均输出 Records/s", trusted ? formatNumber(flink.recordsOutPerSec()) : "N/A"),
+        row("算子聚合输入总记录", trusted ? formatNumber(flink.recordsInTotal()) : "N/A"),
+        row("算子聚合输出总记录", trusted ? formatNumber(flink.recordsOutTotal()) : "N/A"),
+        row("反压", trusted ? formatRatio(flink.backpressureRatio()) : "N/A"),
+        row("Checkpoint 耗时", formatMs(flink.checkpointDurationMs())),
+        row("Checkpoint 失败数", String.valueOf(flink.consecutiveCheckpointFailures()))));
   }
 
   private static String operatorFlowAndMetrics(BenchmarkConfig config, BenchmarkRunResult result) {
@@ -603,40 +603,35 @@ public final class HtmlReportWriter {
     int outputWatermarks = Math.toIntExact(flink.operators().stream()
         .filter(operator -> operator.currentOutputWatermarkMs() >= 0)
         .count());
+    Map<String, OperatorLatency> latencies = operatorLatencies(plan, fdb, flink);
     int businessLatencies = Math.toIntExact(flink.operators().stream()
-        .filter(operator -> operatorLatency(plan, fdb, operator).available())
-        .count());
-    int markerLatencies = Math.toIntExact(flink.operators().stream()
-        .filter(operator -> operator.flinkMarkerP95Ms() >= 0 || !operator.flinkMarkerLatencies().isEmpty())
+        .filter(operator -> latencies.getOrDefault(operator.id(), OperatorLatency.empty()).available())
         .count());
     return """
         <table>
-          <thead><tr><th>Metric Coverage</th><th>Operators</th><th>Main Table</th></tr></thead>
+          <thead><tr><th>指标覆盖</th><th>算子数</th><th>主表展示</th></tr></thead>
           <tbody>
-            <tr><td>Flink Operator Metrics</td><td>%s</td><td>shown</td></tr>
-            <tr><td>Input Watermark</td><td>%s</td><td>%s</td></tr>
-            <tr><td>Output Watermark</td><td>%s</td><td>%s</td></tr>
-            <tr><td>Business Latency Mapping</td><td>%s</td><td>shown</td></tr>
-            <tr><td>Flink Marker P95</td><td>%s</td><td>%s</td></tr>
+            <tr><td>Flink 算子指标</td><td>%s</td><td>展示</td></tr>
+            <tr><td>输入 Watermark</td><td>%s</td><td>%s</td></tr>
+            <tr><td>输出 Watermark</td><td>%s</td><td>%s</td></tr>
+            <tr><td>延迟探针映射</td><td>%s</td><td>展示</td></tr>
           </tbody>
         </table>
         """.formatted(
             coverage(operatorMetrics, total),
             coverage(inputWatermarks, total), coverageVisibility(columns.showInputWatermark(),
-                "hidden (no valid input watermark exposed)"),
+                "隐藏（未暴露有效输入 watermark）"),
             coverage(outputWatermarks, total), coverageVisibility(columns.showOutputWatermark(),
-                "hidden (no valid output watermark exposed)"),
-            coverage(businessLatencies, total),
-            coverage(markerLatencies, total), coverageVisibility(columns.showFlinkMarker(),
-                "hidden (Flink REST did not expose marker percentiles)"));
+                "隐藏（未暴露有效输出 watermark）"),
+            coverage(businessLatencies, total));
   }
 
   private static String coverage(int count, int total) {
-    return count + "/" + total + " operators";
+    return count + "/" + total + " 算子";
   }
 
   private static String coverageVisibility(boolean shown, String hiddenReason) {
-    return shown ? "shown" : hiddenReason;
+    return shown ? "展示" : hiddenReason;
   }
 
   private static String operatorMetricsTable(BenchmarkConfig config, BenchmarkRunResult result) {
@@ -646,6 +641,7 @@ public final class HtmlReportWriter {
     FdbMetricsSnapshot fdb = result.fdb();
     boolean trusted = operatorMetricsTrusted(result);
     OperatorTableColumns columns = operatorTableColumns(plan, fdb, flink);
+    Map<String, OperatorLatency> latencies = operatorLatencies(plan, fdb, flink);
     StringBuilder rows = new StringBuilder();
     if (flink.operators().isEmpty()) {
       rows.append("<tr><td>aggregate job</td><td>aggregate</td><td>-</td><td>")
@@ -657,15 +653,12 @@ public final class HtmlReportWriter {
       appendOptionalWatermarkCells(rows, columns, "-", "-");
       rows.append("<td>").append(formatRatio(flink.backpressureRatio()))
           .append("</td><td>").append(formatMsPerSecond(flink.backpressureRatio()))
-          .append("</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>");
-      if (columns.showFlinkMarker()) {
-        rows.append("<td>N/A</td>");
-      }
-      rows.append("<td>NA</td><td>NA</td><td>")
+          .append("</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>");
+      rows.append("<td>N/A</td><td>N/A</td><td>")
           .append(healthBadge(GateHealth.NA)).append("</td></tr>");
     } else {
       for (FlinkOperatorSnapshot operator : flink.operators()) {
-        OperatorLatency latency = operatorLatency(plan, fdb, operator);
+        OperatorLatency latency = latencies.getOrDefault(operator.id(), OperatorLatency.empty());
         GateHealth health = operatorHealth(thresholds, operator, latency, trusted);
         rows.append("<tr id=\"operator-row-").append(htmlId(operator.id())).append("\" data-operator-id=\"")
             .append(escape(operator.id())).append("\"><td>").append(escape(operator.name())).append("</td><td>")
@@ -686,26 +679,12 @@ public final class HtmlReportWriter {
         rows.append("<td>")
             .append(formatOperatorRatio(operator, operator.backpressureRatio(), trusted)).append("</td><td>")
             .append(formatOperatorMsPerSecond(operator, operator.backpressureRatio(), trusted)).append("</td>");
-        if (latency.available()) {
-          rows.append("<td>")
-              .append(formatMs(latency.p50Ms())).append("</td><td>")
-              .append(formatMs(latency.p95Ms())).append("</td><td>")
-              .append(formatMs(latency.p99Ms())).append("</td><td>")
-              .append(formatMs(latency.watermarkLagMs())).append("</td>");
-        } else {
-          rows.append("<td class=\"muted\" colspan=\"4\">unmapped business probe</td>");
-        }
-        if (columns.showFlinkMarker()) {
-          rows.append("<td>").append(formatMs(operator.flinkMarkerP95Ms())).append("</td>");
-        }
-        if (latency.available()) {
-          rows.append("<td>").append(escape(latency.source())).append("</td><td>")
-              .append(escape(latency.scope())).append("</td><td>");
-        } else {
-          rows.append("<td class=\"muted\">unmapped</td><td class=\"muted\">unmapped</td><td>");
-        }
+        rows.append("<td>").append(formatMs(latency.cumulativeP95Ms())).append("</td><td>")
+            .append(formatMs(latency.operatorP95Ms())).append("</td><td>")
+            .append(escape(latency.summary())).append("</td><td>")
+            .append(escape(latency.probeSource())).append("</td><td>")
+            .append(escape(latency.probeType())).append("</td><td>");
         rows.append(healthBadge(health)).append("</td></tr>");
-        rows.append(operatorMarkerRows(thresholds, operator, columns));
       }
     }
     return """
@@ -718,31 +697,26 @@ public final class HtmlReportWriter {
 
   private static String operatorMetricsHeader(OperatorTableColumns columns) {
     StringBuilder header = new StringBuilder(
-        "<thead><tr><th>Operator</th><th>Role</th><th>Parallelism</th>"
-            + "<th>Sampled Avg Records In/s</th><th>Sampled Avg Records Out/s</th>"
-            + "<th>Records In Total</th><th>Records Out Total</th><th>Bytes In/s</th><th>Bytes Out/s</th>"
-            + "<th>Busy</th><th>Busy ms/s</th><th>Idle</th>");
+        "<thead><tr><th>算子</th><th>角色</th><th>并行度</th>"
+            + "<th>采样输入 Records/s</th><th>采样输出 Records/s</th>"
+            + "<th>输入总记录</th><th>输出总记录</th><th>输入 Bytes/s</th><th>输出 Bytes/s</th>"
+            + "<th>忙碌</th><th>忙碌 ms/s</th><th>空闲</th>");
     if (columns.showInputWatermark()) {
-      header.append("<th>Input Watermark</th>");
+      header.append("<th>输入 Watermark</th>");
     }
     if (columns.showOutputWatermark()) {
-      header.append("<th>Output Watermark</th>");
+      header.append("<th>输出 Watermark</th>");
     }
-    header.append("<th>Backpressure</th><th>Backpressure ms/s</th><th>Cumulative Business Age P50</th>"
-        + "<th>Cumulative Business Age P95</th><th>Cumulative Business Age P99</th><th>Watermark Lag</th>");
-    if (columns.showFlinkMarker()) {
-      header.append("<th>Flink Marker P95</th>");
-    }
-    return header.append("<th>Business Probe Source</th><th>Latency Scope</th><th>Health</th></tr></thead>").toString();
+    header.append("<th>反压</th><th>反压 ms/s</th><th>累计延迟</th><th>算子延迟</th><th>延迟摘要</th>"
+        + "<th>延迟探针</th><th>Probe类型</th><th>健康状态</th></tr></thead>");
+    return header.toString();
   }
 
   private static OperatorTableColumns operatorTableColumns(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
       FlinkSnapshot flink) {
     return new OperatorTableColumns(
         flink.operators().stream().anyMatch(operator -> operator.currentInputWatermarkMs() >= 0),
-        flink.operators().stream().anyMatch(operator -> operator.currentOutputWatermarkMs() >= 0),
-        flink.operators().stream()
-            .anyMatch(operator -> operator.flinkMarkerP95Ms() >= 0 || !operator.flinkMarkerLatencies().isEmpty()));
+        flink.operators().stream().anyMatch(operator -> operator.currentOutputWatermarkMs() >= 0));
   }
 
   private static void appendOptionalWatermarkCells(StringBuilder rows, OperatorTableColumns columns,
@@ -755,75 +729,95 @@ public final class HtmlReportWriter {
     }
   }
 
-  private static String operatorMarkerRows(BenchmarkThresholds thresholds, FlinkOperatorSnapshot operator,
-      OperatorTableColumns columns) {
-    StringBuilder rows = new StringBuilder();
-    for (FlinkMarkerLatencySnapshot marker : operator.flinkMarkerLatencies()) {
-      GateHealth health = markerHealth(thresholds, marker);
-      rows.append("<tr class=\"operator-marker-row\" data-operator-id=\"")
-          .append(escape(operator.id())).append("\"><td>")
-          .append("marker: ").append(escape(marker.sourceOperatorId())).append(" -> ")
-          .append(escape(marker.targetOperatorId())).append("</td><td>marker</td><td>-</td>")
-          .append("<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>")
-          .append("<td>-</td><td>-</td><td>-</td>");
-      appendOptionalWatermarkCells(rows, columns, "-", "-");
-      rows.append("<td>-</td><td>-</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>");
-      if (columns.showFlinkMarker()) {
-        rows.append("<td>").append(formatMs(marker.p95Ms())).append("</td>");
-      }
-      rows.append("<td>Flink marker</td><td>transport</td><td>")
-          .append(healthBadge(health)).append("</td></tr>");
+  private static Map<String, OperatorLatency> operatorLatencies(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
+      FlinkSnapshot flink) {
+    Map<String, OperatorLatency> values = new LinkedHashMap<>();
+    for (FlinkOperatorSnapshot operator : flink.operators()) {
+      values.put(operator.id(), rawOperatorLatency(plan, fdb, operator));
     }
-    return rows.toString();
+    Map<String, Long> upstreamCumulativeP95 = maxUpstreamCumulativeP95(flink.operatorEdges(), values);
+    for (FlinkOperatorSnapshot operator : flink.operators()) {
+      OperatorLatency latency = values.getOrDefault(operator.id(), OperatorLatency.empty());
+      values.put(operator.id(), latency.withOperatorDelay(upstreamCumulativeP95.get(operator.id())));
+    }
+    return values;
   }
 
-  private static OperatorLatency operatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
-      FlinkOperatorSnapshot operator) {
-    boolean sinkOperator = "sink".equals(operatorRole(operator));
-    if (sinkOperator) {
-      OperatorLatency sinkLatency = sinkOperatorLatency(plan, fdb, operator);
-      if (sinkLatency.available()) {
-        return sinkLatency;
+  private static Map<String, Long> maxUpstreamCumulativeP95(List<FlinkOperatorEdge> edges,
+      Map<String, OperatorLatency> latencies) {
+    Map<String, Long> values = new HashMap<>();
+    for (FlinkOperatorEdge edge : edges) {
+      OperatorLatency upstream = latencies.get(edge.sourceId());
+      if (upstream == null || upstream.cumulativeP95Ms() < 0L) {
+        continue;
       }
+      values.merge(edge.targetId(), upstream.cumulativeP95Ms(), Math::max);
     }
+    return values;
+  }
+
+  private static OperatorLatency rawOperatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
+      FlinkOperatorSnapshot operator) {
+    OperatorLatency sinkLatency = rawSinkOperatorLatency(plan, fdb, operator);
+    if (sinkLatency.available()) {
+      return sinkLatency;
+    }
+    StageLatencySnapshot stage = explicitStageLatency(fdb, operator);
+    if (stage != null) {
+      return OperatorLatency.stage(stage);
+    }
+    SinkLatencySnapshot windowMaterialization = explicitWindowMaterializationLatency(fdb, operator);
+    if (windowMaterialization != null) {
+      return OperatorLatency.windowMaterialization(windowMaterialization);
+    }
+    return OperatorLatency.empty();
+  }
+
+  private static StageLatencySnapshot explicitStageLatency(FdbMetricsSnapshot fdb, FlinkOperatorSnapshot operator) {
     for (StageLatencySnapshot stage : fdb.stageLatencies()) {
-      if (isRelevantStage(plan.sink(), stage.stageId()) && metricMatchesOperator(operator, stage.stageId())) {
-        return new OperatorLatency(stage.latencyP50Ms(), stage.latencyP95Ms(), stage.latencyP99Ms(),
-            stage.watermarkLagMs(), "stage:" + stage.stageId(), "output-age");
+      if (matchesExplicitStageToken(operator, stage.stageId())) {
+        return stage;
       }
     }
-    if (!sinkOperator) {
-      OperatorLatency sinkLatency = sinkOperatorLatency(plan, fdb, operator);
-      if (sinkLatency.available()) {
-        return sinkLatency;
-      }
-    }
-    return OperatorLatency.empty();
+    return null;
   }
 
-  private static OperatorLatency sinkOperatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
+  private static SinkLatencySnapshot explicitWindowMaterializationLatency(FdbMetricsSnapshot fdb,
       FlinkOperatorSnapshot operator) {
-    List<SinkLatencySnapshot> orderedSinks = fdb.sinkLatencies().stream()
-        .sorted(Comparator.comparingInt((SinkLatencySnapshot sink) -> sinkOperatorLatencyRank(sink.scope()))
-            .thenComparing(SinkLatencySnapshot::sinkName))
-        .toList();
-    for (SinkLatencySnapshot sink : orderedSinks) {
-      if ((isCurrentBusinessSink(plan.sink(), sink.sinkName()) || isAuxiliarySink(sink.sinkName()))
-          && metricMatchesOperator(operator, sinkBaseName(sink.sinkName()))) {
-        return new OperatorLatency(sink.latencyP50Ms(), sink.latencyP95Ms(), sink.latencyP99Ms(),
-            -1L, "sink:" + sink.sinkName(), sink.scope());
+    for (SinkLatencySnapshot sink : fdb.sinkLatencies()) {
+      if (!"window-materialization".equals(lower(sink.scope())) && !"window-materialization".equals(lower(sink.sinkType()))) {
+        continue;
+      }
+      if (matchesExplicitStageToken(operator, sink.sinkName())
+          || matchesExactOperatorToken(operator, sink.dataset() + "-fact")
+          || matchesExactOperatorToken(operator, sink.sinkName() + "-materialization")) {
+        return sink;
+      }
+    }
+    return null;
+  }
+
+  private static OperatorLatency rawSinkOperatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,
+      FlinkOperatorSnapshot operator) {
+    for (SinkProbeBundle bundle : sinkProbeBundles(plan, fdb).values()) {
+      if (matchesExactOperatorToken(operator, bundle.baseName())) {
+        return OperatorLatency.sink(bundle);
       }
     }
     return OperatorLatency.empty();
   }
 
-  private static int sinkOperatorLatencyRank(String scope) {
-    return switch (lower(scope)) {
-      case "connector-commit" -> 0;
-      case "connector-write" -> 1;
-      case "sink-front" -> 2;
-      default -> 3;
-    };
+  private static Map<String, SinkProbeBundle> sinkProbeBundles(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb) {
+    Map<String, SinkProbeBundle> bundles = new LinkedHashMap<>();
+    for (SinkLatencySnapshot sink : fdb.sinkLatencies()) {
+      if (!isCurrentBusinessSink(plan.sink(), sink.sinkName()) && !isAuxiliarySink(sink.sinkName())) {
+        continue;
+      }
+      String baseName = sinkBaseName(sink.sinkName());
+      SinkProbeBundle bundle = bundles.computeIfAbsent(baseName, SinkProbeBundle::new);
+      bundle.add(sink);
+    }
+    return bundles;
   }
 
   private static String sinkBaseName(String sinkName) {
@@ -837,30 +831,71 @@ public final class HtmlReportWriter {
     return value;
   }
 
-  private static boolean metricMatchesOperator(FlinkOperatorSnapshot operator, String metricId) {
-    String haystack = lower(operator.id() + " " + operator.name());
-    for (String alias : metricAliases(metricId)) {
-      if (!alias.isBlank() && haystack.contains(alias)) {
+  private static boolean matchesExplicitStageToken(FlinkOperatorSnapshot operator, String stageId) {
+    String value = lower(stageId);
+    return switch (value) {
+      case "chr-source" -> matchesAnyExactOperatorToken(operator, "chr-source-metrics", "Source: chr-source");
+      case "pm-source" -> matchesAnyExactOperatorToken(operator, "pm-source-metrics", "Source: pm-source");
+      case "cfg-source" -> matchesAnyExactOperatorToken(operator, "cfg-source-metrics", "cfg-source");
+      case "kafka" -> matchesAnyExactOperatorToken(operator, "kafka-topics-metrics");
+      case "enrichment" -> matchesAnyExactOperatorToken(operator, "enrichment-metrics");
+      case "kpi-1m" -> matchesAnyExactOperatorToken(operator, "kpi-1m-metrics", "kpi-1m-full-join");
+      case "kpi-5m" -> matchesAnyExactOperatorToken(operator, "kpi-5m-metrics", "kpi-5m-rollup");
+      case "user-anomaly" -> matchesAnyExactOperatorToken(operator, "user-anomaly-metrics",
+          "user-event-anomaly-detect-dedup");
+      case "grid-anomaly" -> matchesAnyExactOperatorToken(operator, "grid-anomaly-metrics",
+          "coverage-hole-detector");
+      case "cell-anomaly" -> matchesAnyExactOperatorToken(operator, "cell-anomaly-metrics",
+          "cell-kpi-anomaly-detect-dedup");
+      case "assigner" -> matchesAnyExactOperatorToken(operator, "vbucket-assigner-metrics");
+      case "load-coordinator" -> matchesAnyExactOperatorToken(operator, "load-coordinator-metrics");
+      case "window-chr-1m" -> matchesAnyExactOperatorToken(operator, "window-chr-1m-materialization", "chr-1m-fact");
+      case "window-pm-1m" -> matchesAnyExactOperatorToken(operator, "window-pm-1m-materialization", "pm-1m-fact");
+      case "window-kpi-1m" -> matchesAnyExactOperatorToken(operator, "window-kpi-1m-materialization",
+          "kpi-1m-full-join");
+      default -> false;
+    };
+  }
+
+  private static boolean matchesAnyExactOperatorToken(FlinkOperatorSnapshot operator, String... tokens) {
+    for (String token : tokens) {
+      if (matchesExactOperatorToken(operator, token)) {
         return true;
       }
     }
     return false;
   }
 
-  private static List<String> metricAliases(String metricId) {
-    String value = lower(metricId);
-    if (value.isBlank()) {
-      return List.of();
+  private static boolean matchesExactOperatorToken(FlinkOperatorSnapshot operator, String token) {
+    String expected = normalizedOperatorToken(token);
+    if (expected.isBlank()) {
+      return false;
     }
-    return List.of(
-        value,
-        value.replace(".connector-write", ""),
-        value.replace(".connector-commit", ""),
-        value.replace("window-", ""),
-        value.replace("starrocks-", ""),
-        value.replace("iceberg-", ""),
-        value.replace("hive-", ""),
-        value.replace("kafka-", ""));
+    if (expected.equals(normalizedOperatorToken(operator.id()))
+        || expected.equals(normalizedOperatorToken(operator.name()))) {
+      return true;
+    }
+    for (String part : lower(operator.name()).split("\\s*->\\s*")) {
+      if (expected.equals(normalizedOperatorToken(part))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static String normalizedOperatorToken(String value) {
+    String token = lower(value).trim();
+    while (!token.isEmpty() && isTokenWrapper(token.charAt(0))) {
+      token = token.substring(1).trim();
+    }
+    while (!token.isEmpty() && isTokenWrapper(token.charAt(token.length() - 1))) {
+      token = token.substring(0, token.length() - 1).trim();
+    }
+    return token;
+  }
+
+  private static boolean isTokenWrapper(char value) {
+    return value == '(' || value == ')' || value == '[' || value == ']' || value == '{' || value == '}';
   }
 
   private static String operatorRole(FlinkOperatorSnapshot operator) {
@@ -889,19 +924,13 @@ public final class HtmlReportWriter {
 
   private static GateHealth operatorHealth(BenchmarkThresholds thresholds, FlinkOperatorSnapshot operator,
       OperatorLatency latency, boolean trusted) {
-    long businessThreshold = sinkLatencyScope(latency.scope())
-        ? thresholds.maxSinkP95Ms()
-        : thresholds.maxKpiAvailabilityP95Ms();
-    if (latency.p95Ms() >= 0 && latency.p95Ms() > businessThreshold) {
-      return GateHealth.UNSTABLE;
-    }
-    if (operator.flinkMarkerP95Ms() >= 0 && operator.flinkMarkerP95Ms() > thresholds.maxWatermarkLagMs()) {
+    if (latency.healthP95Ms() >= 0 && latency.healthP95Ms() > latencyThreshold(thresholds, latency)) {
       return GateHealth.UNSTABLE;
     }
     if (trusted && operator.metricsAvailable() && operator.backpressureRatio() > thresholds.maxBackpressureRatio()) {
       return GateHealth.UNSTABLE;
     }
-    if (!latency.available() && operator.flinkMarkerP95Ms() < 0 && (!trusted || !operator.metricsAvailable())) {
+    if (!latency.available() && (!trusted || !operator.metricsAvailable())) {
       return GateHealth.NA;
     }
     return GateHealth.HEALTHY;
@@ -914,10 +943,7 @@ public final class HtmlReportWriter {
             || operator.backpressureRatio() <= thresholds.maxBackpressureRatio())) {
       return GateHealth.NA;
     }
-    long businessThreshold = sinkLatencyScope(latency.scope())
-        ? thresholds.maxSinkP95Ms()
-        : thresholds.maxKpiAvailabilityP95Ms();
-    if (latency.p95Ms() >= 0 && latency.p95Ms() > businessThreshold) {
+    if (latency.healthP95Ms() >= 0 && latency.healthP95Ms() > latencyThreshold(thresholds, latency)) {
       return GateHealth.UNSTABLE;
     }
     if (trusted && operator.metricsAvailable() && operator.backpressureRatio() > thresholds.maxBackpressureRatio()) {
@@ -926,13 +952,12 @@ public final class HtmlReportWriter {
     return GateHealth.HEALTHY;
   }
 
-  private static GateHealth markerHealth(BenchmarkThresholds thresholds, FlinkMarkerLatencySnapshot marker) {
-    return marker.p95Ms() > thresholds.maxWatermarkLagMs() ? GateHealth.UNSTABLE : GateHealth.HEALTHY;
+  private static long latencyThreshold(BenchmarkThresholds thresholds, OperatorLatency latency) {
+    return latency.sinkLatency() ? thresholds.maxSinkP95Ms() : thresholds.maxKpiAvailabilityP95Ms();
   }
 
-  private static boolean sinkLatencyScope(String scope) {
-    String value = lower(scope);
-    return "sink-front".equals(value) || "connector-write".equals(value) || "connector-commit".equals(value);
+  private static GateHealth markerHealth(BenchmarkThresholds thresholds, FlinkMarkerLatencySnapshot marker) {
+    return marker.p95Ms() > thresholds.maxWatermarkLagMs() ? GateHealth.UNSTABLE : GateHealth.HEALTHY;
   }
 
   private static String flowNodeClass(GateHealth health) {
@@ -949,10 +974,10 @@ public final class HtmlReportWriter {
   }
 
   private static String operatorNodeLatencyLabel(FlinkOperatorSnapshot operator, OperatorLatency latency) {
-    if (latency.p95Ms() >= 0) {
-      return "P95 " + formatMs(latency.p95Ms());
+    if (latency.cumulativeP95Ms() >= 0) {
+      return "累计 " + formatMs(latency.cumulativeP95Ms());
     }
-    return "no probe";
+    return "累计 N/A";
   }
 
   private static String operatorNodeTitle(FlinkOperatorSnapshot operator, OperatorLatency latency,
@@ -961,11 +986,12 @@ public final class HtmlReportWriter {
         + " | " + health.label()
         + " | " + operatorNodeLatencyLabel(operator, latency);
     if (!latency.available()) {
-      return title + " | no mapped business probe";
+      return title + " | 延迟探针 N/A";
     }
     return title
-        + " | source " + latency.source()
-        + " | scope " + latency.scope();
+        + " | " + latency.summary()
+        + " | 延迟探针 " + latency.probeSource()
+        + " | Probe类型 " + latency.probeType();
   }
 
   private static FlinkMarkerLatencySnapshot edgeMarkerLatency(FlinkOperatorSnapshot targetOperator,
@@ -987,51 +1013,161 @@ public final class HtmlReportWriter {
   private static String operatorMetricGuide() {
     return """
         <div class="column-guide">
-          <h3>Column Guide</h3>
+          <h3>列说明</h3>
           <table>
-            <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+            <thead><tr><th>列</th><th>含义</th></tr></thead>
             <tbody>
-              <tr><td>TaskManager CPU Load</td><td>Maximum Status.JVM.CPU.Load across TaskManagers from Flink REST. Flink does not expose exact operator-level CPU in the default REST metrics used here.</td></tr>
-              <tr><td>Busy / Busy ms/s</td><td>Operator busyTimeMsPerSecond from Flink REST, shown as both percentage of one second and raw milliseconds per second.</td></tr>
-              <tr><td>Backpressure / Backpressure ms/s</td><td>Operator backPressuredTimeMsPerSecond from Flink REST, shown as both percentage of one second and raw milliseconds per second.</td></tr>
-              <tr><td>Cumulative Business Age P50/P95/P99</td><td>Custom stage or sink-front age mapped to this operator row. It is based on business event/window time and is cumulative to the probe point, not the operator's own processing time.</td></tr>
-              <tr><td>Watermark Lag</td><td>Custom stage watermark lag from the same mapped stage metric. N/A means no stage metric is mapped to this operator.</td></tr>
-              <tr><td>Flink Marker P95</td><td>Flink latency marker P95 observed on this downstream operator. Marker detail rows show each source-to-target input when Flink exposes it. N/A means latency marker unavailable because the Flink REST metrics for this job/operator did not expose marker percentiles.</td></tr>
-              <tr><td>Flow Node Color</td><td>Green means mapped business age/backpressure is within threshold, orange means business age/backpressure is over threshold, grey means no mapped business age sample is available for that operator.</td></tr>
-              <tr><td>Flow Edge Marker</td><td>Edge labels show Flink marker P95 for the source-to-target edge. NA marker values are not rendered.</td></tr>
-              <tr><td>Business Probe Source</td><td>The custom metric matched to the operator row, such as stage:kpi-1m, sink:iceberg-kpi-1m, or NA.</td></tr>
-              <tr><td>Latency Scope</td><td>output-age is cumulative business age to the operator probe. sink-front is before connector write. connector-write is connector writer/invoke duration. connector-commit is flush/prepare/commit/checkpoint duration and does not include connector-write. NA means no mapped latency sample.</td></tr>
+              <tr><td>TaskManager CPU 负载</td><td>来自 Flink REST 的 TaskManager JVM CPU Load 最大值。当前默认 REST 指标不提供精确算子级 CPU。</td></tr>
+              <tr><td>忙碌 / 忙碌 ms/s</td><td>来自 Flink REST 的 busyTimeMsPerSecond，同时展示为一秒内占比和原始毫秒值。</td></tr>
+              <tr><td>反压 / 反压 ms/s</td><td>来自 Flink REST 的 backPressuredTimeMsPerSecond，同时展示为一秒内占比和原始毫秒值。</td></tr>
+              <tr><td>累计延迟</td><td>当前算子输出被探针观测到时，相对原始 eventTs/sourceEventTsAvg 的 P95 延迟。</td></tr>
+              <tr><td>算子延迟</td><td>当前算子的累计延迟减去直接上游最大累计延迟；Source 算子没有上游时等于累计延迟。</td></tr>
+              <tr><td>延迟摘要</td><td>同一行的可用延迟汇总。Sink 行会合并 Sink入口累计、写入耗时和提交耗时。</td></tr>
+              <tr><td>延迟探针</td><td>显式映射到该算子的自定义探针，例如 stage:kpi-1m 或 sink:starrocks-kpi-1m。没有显式映射时为 N/A。</td></tr>
+              <tr><td>Probe类型</td><td>输出累计、Sink入口累计、写入耗时、提交耗时或传输延迟。传输延迟只显示在流程图边上。</td></tr>
+              <tr><td>流程图边</td><td>边上的“传输”来自 Flink latency marker P95；传输延迟不可用表示当前 Flink REST 指标没有暴露 marker 分位值。</td></tr>
             </tbody>
           </table>
-          <h3>Abnormal Value Analysis</h3>
+          <h3>异常值分析</h3>
           <table>
-            <thead><tr><th>Pattern</th><th>Likely Cause</th><th>Next Check</th></tr></thead>
+            <thead><tr><th>现象</th><th>可能原因</th><th>下一步检查</th></tr></thead>
             <tbody>
-              <tr><td>Cumulative Business Age P95 high while Flink Marker P95 is normal</td><td>Window waiting, event-time skew, join wait, or business timestamp baseline is dominating.</td><td>Check Watermark Lag, 1m Window Diagnostics, and stage source mapping.</td></tr>
-              <tr><td>Flink Marker P95 high</td><td>Source-to-operator queueing, network transfer, shuffle, or backpressure before this operator.</td><td>Check upstream Records Out/s, downstream Busy, and Backpressure.</td></tr>
-              <tr><td>Backpressure high with low Records Out/s</td><td>The operator or downstream sink cannot drain at the produced rate.</td><td>Increase targeted parallelism or inspect sink/storage health.</td></tr>
-              <tr><td>Connector Commit P95 high while Connector Write P95 is normal</td><td>Connector commit/checkpoint/storage visibility is dominating, not per-record write.</td><td>Check checkpoint interval, committer parallelism, storage metadata pressure, and connector commit logs.</td></tr>
-              <tr><td>Business Probe Source is NA</td><td>No custom stage or sink metric can be mapped to this Flink operator yet.</td><td>Add a lightweight StageMetricsProbe only if this operator is important for pressure analysis.</td></tr>
-              <tr><td>Flink operator metrics are N/A</td><td>Flink REST did not expose usable operator metric values, or source records were published while all operator metrics stayed zero.</td><td>Check /jobs/{jobId}/vertices/{vertexId}/metrics while the job is actively processing.</td></tr>
+              <tr><td>累计延迟高但传输延迟正常</td><td>窗口等待、事件乱序、Join 等待或源事件时间基线导致累计耗时增加。</td><td>检查 1m 窗口诊断、Join 等待配置和上游累计延迟。</td></tr>
+              <tr><td>传输延迟高</td><td>Source 到目标算子之间存在排队、网络传输、shuffle 或上游反压。</td><td>检查上游输出速率、下游忙碌度和反压。</td></tr>
+              <tr><td>反压高但输出速率低</td><td>该算子或下游 sink 无法按当前速率排空数据。</td><td>调整目标算子并行度，或检查 sink/storage 健康。</td></tr>
+              <tr><td>提交耗时高但写入耗时正常</td><td>瓶颈更可能在 connector commit、checkpoint 或存储元数据提交，而不是单条写入。</td><td>检查 checkpoint 间隔、committer 并行度、存储元数据压力和 connector 日志。</td></tr>
+              <tr><td>延迟探针为 N/A</td><td>该算子没有显式探针映射，或本轮没有采到合法 sourceEventTs 延迟样本。</td><td>只在该算子对压测判断关键时增加轻量探针。</td></tr>
+              <tr><td>Flink 指标为 N/A</td><td>Flink REST 没有返回可用算子指标，或源端已发布记录但算子指标全为零。</td><td>任务处理期间检查 /jobs/{jobId}/vertices/{vertexId}/metrics。</td></tr>
             </tbody>
           </table>
         </div>
         """;
   }
 
-  private record OperatorLatency(long p50Ms, long p95Ms, long p99Ms, long watermarkLagMs, String source,
-                                 String scope) {
+  private record OperatorLatency(
+      long cumulativeP95Ms,
+      long operatorP95Ms,
+      long writeP95Ms,
+      long commitP95Ms,
+      String probeSource,
+      String probeType,
+      boolean sinkLatency,
+      String note) {
     static OperatorLatency empty() {
-      return new OperatorLatency(-1L, -1L, -1L, -1L, "NA", "NA");
+      return new OperatorLatency(-1L, -1L, -1L, -1L, "N/A", "N/A", false, "");
+    }
+
+    static OperatorLatency stage(StageLatencySnapshot stage) {
+      return new OperatorLatency(stage.latencyP95Ms(), -1L, -1L, -1L,
+          "stage:" + stage.stageId(), "输出累计", false, "");
+    }
+
+    static OperatorLatency windowMaterialization(SinkLatencySnapshot sink) {
+      return new OperatorLatency(sink.latencyP95Ms(), -1L, -1L, -1L,
+          "stage:" + sink.sinkName(), "输出累计", false, "");
+    }
+
+    static OperatorLatency sink(SinkProbeBundle bundle) {
+      return new OperatorLatency(
+          bundle.sinkFrontP95Ms(),
+          -1L,
+          bundle.connectorWriteP95Ms(),
+          bundle.connectorCommitP95Ms(),
+          "sink:" + bundle.baseName(),
+          "Sink入口累计",
+          true,
+          "");
     }
 
     boolean available() {
-      return p50Ms >= 0 || p95Ms >= 0 || p99Ms >= 0 || watermarkLagMs >= 0;
+      return cumulativeP95Ms >= 0 || writeP95Ms >= 0 || commitP95Ms >= 0;
+    }
+
+    long healthP95Ms() {
+      return cumulativeP95Ms;
+    }
+
+    OperatorLatency withOperatorDelay(Long upstreamCumulativeP95Ms) {
+      if (cumulativeP95Ms < 0L) {
+        return this;
+      }
+      if (upstreamCumulativeP95Ms == null || upstreamCumulativeP95Ms < 0L) {
+        return new OperatorLatency(cumulativeP95Ms, cumulativeP95Ms, writeP95Ms, commitP95Ms,
+            probeSource, probeType, sinkLatency, note);
+      }
+      long delta = cumulativeP95Ms - upstreamCumulativeP95Ms;
+      if (delta < -1_000L) {
+        return new OperatorLatency(cumulativeP95Ms, -1L, writeP95Ms, commitP95Ms,
+            probeSource, probeType, sinkLatency, "上游累计延迟高于当前超过 1s，可能是采样窗口错位");
+      }
+      String nextNote = delta < 0L ? "采样窗口轻微错位，算子延迟按 0 ms 展示" : note;
+      return new OperatorLatency(cumulativeP95Ms, Math.max(0L, delta), writeP95Ms, commitP95Ms,
+          probeSource, probeType, sinkLatency, nextNote);
+    }
+
+    String summary() {
+      if (!available()) {
+        return "N/A";
+      }
+      StringBuilder value = new StringBuilder()
+          .append("累计=").append(formatMs(cumulativeP95Ms))
+          .append(" | 算子=").append(formatMs(operatorP95Ms));
+      if (writeP95Ms >= 0L) {
+        value.append(" | 写入=").append(formatMs(writeP95Ms));
+      }
+      if (commitP95Ms >= 0L) {
+        value.append(" | 提交=").append(formatMs(commitP95Ms));
+      }
+      if (!note.isBlank()) {
+        value.append(" | ").append(note);
+      }
+      return value.toString();
     }
   }
 
-  private record OperatorTableColumns(boolean showInputWatermark, boolean showOutputWatermark,
-                                      boolean showFlinkMarker) {
+  private static final class SinkProbeBundle {
+    private final String baseName;
+    private SinkLatencySnapshot sinkFront;
+    private SinkLatencySnapshot connectorWrite;
+    private SinkLatencySnapshot connectorCommit;
+
+    private SinkProbeBundle(String baseName) {
+      this.baseName = baseName;
+    }
+
+    private String baseName() {
+      return baseName;
+    }
+
+    private void add(SinkLatencySnapshot snapshot) {
+      switch (lower(snapshot.scope())) {
+        case "connector-write" -> connectorWrite = maxP95(connectorWrite, snapshot);
+        case "connector-commit" -> connectorCommit = maxP95(connectorCommit, snapshot);
+        default -> sinkFront = maxP95(sinkFront, snapshot);
+      }
+    }
+
+    private static SinkLatencySnapshot maxP95(SinkLatencySnapshot current, SinkLatencySnapshot next) {
+      if (current == null || next.latencyP95Ms() > current.latencyP95Ms()) {
+        return next;
+      }
+      return current;
+    }
+
+    private long sinkFrontP95Ms() {
+      return sinkFront == null ? -1L : sinkFront.latencyP95Ms();
+    }
+
+    private long connectorWriteP95Ms() {
+      return connectorWrite == null ? -1L : connectorWrite.latencyP95Ms();
+    }
+
+    private long connectorCommitP95Ms() {
+      return connectorCommit == null ? -1L : connectorCommit.latencyP95Ms();
+    }
+  }
+
+  private record OperatorTableColumns(boolean showInputWatermark, boolean showOutputWatermark) {
   }
 
   private record WindowDiagnosticColumns(boolean showInputWatermark, boolean showOutputWatermark) {
@@ -1044,11 +1180,12 @@ public final class HtmlReportWriter {
     FlinkSnapshot flink = result.flink();
     boolean trusted = operatorMetricsTrusted(result);
     if (flink.operators().isEmpty()) {
-      return "<p>No operator graph was captured for this run.</p>";
+      return "<p>本轮未采集到算子流程图。</p>";
     }
     Map<String, Integer> levels = operatorLevels(flink.operators(), flink.operatorEdges());
     Map<String, FlowPosition> positions = operatorPositions(flink.operators(), levels);
     Map<String, FlinkOperatorSnapshot> operatorsById = operatorsById(flink.operators());
+    Map<String, OperatorLatency> latencies = operatorLatencies(plan, fdb, flink);
     int maxLevel = levels.values().stream().max(Integer::compareTo).orElse(0);
     Map<Integer, Long> perLevel = levels.values().stream()
         .collect(Collectors.groupingBy(level -> level, Collectors.counting()));
@@ -1081,14 +1218,14 @@ public final class HtmlReportWriter {
             .append(markerHealth == GateHealth.UNSTABLE ? " flow-edge-marker-label-warn" : "")
             .append("\" x=\"").append((x1 + x2) / 2)
             .append("\" y=\"").append(((y1 + y2) / 2) - 8)
-            .append("\">P95 ").append(escape(formatMs(marker.p95Ms()))).append("</text>");
+            .append("\">传输 ").append(escape(formatMs(marker.p95Ms()))).append("</text>");
       }
     }
 
     StringBuilder nodes = new StringBuilder();
     for (FlinkOperatorSnapshot operator : flink.operators()) {
       FlowPosition position = positions.get(operator.id());
-      OperatorLatency latency = operatorLatency(plan, fdb, operator);
+      OperatorLatency latency = latencies.getOrDefault(operator.id(), OperatorLatency.empty());
       GateHealth health = operatorGraphHealth(thresholds, operator, latency, trusted);
       nodes.append("<g class=\"flow-node ").append(flowNodeClass(health))
           .append("\" data-operator-id=\"").append(escape(operator.id()))
@@ -1098,18 +1235,18 @@ public final class HtmlReportWriter {
           .append("<rect width=\"180\" height=\"86\" rx=\"4\"></rect>")
           .append("<text x=\"10\" y=\"22\">").append(escape(shortLabel(operator.name(), 28))).append("</text>")
           .append("<text x=\"10\" y=\"43\">p=").append(operator.parallelism())
-          .append(" out/s=").append(escape(formatOperatorNumber(operator, operator.recordsOutPerSec(), trusted)))
+          .append(" 输出/s=").append(escape(formatOperatorNumber(operator, operator.recordsOutPerSec(), trusted)))
           .append("</text>")
           .append("<text class=\"flow-latency\" x=\"10\" y=\"62\">")
           .append(escape(operatorNodeLatencyLabel(operator, latency))).append("</text>")
-          .append("<text x=\"10\" y=\"79\">bp=")
+          .append("<text x=\"10\" y=\"79\">反压=")
           .append(escape(formatOperatorRatio(operator, operator.backpressureRatio(), trusted)))
           .append("</text></g>");
     }
 
     return """
         <div class="flow-wrap">
-          <svg class="operator-flow" viewBox="0 0 %s %s" role="img" aria-label="Flink operator flow">
+          <svg class="operator-flow" viewBox="0 0 %s %s" role="img" aria-label="Flink 算子流程">
             <defs>
               <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
                 <path d="M0,0 L0,6 L9,3 z" fill="#9aa8bb"></path>
@@ -1186,22 +1323,22 @@ public final class HtmlReportWriter {
       }
       return """
           <table>
-            <thead><tr><th>Stage</th><th>P50</th><th>P95</th><th>P99</th><th>Watermark Lag</th></tr></thead>
+            <thead><tr><th>阶段</th><th>P50</th><th>P95</th><th>P99</th><th>Watermark 滞后</th></tr></thead>
             <tbody>%s</tbody>
           </table>
           """.formatted(rows);
     }
     return """
         <table>
-          <thead><tr><th>Metric</th><th>P95</th><th>Notes</th></tr></thead>
+          <thead><tr><th>指标</th><th>P95</th><th>说明</th></tr></thead>
           <tbody>
-            <tr><td>Source Delay</td><td>%s</td><td>End-to-end source arrival delay</td></tr>
-            <tr><td>KPI 1m Availability</td><td>%s</td><td>One-minute KPI availability latency</td></tr>
-            <tr><td>KPI 5m Availability</td><td>%s</td><td>Five-minute KPI availability latency</td></tr>
-            <tr><td>Sink-front Age</td><td>%s</td><td>Age before connector write; not connector-internal write duration</td></tr>
-            <tr><td>Connector Write</td><td>%s</td><td>Connector writer/invoke duration only</td></tr>
-            <tr><td>Connector Commit</td><td>%s</td><td>Connector flush/prepare/commit/checkpoint duration only</td></tr>
-            <tr><td>Watermark Lag</td><td>%s</td><td>Maximum observed stage watermark lag</td></tr>
+            <tr><td>Source 延迟</td><td>%s</td><td>Source 到达端到端延迟。</td></tr>
+            <tr><td>KPI 1m 可用延迟</td><td>%s</td><td>1 分钟 KPI 可用延迟。</td></tr>
+            <tr><td>KPI 5m 可用延迟</td><td>%s</td><td>5 分钟 KPI 可用延迟。</td></tr>
+            <tr><td>Sink 入口累计延迟</td><td>%s</td><td>进入 connector 前的累计延迟，不是 connector 内部写入耗时。</td></tr>
+            <tr><td>Connector 写入</td><td>%s</td><td>仅 connector writer/invoke 耗时。</td></tr>
+            <tr><td>Connector 提交</td><td>%s</td><td>仅 connector flush/prepare/commit/checkpoint 耗时。</td></tr>
+            <tr><td>Watermark 滞后</td><td>%s</td><td>观测到的最大 stage watermark lag。</td></tr>
           </tbody>
         </table>
         """.formatted(
@@ -1229,34 +1366,34 @@ public final class HtmlReportWriter {
     if (!currentSinks.isEmpty() || !auxiliarySinks.isEmpty()) {
       StringBuilder rows = new StringBuilder();
       for (SinkLatencySnapshot sink : currentSinks) {
-        appendSinkRow(rows, "Current", sink);
+        appendSinkRow(rows, "本次", sink);
       }
       if (currentSinks.isEmpty()) {
-        rows.append("<tr><td>Current</td><td colspan=\"9\">No current business sink latency samples</td></tr>");
+        rows.append("<tr><td>本次</td><td colspan=\"9\">未采集到本次业务 sink 延迟样本</td></tr>");
       }
       for (SinkLatencySnapshot sink : auxiliarySinks) {
-        appendSinkRow(rows, "Auxiliary", sink);
+        appendSinkRow(rows, "辅助", sink);
       }
-      rows.append("<tr><td>Storage Health</td><td>storage</td><td colspan=\"3\">")
-          .append(storage.healthy() ? "healthy" : "unhealthy").append("</td><td colspan=\"5\">")
+      rows.append("<tr><td>存储健康</td><td>storage</td><td colspan=\"3\">")
+          .append(storage.healthy() ? "健康" : "异常").append("</td><td colspan=\"5\">")
           .append(escape(storage.summary())).append("</td></tr>");
       appendStorageProbeRow(rows, plan.sink(), storage);
       return """
           <table>
-            <thead><tr><th>Type</th><th>Scope</th><th>Sink</th><th>Records</th><th>Bytes</th><th>P50</th><th>P95</th><th>P99</th><th>Failures</th><th>Latency Confidence</th></tr></thead>
+            <thead><tr><th>类型</th><th>Scope</th><th>Sink</th><th>记录数</th><th>字节</th><th>P50</th><th>P95</th><th>P99</th><th>失败数</th><th>延迟样本可信度</th></tr></thead>
             <tbody>%s</tbody>
           </table>
           """.formatted(rows);
     }
     return """
         <table>
-          <thead><tr><th>Area</th><th>Value</th><th>Status</th></tr></thead>
+          <thead><tr><th>区域</th><th>值</th><th>状态</th></tr></thead>
           <tbody>
-            <tr><td>Sink P95</td><td>%s</td><td>%s failures</td></tr>
-            <tr><td>Connector Write P95</td><td>%s</td><td>connector writer/invoke duration</td></tr>
-            <tr><td>Connector Commit P95</td><td>%s</td><td>connector flush/prepare/commit/checkpoint duration</td></tr>
-            <tr><td>Storage Health</td><td>%s</td><td>%s</td></tr>
-            <tr><td>Storage Records</td><td>%s</td><td>Small files %s, in-progress %s</td></tr>
+            <tr><td>Sink P95</td><td>%s</td><td>%s 次失败</td></tr>
+            <tr><td>Connector 写入 P95</td><td>%s</td><td>connector writer/invoke 耗时</td></tr>
+            <tr><td>Connector 提交 P95</td><td>%s</td><td>connector flush/prepare/commit/checkpoint 耗时</td></tr>
+            <tr><td>存储健康</td><td>%s</td><td>%s</td></tr>
+            <tr><td>存储记录</td><td>%s</td><td>小文件 %s, 写入中 %s</td></tr>
           </tbody>
         </table>
         """.formatted(
@@ -1264,7 +1401,7 @@ public final class HtmlReportWriter {
             fdb.sinkFailures(),
             formatMs(fdb.connectorWriteP95Ms()),
             formatMs(fdb.connectorCommitP95Ms()),
-            storage.healthy() ? "healthy" : "unhealthy",
+            storage.healthy() ? "健康" : "异常",
             escape(storage.summary()),
             storage.records(),
             storage.smallFiles(),
@@ -1273,16 +1410,16 @@ public final class HtmlReportWriter {
 
   private static void appendStorageProbeRow(StringBuilder rows, BenchmarkSink sink, StorageSnapshot storage) {
     if (sink == BenchmarkSink.STARROCKS) {
-      rows.append("<tr><td>Storage Rows</td><td>storage</td><td>starrocks</td><td>")
+      rows.append("<tr><td>存储行数</td><td>storage</td><td>starrocks</td><td>")
           .append(formatNumber(storage.records()))
           .append("</td><td>-</td><td colspan=\"5\">")
           .append(escape(storage.summary())).append("</td></tr>");
       return;
     }
-    rows.append("<tr><td>Storage Files</td><td>storage</td><td>").append(escape(sink.value())).append("</td><td>")
+    rows.append("<tr><td>存储文件</td><td>storage</td><td>").append(escape(sink.value())).append("</td><td>")
         .append(formatNumber(storage.records()))
-        .append("</td><td>-</td><td colspan=\"5\">Small files ")
-        .append(storage.smallFiles()).append(", in-progress ").append(storage.inProgressFiles()).append("</td></tr>");
+        .append("</td><td>-</td><td colspan=\"5\">小文件 ")
+        .append(storage.smallFiles()).append(", 写入中 ").append(storage.inProgressFiles()).append("</td></tr>");
   }
 
   private static void appendSinkRow(StringBuilder rows, String type, SinkLatencySnapshot sink) {
@@ -1311,12 +1448,12 @@ public final class HtmlReportWriter {
       return "N/A";
     }
     if (records < 30) {
-      return "low (<30 records)";
+      return "低（少于 30 条）";
     }
     if (records < 100) {
-      return "medium (<100 records)";
+      return "中（少于 100 条）";
     }
-    return "high";
+    return "高";
   }
 
   private static boolean isRelevantStage(BenchmarkSink sink, String stageId) {
@@ -1329,12 +1466,22 @@ public final class HtmlReportWriter {
   }
 
   private static boolean isCurrentBusinessSink(BenchmarkSink sink, String sinkName) {
-    return sink != BenchmarkSink.NONE && lower(sinkName).contains(sink.value());
+    if (sink == BenchmarkSink.NONE) {
+      return false;
+    }
+    String baseName = lower(sinkBaseName(sinkName));
+    String expectedPrefix = sink.value() + "-";
+    return baseName.equals(sink.value()) || baseName.startsWith(expectedPrefix);
   }
 
   private static boolean isAuxiliarySink(String sinkName) {
-    String value = lower(sinkName);
-    return value.contains("dlq") || value.contains("metric") || value.contains("late");
+    String value = lower(sinkBaseName(sinkName));
+    return value.equals("dlq")
+        || value.endsWith("-dlq")
+        || value.equals("metrics")
+        || value.endsWith("-metrics")
+        || value.equals("enrichment-late")
+        || value.endsWith("-late");
   }
 
   private static String lower(String value) {
@@ -1383,15 +1530,15 @@ public final class HtmlReportWriter {
 
   private static String operatorMetricsValidity(BenchmarkRunResult result) {
     if (operatorMetricsTrusted(result)) {
-      return "available";
+      return "可用";
     }
     if (!result.flink().hasOperatorMetrics()) {
-      return "unavailable (Flink REST returned no operator metric values)";
+      return "不可用（Flink REST 未返回算子指标值）";
     }
     if (hasPublishedSourceRecords(result.source()) && !hasOperatorMetricSignal(result.flink())) {
-      return "unavailable (source published records but Flink operator metrics are all zero)";
+      return "不可用（Source 已发布记录但 Flink 算子指标全为零）";
     }
-    return "unavailable";
+    return "不可用";
   }
 
   private static boolean hasPublishedSourceRecords(SourceMetricsSnapshot source) {
@@ -1483,11 +1630,11 @@ public final class HtmlReportWriter {
                 Collectors.maxBy(Comparator.comparingInt(result -> result.plan().cellLevel())),
                 optional -> optional.map(result -> result.plan().cellLevel()).orElse(0))));
     if (maxCells.isEmpty()) {
-      return "<p>No stable upper bound was observed.</p>";
+      return "<p>本次未观察到稳定上限。</p>";
     }
     return "<ul>" + maxCells.entrySet().stream()
         .sorted(Map.Entry.comparingByKey())
-        .map(entry -> "<li>" + escape(entry.getKey().value()) + ": " + entry.getValue() + " cells</li>")
+        .map(entry -> "<li>" + escape(entry.getKey().value()) + ": " + entry.getValue() + " 小区</li>")
         .collect(Collectors.joining()) + "</ul>";
   }
 
@@ -1503,17 +1650,17 @@ public final class HtmlReportWriter {
     return results.stream()
         .filter(result -> result.status() == BenchmarkStatus.STABLE)
         .max(Comparator.comparingInt(result -> result.plan().cellLevel()))
-        .map(result -> result.plan().sink().value() + " " + result.plan().cellLevel() + " cells")
-        .orElse("none");
+        .map(result -> result.plan().sink().value() + " " + result.plan().cellLevel() + " 小区")
+        .orElse("无");
   }
 
   private static String recommendations(List<BenchmarkRunResult> results) {
     return results.stream()
         .filter(result -> result.status() != BenchmarkStatus.STABLE)
         .findFirst()
-        .map(result -> "<p>First bottleneck: " + escape(result.plan().sink().value()) + " at "
-            + result.plan().cellLevel() + " cells. " + escape(result.bottleneckReason()) + ".</p>")
-        .orElse("<p>All measured runs stayed within thresholds. Increase cell levels or EPS per cell for the next run.</p>");
+        .map(result -> "<p>首个瓶颈: " + escape(result.plan().sink().value()) + " 在 "
+            + result.plan().cellLevel() + " 小区档位。 " + escape(result.bottleneckReason()) + "。</p>")
+        .orElse("<p>所有已测轮次均满足门限。下一轮可继续提高小区档位或每小区 EPS。</p>");
   }
 
   private static long effectiveCheckpointIntervalMs(BenchmarkSink sink, long configuredMs) {

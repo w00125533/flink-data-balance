@@ -150,10 +150,15 @@ public class MinuteKpiJoinFunction
             cfg != null ? cfg.getSiteId().toString() : "");
         String gridId = cfg == null ? "" : Geohash.encode(cfg.getCenterLat(), cfg.getCenterLon(), 6);
         long hoAttempts = pm == null ? 0L : pm.handoverSuccess() + pm.handoverFailure();
+        SourceEventStats sourceEventStats = combineSourceEventStats(chr, pm);
 
         return CellKpi.newBuilder()
             .setWindowStartTs(minuteTs)
             .setWindowEndTs(minuteTs + MINUTE_MS)
+            .setSourceEventTsAvg(sourceEventStats.avg())
+            .setSourceEventTsMin(sourceEventStats.min())
+            .setSourceEventTsMax(sourceEventStats.max())
+            .setSourceEventCount(sourceEventStats.count())
             .setWindowKind(WindowKind.MIN_1)
             .setJoinQuality(joinQuality)
             .setSiteId(siteId)
@@ -178,6 +183,30 @@ public class MinuteKpiJoinFunction
         return count > 0L ? (float) (sum / count) : 0.0f;
     }
 
+    private static SourceEventStats combineSourceEventStats(ChrMinuteFact chr, PmMinuteFact pm) {
+        long weightedSum = 0L;
+        long count = 0L;
+        long min = 0L;
+        long max = 0L;
+        if (chr != null && chr.sourceEventCount() > 0L && chr.sourceEventTsAvg() > 0L) {
+            weightedSum += chr.sourceEventTsAvg() * chr.sourceEventCount();
+            count += chr.sourceEventCount();
+            min = chr.sourceEventTsMin();
+            max = chr.sourceEventTsMax();
+        }
+        if (pm != null && pm.sourceEventCount() > 0L && pm.sourceEventTsAvg() > 0L) {
+            weightedSum += pm.sourceEventTsAvg() * pm.sourceEventCount();
+            min = count == 0L ? pm.sourceEventTsMin() : Math.min(min, pm.sourceEventTsMin());
+            max = count == 0L ? pm.sourceEventTsMax() : Math.max(max, pm.sourceEventTsMax());
+            count += pm.sourceEventCount();
+        }
+        return new SourceEventStats(
+            count > 0L ? weightedSum / count : 0L,
+            count > 0L ? min : 0L,
+            count > 0L ? max : 0L,
+            count);
+    }
+
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -185,5 +214,8 @@ public class MinuteKpiJoinFunction
             }
         }
         return "";
+    }
+
+    private record SourceEventStats(long avg, long min, long max, long count) {
     }
 }

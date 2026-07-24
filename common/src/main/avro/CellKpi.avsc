@@ -6,6 +6,10 @@
   "fields": [
     { "name": "windowStartTs",          "type": "long" },
     { "name": "windowEndTs",            "type": "long" },
+    { "name": "sourceEventTsAvg",        "type": "long", "default": 0 },
+    { "name": "sourceEventTsMin",        "type": "long", "default": 0 },
+    { "name": "sourceEventTsMax",        "type": "long", "default": 0 },
+    { "name": "sourceEventCount",        "type": "long", "default": 0 },
     { "name": "windowKind",             "type": { "type": "enum", "name": "WindowKind",
        "symbols": ["MIN_1","MIN_5","MIN_15","HOUR_1"] } },
     { "name": "joinQuality",            "type": { "type": "enum", "name": "JoinQuality",

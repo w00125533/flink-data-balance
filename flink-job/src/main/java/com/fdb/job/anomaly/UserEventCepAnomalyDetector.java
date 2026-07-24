@@ -158,7 +158,11 @@ public final class UserEventCepAnomalyDetector {
             metric,
             threshold,
             observed,
-            contextJson(chr, metric, threshold, observed));
+            contextJson(chr, metric, threshold, observed),
+            chr.getEventTs(),
+            chr.getEventTs(),
+            chr.getEventTs(),
+            1L);
     }
 
     private static String contextJson(ChrEvent chr, String metric, double threshold, double observed) {

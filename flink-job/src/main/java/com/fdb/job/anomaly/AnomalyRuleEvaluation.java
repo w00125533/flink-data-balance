@@ -13,6 +13,10 @@ public class AnomalyRuleEvaluation implements Serializable {
     private long windowStartTs;
     private long windowEndTs;
     private long eventTs;
+    private long sourceEventTsAvg;
+    private long sourceEventTsMin;
+    private long sourceEventTsMax;
+    private long sourceEventCount;
     private String siteId;
     private String cellId;
     private String imsi;
@@ -50,6 +54,58 @@ public class AnomalyRuleEvaluation implements Serializable {
         double threshold,
         double observedValue,
         String contextJson) {
+        this(
+            entityType,
+            entityId,
+            ruleDimension,
+            abnormal,
+            windowStartTs,
+            windowEndTs,
+            eventTs,
+            siteId,
+            cellId,
+            imsi,
+            gridId,
+            latitude,
+            longitude,
+            anomalyType,
+            severity,
+            ruleVersion,
+            metricName,
+            threshold,
+            observedValue,
+            contextJson,
+            0L,
+            0L,
+            0L,
+            0L);
+    }
+
+    public AnomalyRuleEvaluation(
+        EntityType entityType,
+        String entityId,
+        String ruleDimension,
+        boolean abnormal,
+        long windowStartTs,
+        long windowEndTs,
+        long eventTs,
+        String siteId,
+        String cellId,
+        String imsi,
+        String gridId,
+        Double latitude,
+        Double longitude,
+        AnomalyType anomalyType,
+        Severity severity,
+        String ruleVersion,
+        String metricName,
+        double threshold,
+        double observedValue,
+        String contextJson,
+        long sourceEventTsAvg,
+        long sourceEventTsMin,
+        long sourceEventTsMax,
+        long sourceEventCount) {
         this.entityType = entityType;
         this.entityId = entityId;
         this.ruleDimension = ruleDimension;
@@ -57,6 +113,10 @@ public class AnomalyRuleEvaluation implements Serializable {
         this.windowStartTs = windowStartTs;
         this.windowEndTs = windowEndTs;
         this.eventTs = eventTs;
+        this.sourceEventTsAvg = sourceEventTsAvg;
+        this.sourceEventTsMin = sourceEventTsMin;
+        this.sourceEventTsMax = sourceEventTsMax;
+        this.sourceEventCount = sourceEventCount;
         this.siteId = siteId;
         this.cellId = cellId;
         this.imsi = imsi;
@@ -89,6 +149,14 @@ public class AnomalyRuleEvaluation implements Serializable {
     public long windowEndTs() { return windowEndTs; }
 
     public long eventTs() { return eventTs; }
+
+    public long sourceEventTsAvg() { return sourceEventTsAvg; }
+
+    public long sourceEventTsMin() { return sourceEventTsMin; }
+
+    public long sourceEventTsMax() { return sourceEventTsMax; }
+
+    public long sourceEventCount() { return sourceEventCount; }
 
     public String siteId() { return siteId; }
 

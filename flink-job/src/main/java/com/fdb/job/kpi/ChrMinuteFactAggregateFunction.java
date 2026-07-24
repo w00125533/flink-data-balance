@@ -22,6 +22,7 @@ public class ChrMinuteFactAggregateFunction
         if (chr.getImsi() != null) {
             acc.addUser(chr.getImsi().toString());
         }
+        acc.addSourceEventTs(chr.getEventTs());
         if (chr.getRsrp() != null) {
             acc.setRsrpSum(acc.getRsrpSum() + chr.getRsrp());
             acc.setRsrpCount(acc.getRsrpCount() + 1L);
@@ -60,6 +61,17 @@ public class ChrMinuteFactAggregateFunction
         left.setSinrCount(left.getSinrCount() + right.getSinrCount());
         left.setAttachAttempts(left.getAttachAttempts() + right.getAttachAttempts());
         left.setAttachSuccess(left.getAttachSuccess() + right.getAttachSuccess());
+        if (right.getSourceEventCount() > 0L) {
+            long leftCount = left.getSourceEventCount();
+            left.setSourceEventTsSum(left.getSourceEventTsSum() + right.getSourceEventTsSum());
+            left.setSourceEventTsMin(leftCount == 0L
+                ? right.getSourceEventTsMin()
+                : Math.min(left.getSourceEventTsMin(), right.getSourceEventTsMin()));
+            left.setSourceEventTsMax(leftCount == 0L
+                ? right.getSourceEventTsMax()
+                : Math.max(left.getSourceEventTsMax(), right.getSourceEventTsMax()));
+            left.setSourceEventCount(leftCount + right.getSourceEventCount());
+        }
         return left;
     }
 

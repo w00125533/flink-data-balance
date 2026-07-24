@@ -6,6 +6,10 @@
   "fields": [
     { "name": "detectionTs", "type": "long" },
     { "name": "eventTs", "type": "long" },
+    { "name": "sourceEventTsAvg", "type": "long", "default": 0 },
+    { "name": "sourceEventTsMin", "type": "long", "default": 0 },
+    { "name": "sourceEventTsMax", "type": "long", "default": 0 },
+    { "name": "sourceEventCount", "type": "long", "default": 0 },
     { "name": "entityType", "type": { "type": "enum", "name": "EntityType",
       "symbols": ["CELL", "USER", "GRID"] } },
     { "name": "entityId", "type": "string" },

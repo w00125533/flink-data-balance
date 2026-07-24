@@ -166,6 +166,10 @@ public final class StarRocksSinks {
             .field("window_kind", DataTypes.STRING().notNull())
             .field("cell_id", DataTypes.STRING().notNull())
             .field("window_end_ts", DataTypes.BIGINT().notNull())
+            .field("source_event_ts_avg", DataTypes.BIGINT().notNull())
+            .field("source_event_ts_min", DataTypes.BIGINT().notNull())
+            .field("source_event_ts_max", DataTypes.BIGINT().notNull())
+            .field("source_event_count", DataTypes.BIGINT().notNull())
             .field("join_quality", DataTypes.STRING().notNull())
             .field("site_id", DataTypes.STRING().notNull())
             .field("grid_id", DataTypes.STRING().notNull())
@@ -190,6 +194,10 @@ public final class StarRocksSinks {
             .field("anomaly_id", DataTypes.STRING().notNull())
             .field("detection_ts", DataTypes.BIGINT().notNull())
             .field("event_ts", DataTypes.BIGINT().notNull())
+            .field("source_event_ts_avg", DataTypes.BIGINT().notNull())
+            .field("source_event_ts_min", DataTypes.BIGINT().notNull())
+            .field("source_event_ts_max", DataTypes.BIGINT().notNull())
+            .field("source_event_count", DataTypes.BIGINT().notNull())
             .field("entity_type", DataTypes.STRING().notNull())
             .field("entity_id", DataTypes.STRING().notNull())
             .field("window_start_ts", DataTypes.BIGINT().notNull())
@@ -214,22 +222,26 @@ public final class StarRocksSinks {
             row[1] = text(kpi.getWindowKind());
             row[2] = text(kpi.getCellId());
             row[3] = kpi.getWindowEndTs();
-            row[4] = text(kpi.getJoinQuality());
-            row[5] = text(kpi.getSiteId());
-            row[6] = text(kpi.getGridId());
-            row[7] = kpi.getNumChrEvents();
-            row[8] = kpi.getNumUsers();
-            row[9] = kpi.getRsrpSampleCount();
-            row[10] = kpi.getSinrSampleCount();
-            row[11] = kpi.getAttachAttempts();
-            row[12] = kpi.getAvgRsrp();
-            row[13] = kpi.getAvgSinr();
-            row[14] = kpi.getAvgPrbUsageDl();
-            row[15] = kpi.getThroughputDlMbpsAvg();
-            row[16] = kpi.getDropRate();
-            row[17] = kpi.getHoSuccessRate();
-            row[18] = kpi.getAttachSuccessRate();
-            row[19] = UPSERT_OP;
+            row[4] = kpi.getSourceEventTsAvg();
+            row[5] = kpi.getSourceEventTsMin();
+            row[6] = kpi.getSourceEventTsMax();
+            row[7] = kpi.getSourceEventCount();
+            row[8] = text(kpi.getJoinQuality());
+            row[9] = text(kpi.getSiteId());
+            row[10] = text(kpi.getGridId());
+            row[11] = kpi.getNumChrEvents();
+            row[12] = kpi.getNumUsers();
+            row[13] = kpi.getRsrpSampleCount();
+            row[14] = kpi.getSinrSampleCount();
+            row[15] = kpi.getAttachAttempts();
+            row[16] = kpi.getAvgRsrp();
+            row[17] = kpi.getAvgSinr();
+            row[18] = kpi.getAvgPrbUsageDl();
+            row[19] = kpi.getThroughputDlMbpsAvg();
+            row[20] = kpi.getDropRate();
+            row[21] = kpi.getHoSuccessRate();
+            row[22] = kpi.getAttachSuccessRate();
+            row[23] = UPSERT_OP;
         };
     }
 
@@ -281,6 +293,10 @@ public final class StarRocksSinks {
             anomalyId(scope, event),
             event.getDetectionTs(),
             event.getEventTs(),
+            event.getSourceEventTsAvg(),
+            event.getSourceEventTsMin(),
+            event.getSourceEventTsMax(),
+            event.getSourceEventCount(),
             text(event.getEntityType()),
             text(event.getEntityId()),
             event.getWindowStartTs(),

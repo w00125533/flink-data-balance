@@ -56,6 +56,27 @@ class MinuteKpiJoinFunctionTest {
     }
 
     @Test
+    void propagates_weighted_source_event_time_from_chr_and_pm_facts() throws Exception {
+        try (var harness = harness(Duration.ofMinutes(2))) {
+            harness.open();
+
+            harness.processElement(MinuteFactEnvelope.chr(new ChrMinuteFact(
+                "cell-a", "site-a", 0L, 3L, 3L, -270.0, 30.0, 3L, 3L, 3L, 3L,
+                20_000L, 10_000L, 30_000L, 3L)), 0L);
+            harness.processElement(MinuteFactEnvelope.pm(new PmMinuteFact(
+                "cell-a", "site-a", 0L, 2L, 1.20, 220.0, 100L, 1L, 9L, 1L,
+                50_000L, 40_000L, 60_000L, 2L)), 1L);
+
+            CellKpi kpi = harness.extractOutputValues().get(0);
+
+            assertThat(kpi.getSourceEventTsAvg()).isEqualTo(32_000L);
+            assertThat(kpi.getSourceEventTsMin()).isEqualTo(10_000L);
+            assertThat(kpi.getSourceEventTsMax()).isEqualTo(60_000L);
+            assertThat(kpi.getSourceEventCount()).isEqualTo(5L);
+        }
+    }
+
+    @Test
     void joins_chr_with_pm_fact_from_boundary_source_minute() throws Exception {
         try (var harness = harness(Duration.ofMinutes(2))) {
             harness.open();
@@ -243,6 +264,7 @@ class MinuteKpiJoinFunctionTest {
             .setCellId("cell-a")
             .setWindowStartTs(start)
             .setWindowEndTs(end)
+            .setEventTs(start + ((end - start) / 2L))
             .setPrbUsageDl(0.6f)
             .setPrbUsageUl(0.25f)
             .setActiveUsers(42)

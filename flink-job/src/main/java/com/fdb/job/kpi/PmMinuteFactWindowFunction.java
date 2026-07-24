@@ -19,6 +19,10 @@ public class PmMinuteFactWindowFunction
         long dropCount = 0L;
         long handoverSuccess = 0L;
         long handoverFailure = 0L;
+        long sourceEventTsSum = 0L;
+        long sourceEventTsMin = 0L;
+        long sourceEventTsMax = 0L;
+        long sourceEventCount = 0L;
 
         for (PmStat pm : elements) {
             if (count == 0L && pm.getSiteId() != null) {
@@ -31,11 +35,22 @@ public class PmMinuteFactWindowFunction
             dropCount += pm.getDroppedConnections();
             handoverSuccess += pm.getHandoverSuccess();
             handoverFailure += pm.getHandoverFailure();
+            long eventTs = pm.getEventTs();
+            if (eventTs > 0L) {
+                sourceEventTsSum += eventTs;
+                sourceEventTsMin = sourceEventCount == 0L ? eventTs : Math.min(sourceEventTsMin, eventTs);
+                sourceEventTsMax = sourceEventCount == 0L ? eventTs : Math.max(sourceEventTsMax, eventTs);
+                sourceEventCount++;
+            }
         }
 
         if (count > 0L) {
             out.collect(new PmMinuteFact(cellId, siteId, ctx.window().getStart(), count,
-                prbUsageDlSum, throughputDlMbpsSum, activeUsersSum, dropCount, handoverSuccess, handoverFailure));
+                prbUsageDlSum, throughputDlMbpsSum, activeUsersSum, dropCount, handoverSuccess, handoverFailure,
+                sourceEventCount > 0L ? sourceEventTsSum / sourceEventCount : 0L,
+                sourceEventCount > 0L ? sourceEventTsMin : 0L,
+                sourceEventCount > 0L ? sourceEventTsMax : 0L,
+                sourceEventCount));
         }
     }
 }

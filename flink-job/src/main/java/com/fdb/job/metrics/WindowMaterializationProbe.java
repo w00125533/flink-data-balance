@@ -27,12 +27,15 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
     private final String dataset;
     private final String windowKind;
     private final WindowEndTimestampExtractor<T> windowEndTimestampExtractor;
+    private final LatencyTimestampExtractor<T> latencyTimestampExtractor;
     private final MetricRuntimeConfig metricConfig;
 
     private transient MetricSamplePublisher metricPublisher;
     private transient ScheduledExecutorService flushExecutor;
     private transient Map<Long, Long> recordsByWindowEnd;
     private transient Map<Long, Long> emittedRecordsByWindowEnd;
+    private transient Map<Long, Long> sourceEventTsSumByWindowEnd;
+    private transient Map<Long, Long> sourceEventCountByWindowEnd;
     private long highestWindowEndTs = Long.MIN_VALUE;
     private int subtaskIndex = -1;
 
@@ -42,12 +45,14 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
         String dataset,
         String windowKind,
         WindowEndTimestampExtractor<T> windowEndTimestampExtractor,
+        LatencyTimestampExtractor<T> latencyTimestampExtractor,
         MetricRuntimeConfig metricConfig) {
         this.stageId = stageId;
         this.displayName = displayName;
         this.dataset = dataset;
         this.windowKind = windowKind;
         this.windowEndTimestampExtractor = windowEndTimestampExtractor;
+        this.latencyTimestampExtractor = latencyTimestampExtractor;
         this.metricConfig = metricConfig;
     }
 
@@ -62,8 +67,9 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
     @Override
     public void processElement(T value, Context ctx, Collector<T> out) {
         long windowEndTs = windowEndTimestampExtractor.extractWindowEndTimestampMs(value);
+        long sourceEventTs = latencyBaseTimestamp(value);
         long nowMs = ctx.timerService().currentProcessingTime();
-        recordWindowMaterialization(windowEndTs, nowMs)
+        recordWindowMaterialization(windowEndTs, sourceEventTs, nowMs)
             .forEach(this::publish);
         out.collect(value);
     }
@@ -80,9 +86,13 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
         }
     }
 
-    synchronized List<StageMetricSample> recordWindowMaterialization(long windowEndTs, long nowMs) {
+    synchronized List<StageMetricSample> recordWindowMaterialization(long windowEndTs, long sourceEventTs, long nowMs) {
         ensureState();
         recordsByWindowEnd.merge(windowEndTs, 1L, Long::sum);
+        if (sourceEventTs > 0L) {
+            sourceEventTsSumByWindowEnd.merge(windowEndTs, sourceEventTs, Long::sum);
+            sourceEventCountByWindowEnd.merge(windowEndTs, 1L, Long::sum);
+        }
         if (windowEndTs > highestWindowEndTs) {
             highestWindowEndTs = windowEndTs;
         }
@@ -100,11 +110,12 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
         String dataset,
         String windowKind,
         long windowEndTs,
+        long sourceEventTs,
         long records,
         MetricRuntimeConfig metricConfig,
         int subtaskIndex,
         long nowMs) {
-        long latencyMs = Math.max(0L, nowMs - windowEndTs);
+        long latencyMs = sourceEventTs > 0L ? Math.max(0L, nowMs - sourceEventTs) : -1L;
         return StageMetricSample.sinkLatency(
                 stageId,
                 displayName,
@@ -170,6 +181,12 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
         if (emittedRecordsByWindowEnd == null) {
             emittedRecordsByWindowEnd = new HashMap<>();
         }
+        if (sourceEventTsSumByWindowEnd == null) {
+            sourceEventTsSumByWindowEnd = new HashMap<>();
+        }
+        if (sourceEventCountByWindowEnd == null) {
+            sourceEventCountByWindowEnd = new HashMap<>();
+        }
     }
 
     private List<StageMetricSample> samplesBefore(long exclusiveWindowEndTs, long nowMs) {
@@ -183,10 +200,26 @@ public final class WindowMaterializationProbe<T> extends ProcessFunction<T, T> {
                     return;
                 }
                 emittedRecordsByWindowEnd.put(entry.getKey(), entry.getValue());
-                samples.add(sample(stageId, displayName, dataset, windowKind, entry.getKey(), entry.getValue(),
-                    metricConfig, subtaskIndex, nowMs));
+                long sourceEventCount = sourceEventCountByWindowEnd.getOrDefault(entry.getKey(), 0L);
+                long sourceEventTs = sourceEventCount > 0L
+                    ? sourceEventTsSumByWindowEnd.getOrDefault(entry.getKey(), 0L) / sourceEventCount
+                    : 0L;
+                samples.add(sample(stageId, displayName, dataset, windowKind, entry.getKey(), sourceEventTs,
+                    entry.getValue(), metricConfig, subtaskIndex, nowMs));
             });
         return samples;
+    }
+
+    private long latencyBaseTimestamp(T value) {
+        if (latencyTimestampExtractor == null) {
+            return Long.MIN_VALUE;
+        }
+        try {
+            return latencyTimestampExtractor.extractTimestampMs(value);
+        } catch (RuntimeException e) {
+            log.debug("Failed to extract latency timestamp for window materialization stage={}", stageId, e);
+            return Long.MIN_VALUE;
+        }
     }
 
     @FunctionalInterface

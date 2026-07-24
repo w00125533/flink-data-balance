@@ -22,25 +22,29 @@ public final class AnomalyEventIcebergMapper implements MapFunction<AnomalyEvent
     @Override
     public RowData map(AnomalyEvent event) {
         Instant eventTs = Instant.ofEpochMilli(event.getEventTs());
-        GenericRowData row = new GenericRowData(18);
+        GenericRowData row = new GenericRowData(22);
         row.setField(0, event.getDetectionTs());
         row.setField(1, event.getEventTs());
-        row.setField(2, string(event.getEntityType()));
-        row.setField(3, string(event.getEntityId()));
-        row.setField(4, event.getWindowStartTs());
-        row.setField(5, event.getWindowEndTs());
-        row.setField(6, nullableString(event.getImsi()));
-        row.setField(7, nullableString(event.getSiteId()));
-        row.setField(8, nullableString(event.getCellId()));
-        row.setField(9, nullableString(event.getGridId()));
-        row.setField(10, event.getLatitude());
-        row.setField(11, event.getLongitude());
-        row.setField(12, string(event.getAnomalyType()));
-        row.setField(13, string(event.getSeverity()));
-        row.setField(14, string(event.getRuleVersion()));
-        row.setField(15, string(event.getContextJson()));
-        row.setField(16, string(DATE_FORMATTER.format(eventTs)));
-        row.setField(17, string(HOUR_FORMATTER.format(eventTs)));
+        row.setField(2, event.getSourceEventTsAvg());
+        row.setField(3, event.getSourceEventTsMin());
+        row.setField(4, event.getSourceEventTsMax());
+        row.setField(5, event.getSourceEventCount());
+        row.setField(6, string(event.getEntityType()));
+        row.setField(7, string(event.getEntityId()));
+        row.setField(8, event.getWindowStartTs());
+        row.setField(9, event.getWindowEndTs());
+        row.setField(10, nullableString(event.getImsi()));
+        row.setField(11, nullableString(event.getSiteId()));
+        row.setField(12, nullableString(event.getCellId()));
+        row.setField(13, nullableString(event.getGridId()));
+        row.setField(14, event.getLatitude());
+        row.setField(15, event.getLongitude());
+        row.setField(16, string(event.getAnomalyType()));
+        row.setField(17, string(event.getSeverity()));
+        row.setField(18, string(event.getRuleVersion()));
+        row.setField(19, string(event.getContextJson()));
+        row.setField(20, string(DATE_FORMATTER.format(eventTs)));
+        row.setField(21, string(HOUR_FORMATTER.format(eventTs)));
         return row;
     }
 

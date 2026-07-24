@@ -34,6 +34,7 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
             acc.attachAttempts++;
             if (chr.getResultCode() == 0) acc.attachSuccess++;
         }
+        acc.addSourceEventTs(chr.getEventTs());
 
         if (enriched.latestPm() != null && acc.pmWindows.add(enriched.latestPm().getWindowEndTs())) {
             var pm = enriched.latestPm();
@@ -44,6 +45,7 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
             acc.handoverSuccess += pm.getHandoverSuccess();
             acc.handoverFailure += pm.getHandoverFailure();
             acc.pmCount++;
+            acc.addSourceEventTs(pm.getEventTs());
         }
         if (enriched.cfgConfig() != null && acc.gridId == null) {
             acc.gridId = Geohash.encode(enriched.cfgConfig().getCenterLat(),
@@ -57,6 +59,10 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
         int hoAttempts = acc.handoverSuccess + acc.handoverFailure;
         return CellKpi.newBuilder()
             .setWindowStartTs(acc.windowStartTs).setWindowEndTs(acc.windowEndTs)
+            .setSourceEventTsAvg(acc.sourceEventCount > 0L ? acc.sourceEventTsSum / acc.sourceEventCount : 0L)
+            .setSourceEventTsMin(acc.sourceEventCount > 0L ? acc.sourceEventTsMin : 0L)
+            .setSourceEventTsMax(acc.sourceEventCount > 0L ? acc.sourceEventTsMax : 0L)
+            .setSourceEventCount(acc.sourceEventCount)
             .setWindowKind(windowKind).setJoinQuality(JoinQuality.JOINED).setSiteId(valueOrEmpty(acc.siteId))
             .setCellId(valueOrEmpty(acc.cellId)).setGridId(valueOrEmpty(acc.gridId))
             .setNumChrEvents(acc.count).setNumUsers((long) acc.users.size())
@@ -80,6 +86,7 @@ class KpiAggregator implements AggregateFunction<EnrichedChr, KpiAccumulator, Ce
         a.activeUsersSum += b.activeUsersSum; a.droppedConnections += b.droppedConnections; a.handoverSuccess += b.handoverSuccess;
         a.handoverFailure += b.handoverFailure; a.pmCount += b.pmCount;
         a.users.addAll(b.users); a.pmWindows.addAll(b.pmWindows);
+        a.mergeSourceEventStats(b);
         if (a.siteId == null) a.siteId = b.siteId;
         if (a.cellId == null) a.cellId = b.cellId;
         if (a.gridId == null) a.gridId = b.gridId;
@@ -114,4 +121,32 @@ class KpiAccumulator {
     String gridId;
     long windowStartTs;
     long windowEndTs;
+    long sourceEventTsSum;
+    long sourceEventTsMin;
+    long sourceEventTsMax;
+    long sourceEventCount;
+
+    void addSourceEventTs(long eventTs) {
+        if (eventTs <= 0L) {
+            return;
+        }
+        sourceEventTsSum += eventTs;
+        sourceEventTsMin = sourceEventCount == 0L ? eventTs : Math.min(sourceEventTsMin, eventTs);
+        sourceEventTsMax = sourceEventCount == 0L ? eventTs : Math.max(sourceEventTsMax, eventTs);
+        sourceEventCount++;
+    }
+
+    void mergeSourceEventStats(KpiAccumulator other) {
+        if (other.sourceEventCount == 0L) {
+            return;
+        }
+        sourceEventTsSum += other.sourceEventTsSum;
+        sourceEventTsMin = sourceEventCount == 0L
+            ? other.sourceEventTsMin
+            : Math.min(sourceEventTsMin, other.sourceEventTsMin);
+        sourceEventTsMax = sourceEventCount == 0L
+            ? other.sourceEventTsMax
+            : Math.max(sourceEventTsMax, other.sourceEventTsMax);
+        sourceEventCount += other.sourceEventCount;
+    }
 }

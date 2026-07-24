@@ -32,13 +32,13 @@ class BenchmarkRunnerMainTest {
       Path report = runDir.resolve("runs/bench-dry-none-cells1000-chr-eps0.1/report.html");
       assertThat(report).exists();
       assertThat(Files.readString(report))
-          .contains("<tr><th>Target CHR EPS</th><td>0.1 records/cell/s</td></tr>")
-          .contains("<tr><th>Global CHR EPS</th><td>100 records/s</td></tr>")
-          .contains("<tr><th>Target PM EPS</th><td>0.2 records/cell/s</td></tr>")
-          .contains("<tr><th>Global PM EPS</th><td>200 records/s</td></tr>")
-          .contains("<tr><th>Source Throughput Attainment</th><td>98.00%</td></tr>")
-          .contains("<tr><th>CHR total</th><td>200</td><td>98.00</td>")
-          .contains("Operator Flow")
+          .contains("<tr><th>目标 CHR EPS</th><td>0.1 条/小区/s</td></tr>")
+          .contains("<tr><th>全局 CHR EPS</th><td>100 条/s</td></tr>")
+          .contains("<tr><th>目标 PM EPS</th><td>0.2 条/小区/s</td></tr>")
+          .contains("<tr><th>全局 PM EPS</th><td>200 条/s</td></tr>")
+          .contains("<tr><th>Source 吞吐达成率</th><td>98.00%</td></tr>")
+          .contains("<tr><th>CHR 总量</th><td>200</td><td>98.00</td>")
+          .contains("算子流程与指标")
           .contains("flow-edge");
     } finally {
       deleteRecursively(runDir);
@@ -69,8 +69,8 @@ class BenchmarkRunnerMainTest {
       Path report = runDir.resolve("runs/bench-set-none-cells2000-chr-eps0.2/report.html");
       assertThat(report).exists();
       assertThat(Files.readString(report))
-          .contains("<tr><th>Target CHR EPS</th><td>0.2 records/cell/s</td></tr>")
-          .contains("<tr><th>Global CHR EPS</th><td>400 records/s</td></tr>");
+          .contains("<tr><th>目标 CHR EPS</th><td>0.2 条/小区/s</td></tr>")
+          .contains("<tr><th>全局 CHR EPS</th><td>400 条/s</td></tr>");
       assertThat(runDir.resolve("runs/bench-set-none-cells1000-chr-eps0.1/report.html")).doesNotExist();
     } finally {
       deleteRecursively(runDir);

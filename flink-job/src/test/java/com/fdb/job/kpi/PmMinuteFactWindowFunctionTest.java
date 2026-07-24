@@ -42,6 +42,10 @@ class PmMinuteFactWindowFunctionTest {
         assertThat(fact.dropCount()).isEqualTo(3L);
         assertThat(fact.handoverSuccess()).isEqualTo(17L);
         assertThat(fact.handoverFailure()).isEqualTo(3L);
+        assertThat(fact.sourceEventTsAvg()).isEqualTo(10_000L);
+        assertThat(fact.sourceEventTsMin()).isEqualTo(5_000L);
+        assertThat(fact.sourceEventTsMax()).isEqualTo(15_000L);
+        assertThat(fact.sourceEventCount()).isEqualTo(2L);
     }
 
     @Test
@@ -128,6 +132,7 @@ class PmMinuteFactWindowFunctionTest {
             .setCellId("cell-a")
             .setWindowStartTs(start)
             .setWindowEndTs(end)
+            .setEventTs(start + ((end - start) / 2L))
             .setPrbUsageDl(prbUsageDl)
             .setPrbUsageUl(0.25f)
             .setActiveUsers(42)
