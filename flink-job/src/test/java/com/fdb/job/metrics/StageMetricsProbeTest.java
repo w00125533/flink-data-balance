@@ -82,6 +82,28 @@ class StageMetricsProbeTest {
     }
 
     @Test
+    void samples_latency_without_losing_total_record_counts() {
+        StageMetricsProbe<String> probe = new StageMetricsProbe<>(
+            "chr-source", "CHR Source", "healthy", 5_000L,
+            new MetricRuntimeConfig("run-a", "starrocks", 4, false, 3L, 1L),
+            Long::parseLong);
+
+        probe.record("1000", 2_000L, 1_500L);
+        probe.record("1100", 2_000L, 1_500L);
+        probe.record("2000", 2_000L, 1_500L);
+
+        List<StageMetricSample> samples = probe.drainDueSamples(7_000L);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.inEps()).isEqualTo(0.6);
+            assertThat(sample.outEps()).isEqualTo(0.6);
+            assertThat(sample.latencyP50Ms()).isZero();
+            assertThat(sample.latencyP95Ms()).isZero();
+            assertThat(sample.watermarkLagMs()).isEqualTo(500L);
+        });
+    }
+
+    @Test
     void snapshot_checkpoint_drains_sparse_stage_samples_without_later_records() throws Exception {
         StageMetricsProbe<String> probe = new StageMetricsProbe<>(
             "kpi-5m", "KPI 5m Rollup", "healthy", 5_000L,

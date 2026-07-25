@@ -34,8 +34,10 @@ class UserEventCepAnomalyDetectorTest {
 
         String plan = env.getExecutionPlan();
 
-        assertThat(plan).contains("user-event-anomaly-detect-dedup");
+        assertThat(plan).contains("user-event-anomaly-detect");
         assertThat(plan)
+            .doesNotContain("user-event-anomaly-evaluations")
+            .doesNotContain("user-event-anomaly-detect-dedup")
             .doesNotContain("user-event-cep-anomaly-triggers")
             .doesNotContain("user-event-anomaly-recoveries")
             .doesNotContain("user-event-cep-anomaly-activation");
@@ -70,6 +72,18 @@ class UserEventCepAnomalyDetectorTest {
             enriched(chr("a", 0, ChrEventType.DATA_SESSION, 0, -90f, 10f, 600f)),
             enriched(chr("b", 60_000, ChrEventType.DATA_SESSION, 0, -90f, 10f, 700f)),
             enriched(chr("c", 120_000, ChrEventType.DATA_SESSION, 0, -90f, 10f, 800f))));
+
+        assertThat(output).extracting(AnomalyEvent::getAnomalyType)
+            .containsExactly(AnomalyType.USER_QOE_BAD);
+    }
+
+    @Test
+    void normal_access_event_does_not_reset_latency_dimension_streak() throws Exception {
+        List<AnomalyEvent> output = run(List.of(
+            enriched(chr("a", 0, ChrEventType.DATA_SESSION, 0, -90f, 10f, 600f)),
+            enriched(chr("b", 60_000, ChrEventType.ATTACH, 0, -90f, 10f, null)),
+            enriched(chr("c", 120_000, ChrEventType.DATA_SESSION, 0, -90f, 10f, 700f)),
+            enriched(chr("d", 180_000, ChrEventType.DATA_SESSION, 0, -90f, 10f, 800f))));
 
         assertThat(output).extracting(AnomalyEvent::getAnomalyType)
             .containsExactly(AnomalyType.USER_QOE_BAD);

@@ -45,6 +45,7 @@ import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -85,7 +86,16 @@ public class FlinkJobMain {
         env.getCheckpointConfig().setCheckpointStorage(resolveCheckpointStorage(envVars, systemProperties));
         int parallelism = resolveParallelism(envVars, systemProperties);
         env.setParallelism(parallelism);
+        int enrichmentParallelism = resolveStageParallelism(envVars, systemProperties,
+            "FDB_FLINK_ENRICHMENT_PARALLELISM", "fdb.flink.enrichment.parallelism", parallelism);
+        int userAnomalyParallelism = resolveStageParallelism(envVars, systemProperties,
+            "FDB_FLINK_USER_ANOMALY_PARALLELISM", "fdb.flink.user.anomaly.parallelism", parallelism);
+        int gridAnomalyParallelism = resolveStageParallelism(envVars, systemProperties,
+            "FDB_FLINK_GRID_ANOMALY_PARALLELISM", "fdb.flink.grid.anomaly.parallelism", parallelism);
+        int kpiParallelism = resolveStageParallelism(envVars, systemProperties,
+            "FDB_FLINK_KPI_PARALLELISM", "fdb.flink.kpi.parallelism", parallelism);
         boolean dynamicBalancingEnabled = resolveDynamicBalancingEnabled(envVars, systemProperties);
+        boolean diagnosticChainingEnabled = resolveDiagnosticChainingEnabled(envVars, systemProperties);
         MetricRuntimeConfig metricConfig = MetricRuntimeConfig.from(resultSinkConfig, parallelism);
 
         // Main pipeline: CHR + PM + CFG
@@ -168,21 +178,25 @@ public class FlinkJobMain {
             assigned = buildDynamicallyAssignedStream(env, mergedInput, bootstrap, groupId,
                 resultSinkConfig, metricConfig);
         } else {
-            assigned = mergedInput
+            SingleOutputStreamOperator<RoutedEnvelope> directAssigned = mergedInput
                 .map(FlinkJobMain::directRoute)
                 .returns(new GenericTypeInfo<>(RoutedEnvelope.class))
                 .name("direct-cell-routing");
+            assigned = disableChainingIfDiagnostic(directAssigned, diagnosticChainingEnabled);
         }
 
-        SingleOutputStreamOperator<EnrichedChr> enrichedRaw = assigned
+        SingleOutputStreamOperator<EnrichedChr> enrichedRaw = disableChainingIfDiagnostic(assigned
             .keyBy(RoutedEnvelope::stateKey)
             .process(new EnrichmentProcessFunction(), new GenericTypeInfo<>(EnrichedChr.class))
+            .setParallelism(enrichmentParallelism)
             .name("enrichment")
-            .uid("enrichment");
-        DataStream<EnrichedChr> enriched = enrichedRaw
+            .uid("enrichment"), diagnosticChainingEnabled);
+        SingleOutputStreamOperator<EnrichedChr> enrichedWithMetrics = splitChainIfDiagnostic(enrichedRaw
             .process(stageMetricsProbe("enrichment", "Enrichment Process", "healthy", resultSinkConfig, metricConfig,
                 enrichedChr -> enrichedChr.chrEvent().getEventTs()))
-            .name("enrichment-metrics");
+            .setParallelism(enrichmentParallelism)
+            .name("enrichment-metrics"), diagnosticChainingEnabled);
+        DataStream<EnrichedChr> enriched = disableChainingIfDiagnostic(enrichedWithMetrics, diagnosticChainingEnabled);
 
         if (resultSinkConfig.dlqEnabled()) {
             KafkaSink<ChrEvent> enrichmentLateSink = KafkaSink.<ChrEvent>builder()
@@ -192,26 +206,42 @@ public class FlinkJobMain {
                     .setValueSerializationSchema(new FlinkAvroSerializationSchema<>(ChrEvent.class))
                     .build())
                 .build();
-            enrichedRaw.getSideOutput(EnrichmentProcessFunction.ENRICHMENT_LATE)
+            DataStreamSink<ChrEvent> lateSink = enrichedRaw.getSideOutput(EnrichmentProcessFunction.ENRICHMENT_LATE)
                 .sinkTo(enrichmentLateSink).name("enrichment-late-sink");
+            if (diagnosticChainingEnabled) {
+                lateSink.disableChaining();
+            }
         }
 
         // Anomaly detection
 
         RuleConfig rules = JobConfig.load().rules();
         DataStream<AnomalyEvent> userAnomalies = UserEventCepAnomalyDetector
-            .detect(enriched, rules)
+            .detect(enriched, rules, diagnosticChainingEnabled, userAnomalyParallelism);
+        SingleOutputStreamOperator<AnomalyEvent> userAnomaliesWithMetrics = splitChainIfDiagnostic(userAnomalies
             .process(stageMetricsProbe("user-anomaly", "User Anomaly Detection", "healthy",
                 resultSinkConfig, metricConfig, FlinkJobMain::anomalyEventLatencyTimestamp))
-            .name("user-anomaly-metrics");
-        DataStream<AnomalyEvent> coverageAnomalies = enriched
+            .setParallelism(userAnomalyParallelism)
+            .name("user-anomaly-metrics"), diagnosticChainingEnabled);
+        userAnomalies = disableChainingIfDiagnostic(userAnomaliesWithMetrics, diagnosticChainingEnabled);
+        SingleOutputStreamOperator<EnrichedChr> coverageCandidates = splitChainIfDiagnostic(enriched
+            .filter(candidate -> isCoverageCandidate(candidate, rules))
+            .setParallelism(gridAnomalyParallelism)
+            .name("coverage-low-signal-filter"), diagnosticChainingEnabled);
+        SingleOutputStreamOperator<AnomalyEvent> coverageDetected = coverageCandidates
             .keyBy(ec -> Geohash.encode(ec.chrEvent().getLatitude(), ec.chrEvent().getLongitude(), 6))
             .process(new CoverageHoleDetector(rules), new GenericTypeInfo<>(AnomalyEvent.class))
+            .setParallelism(gridAnomalyParallelism)
             .name("coverage-hole-detector")
-            .uid("coverage-hole-detector")
+            .uid("coverage-hole-detector");
+        coverageDetected = disableChainingIfDiagnostic(coverageDetected, diagnosticChainingEnabled);
+        SingleOutputStreamOperator<AnomalyEvent> coverageAnomaliesWithMetrics = splitChainIfDiagnostic(coverageDetected
             .process(stageMetricsProbe("grid-anomaly", "Grid Anomaly Detection", "healthy",
                 resultSinkConfig, metricConfig, FlinkJobMain::anomalyEventLatencyTimestamp))
-            .name("grid-anomaly-metrics");
+            .setParallelism(gridAnomalyParallelism)
+            .name("grid-anomaly-metrics"), diagnosticChainingEnabled);
+        DataStream<AnomalyEvent> coverageAnomalies =
+            disableChainingIfDiagnostic(coverageAnomaliesWithMetrics, diagnosticChainingEnabled);
 
         // KPI aggregation (1-minute CHR/PM event-time full join)
 
@@ -224,20 +254,24 @@ public class FlinkJobMain {
                 new GenericTypeInfo<>(ChrMinuteFactAccumulator.class),
                 new GenericTypeInfo<>(ChrMinuteFactAccumulator.class),
                 new GenericTypeInfo<>(ChrMinuteFact.class))
+            .setParallelism(kpiParallelism)
             .name("chr-1m-fact")
             .process(windowMaterializationProbe(
                 "window-chr-1m", "CHR 1m Materialization", "chr-1m", "MIN_1",
                 fact -> fact.minuteTs() + 60_000L, ChrMinuteFact::sourceEventTsAvg, metricConfig))
+            .setParallelism(kpiParallelism)
             .name("window-chr-1m-materialization");
 
         DataStream<PmMinuteFact> pmMinuteFacts = pmStream
             .keyBy(pm -> pm.getCellId().toString())
             .window(TumblingEventTimeWindows.of(Time.minutes(1)))
             .process(new PmMinuteFactWindowFunction(), new GenericTypeInfo<>(PmMinuteFact.class))
+            .setParallelism(kpiParallelism)
             .name("pm-1m-fact")
             .process(windowMaterializationProbe(
                 "window-pm-1m", "PM 1m Materialization", "pm-1m", "MIN_1",
                 fact -> fact.minuteTs() + 60_000L, PmMinuteFact::sourceEventTsAvg, metricConfig))
+            .setParallelism(kpiParallelism)
             .name("window-pm-1m-materialization");
 
         DataStream<MinuteFactEnvelope> chrFactEnv = chrMinuteFacts
@@ -247,6 +281,7 @@ public class FlinkJobMain {
                     out.collect(MinuteFactEnvelope.chr(value));
                 }
             }, new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .setParallelism(kpiParallelism)
             .name("to-chr-minute-fact-env");
         DataStream<MinuteFactEnvelope> pmFactEnv = pmMinuteFacts
             .process(new ProcessFunction<PmMinuteFact, MinuteFactEnvelope>() {
@@ -255,6 +290,7 @@ public class FlinkJobMain {
                     out.collect(MinuteFactEnvelope.pm(value));
                 }
             }, new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .setParallelism(kpiParallelism)
             .name("to-pm-minute-fact-env");
         DataStream<MinuteFactEnvelope> cfgMinuteEnv = cfgStream
             .process(new ProcessFunction<CfgConfig, MinuteFactEnvelope>() {
@@ -263,38 +299,45 @@ public class FlinkJobMain {
                     out.collect(MinuteFactEnvelope.cfg(value));
                 }
             }, new GenericTypeInfo<>(MinuteFactEnvelope.class))
+            .setParallelism(kpiParallelism)
             .name("to-cfg-minute-fact-env");
 
         DataStream<CellKpi> cellKpi1m = chrFactEnv.union(pmFactEnv, cfgMinuteEnv)
             .keyBy(MinuteFactEnvelope::cellId)
             .process(new MinuteKpiJoinFunction(kpiJoinWait), new GenericTypeInfo<>(CellKpi.class))
+            .setParallelism(kpiParallelism)
             .name("kpi-1m-full-join")
             .uid("kpi-1m-full-join")
             .process(windowMaterializationProbe(
                 "window-kpi-1m", "KPI 1m Materialization", "kpi-1m", "MIN_1",
                 CellKpi::getWindowEndTs, CellKpi::getSourceEventTsAvg, metricConfig))
+            .setParallelism(kpiParallelism)
             .name("window-kpi-1m-materialization")
             .process(stageMetricsProbe("kpi-1m", "KPI 1m Full Join", "healthy", resultSinkConfig, metricConfig,
                 CellKpi::getSourceEventTsAvg))
+            .setParallelism(kpiParallelism)
             .name("kpi-1m-metrics");
         DataStream<AnomalyEvent> cellAnomalies = CellKpiCepAnomalyDetector
             .detect(cellKpi1m, rules)
             .process(stageMetricsProbe("cell-anomaly", "Cell Anomaly Detection", "healthy",
                 resultSinkConfig, metricConfig, FlinkJobMain::anomalyEventLatencyTimestamp))
+            .setParallelism(kpiParallelism)
             .name("cell-anomaly-metrics");
 
         DataStream<CellKpi> cellKpi5m = cellKpi1m
             .assignTimestampsAndWatermarks(
-                WatermarkStrategy.<CellKpi>forBoundedOutOfOrderness(Duration.ofMinutes(2))
+                WatermarkStrategy.<CellKpi>forBoundedOutOfOrderness(Duration.ofSeconds(2))
                     .withIdleness(Duration.ofMinutes(1))
                     .withTimestampAssigner((kpi, ts) -> Math.subtractExact(kpi.getWindowEndTs(), 1L)))
             .keyBy(kpi -> kpi.getCellId().toString())
             .window(TumblingEventTimeWindows.of(Time.minutes(5)))
             .process(new CellKpiRollupAggregator(), new GenericTypeInfo<>(CellKpi.class))
+            .setParallelism(kpiParallelism)
             .name("kpi-5m-rollup")
             .uid("kpi-5m-rollup")
             .process(stageMetricsProbe("kpi-5m", "KPI 5m Rollup", "healthy", resultSinkConfig, metricConfig,
                 CellKpi::getSourceEventTsAvg))
+            .setParallelism(kpiParallelism)
             .name("kpi-5m-metrics");
 
         ResultSinks.attachBusinessResultSinks(
@@ -412,12 +455,46 @@ public class FlinkJobMain {
             : anomaly.getSourceEventTsAvg();
     }
 
+    static boolean isCoverageCandidate(EnrichedChr enriched, RuleConfig rules) {
+        if (enriched == null || enriched.chrEvent() == null || rules == null) {
+            return false;
+        }
+        Float rsrp = enriched.chrEvent().getRsrp();
+        return rsrp != null && rsrp < rules.rsrpThreshold();
+    }
+
     static boolean resolveDynamicBalancingEnabled(Map<String, String> env, Properties properties) {
         String configured = env.get("FDB_DYNAMIC_BALANCING_ENABLED");
         if (configured == null || configured.isBlank()) {
             configured = properties.getProperty("fdb.dynamic.balancing.enabled");
         }
         return configured != null && "true".equalsIgnoreCase(configured.trim());
+    }
+
+    static boolean resolveDiagnosticChainingEnabled(Map<String, String> env, Properties properties) {
+        String configured = env.get("FDB_FLINK_DIAGNOSTIC_CHAINING");
+        if (configured == null || configured.isBlank()) {
+            configured = properties.getProperty("fdb.flink.diagnostic.chaining");
+        }
+        return configured != null && "true".equalsIgnoreCase(configured.trim());
+    }
+
+    private static <T> SingleOutputStreamOperator<T> disableChainingIfDiagnostic(
+        SingleOutputStreamOperator<T> operator,
+        boolean diagnosticChainingEnabled) {
+        if (diagnosticChainingEnabled) {
+            return operator.disableChaining();
+        }
+        return operator;
+    }
+
+    private static <T> SingleOutputStreamOperator<T> splitChainIfDiagnostic(
+        SingleOutputStreamOperator<T> operator,
+        boolean diagnosticChainingEnabled) {
+        if (diagnosticChainingEnabled) {
+            return operator.startNewChain().disableChaining();
+        }
+        return operator;
     }
 
     static Properties resolveKafkaConsumerProperties(Map<String, String> env, Properties properties) {
@@ -471,6 +548,25 @@ public class FlinkJobMain {
         } catch (NumberFormatException e) {
             log.warn("Invalid Flink parallelism '{}', falling back to {}", configured, DEFAULT_PARALLELISM);
             return DEFAULT_PARALLELISM;
+        }
+    }
+
+    static int resolveStageParallelism(Map<String, String> env, Properties properties,
+                                       String envKey, String propertyKey, int fallbackParallelism) {
+        String configured = env.get(envKey);
+        if (configured == null || configured.isBlank()) {
+            configured = properties.getProperty(propertyKey);
+        }
+        if (configured == null || configured.isBlank()) {
+            return fallbackParallelism;
+        }
+        try {
+            int parallelism = Integer.parseInt(configured.trim());
+            return parallelism > 0 ? parallelism : fallbackParallelism;
+        } catch (NumberFormatException e) {
+            log.warn("Invalid Flink stage parallelism {}='{}', falling back to {}", envKey, configured,
+                fallbackParallelism);
+            return fallbackParallelism;
         }
     }
 

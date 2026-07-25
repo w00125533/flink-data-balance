@@ -268,7 +268,7 @@ public final class BenchmarkOrchestrator {
 
   private boolean windowsReady(BenchmarkRunPlan plan, RunObservation observation) {
     WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(
-        plan, observation.source(), observation.fdb());
+        plan, observation.source(), observation.fdb(), observation.flink());
     return !windows.applicable() || windows.healthy();
   }
 

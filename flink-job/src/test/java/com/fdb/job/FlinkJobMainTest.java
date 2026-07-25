@@ -2,15 +2,20 @@ package com.fdb.job;
 
 import com.fdb.job.config.ResultSinkConfig;
 import com.fdb.job.config.ResultSinkType;
+import com.fdb.job.config.RuleConfig;
 import com.fdb.job.metrics.MetricRuntimeConfig;
 import com.fdb.job.metrics.StageMetricsProbe;
 import com.fdb.job.model.InputEnvelope;
+import com.fdb.job.model.EnrichedChr;
 import com.fdb.job.model.RoutedEnvelope;
 import com.fdb.job.sink.IcebergConfig;
 import com.fdb.common.avro.AnomalyEvent;
 import com.fdb.common.avro.AnomalyType;
+import com.fdb.common.avro.ChrEvent;
+import com.fdb.common.avro.ChrEventType;
 import com.fdb.common.avro.EntityType;
 import com.fdb.common.avro.PmStat;
+import com.fdb.common.avro.RatType;
 import com.fdb.common.avro.Severity;
 import org.junit.jupiter.api.Test;
 
@@ -58,6 +63,34 @@ class FlinkJobMainTest {
         assertThat(FlinkJobMain.resolveParallelism(
             Map.of("FDB_FLINK_PARALLELISM", "-2"), new Properties()))
             .isEqualTo(4);
+    }
+
+    @Test
+    void resolve_stage_parallelism_prefers_stage_environment_and_falls_back_to_global() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.flink.enrichment.parallelism", "7");
+
+        assertThat(FlinkJobMain.resolveStageParallelism(
+            Map.of("FDB_FLINK_ENRICHMENT_PARALLELISM", "8"),
+            properties,
+            "FDB_FLINK_ENRICHMENT_PARALLELISM",
+            "fdb.flink.enrichment.parallelism",
+            6))
+            .isEqualTo(8);
+        assertThat(FlinkJobMain.resolveStageParallelism(
+            Map.of(),
+            properties,
+            "FDB_FLINK_ENRICHMENT_PARALLELISM",
+            "fdb.flink.enrichment.parallelism",
+            6))
+            .isEqualTo(7);
+        assertThat(FlinkJobMain.resolveStageParallelism(
+            Map.of("FDB_FLINK_ENRICHMENT_PARALLELISM", "bad"),
+            properties,
+            "FDB_FLINK_ENRICHMENT_PARALLELISM",
+            "fdb.flink.enrichment.parallelism",
+            6))
+            .isEqualTo(6);
     }
 
     @Test
@@ -201,6 +234,29 @@ class FlinkJobMainTest {
     }
 
     @Test
+    void resolve_diagnostic_chaining_defaults_to_disabled() {
+        assertThat(FlinkJobMain.resolveDiagnosticChainingEnabled(Map.of(), new Properties())).isFalse();
+    }
+
+    @Test
+    void resolve_diagnostic_chaining_prefers_environment() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.flink.diagnostic.chaining", "false");
+
+        assertThat(FlinkJobMain.resolveDiagnosticChainingEnabled(
+            Map.of("FDB_FLINK_DIAGNOSTIC_CHAINING", "true"), properties))
+            .isTrue();
+    }
+
+    @Test
+    void resolve_diagnostic_chaining_uses_property_when_environment_missing() {
+        Properties properties = new Properties();
+        properties.setProperty("fdb.flink.diagnostic.chaining", "true");
+
+        assertThat(FlinkJobMain.resolveDiagnosticChainingEnabled(Map.of(), properties)).isTrue();
+    }
+
+    @Test
     void resolve_kafka_consumer_properties_prefers_environment() {
         Properties properties = new Properties();
         properties.setProperty("fdb.kafka.fetch.max.bytes", "8388608");
@@ -240,6 +296,21 @@ class FlinkJobMainTest {
         Field emitInterval = StageMetricsProbe.class.getDeclaredField("emitIntervalMs");
         emitInterval.setAccessible(true);
         assertThat(emitInterval.getLong(probe)).isEqualTo(7_000L);
+    }
+
+    @Test
+    void coverage_candidate_only_matches_low_signal_enriched_chr() {
+        RuleConfig rules = RuleConfig.defaults();
+
+        assertThat(FlinkJobMain.isCoverageCandidate(
+            new EnrichedChr(chrWithRsrp(-120f), null, null), rules))
+            .isTrue();
+        assertThat(FlinkJobMain.isCoverageCandidate(
+            new EnrichedChr(chrWithRsrp(-90f), null, null), rules))
+            .isFalse();
+        assertThat(FlinkJobMain.isCoverageCandidate(
+            new EnrichedChr(chrWithRsrp(null), null, null), rules))
+            .isFalse();
     }
 
     @Test
@@ -330,5 +401,29 @@ class FlinkJobMainTest {
             .setAvgLatencyMs(18.0f)
             .setPacketLossRate(0.001f)
             .build();
+    }
+
+    private static ChrEvent chrWithRsrp(Float rsrp) {
+        ChrEvent.Builder builder = ChrEvent.newBuilder()
+            .setChrId("chr-a")
+            .setEventTs(1_000L)
+            .setImsi("460001234567890")
+            .setSiteId("SITE-001")
+            .setCellId("CELL-001")
+            .setEventType(ChrEventType.DATA_SESSION)
+            .setRatType(RatType.LTE)
+            .setPci(100)
+            .setTac(40001)
+            .setEci(1000L)
+            .setMcc("460")
+            .setMnc("00")
+            .setResultCode(0)
+            .setLatitude(39.9)
+            .setLongitude(116.4)
+            .setGridId("wx4g0e");
+        if (rsrp != null) {
+            builder.setRsrp(rsrp);
+        }
+        return builder.build();
     }
 }

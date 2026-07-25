@@ -339,6 +339,10 @@ cfg-config
 3. `tombstone=true` 时删除该小区 CFG state。
 4. CFG 缺失不阻塞 CHR 主流、用户异常检测或 KPI 输出；富化输出 `EnrichedChr(chr, null, latestPm)`，并把 CFG 缺失上下文写入 `enrichment-late` 侧通道。
 5. CFG 缺失需在 `joinQuality`、`contextJson` 或轻量指标中体现，但不能当作业务 DLQ 记录处理。
+6. Enrichment 里的 PM 上下文只保留 `latestPmState[cellId]`，不再维护 6 条 PM ring。
+   该状态仅用于 CHR 事件携带最近 PM 上下文；分钟 KPI 仍由独立的 PM 1m fact 链路产生。
+   CFG state 默认 24h TTL，latest PM state 默认 10min TTL，用于减少长期闲置 key 对 checkpoint
+   体积的影响。
 
 ### 5.3 PM/CHR 分钟级汇聚
 
@@ -490,6 +494,12 @@ KPI window 与重 sink 拆链。观测阶段使用 SinkLatencyProbe stage ID，�
 | `none` | 不创建业务结果 sink，仅保留计算链路和可选 metrics |
 
 通过 `startNewChain` / `disableChaining` 或显式算子边界避免 UI 上把窗口和多个 sink 合并为一个 vertex，方便定位 busy、backpressure 和 sink 延迟。
+普通 Flink 作业默认不拆 enrichment 及异常检测链路，避免额外 runtime 开销；设置
+`FDB_FLINK_DIAGNOSTIC_CHAINING=true` 时，会对 direct routing、enrichment、
+enrichment metrics、用户事件异常评估/去重、栅格异常检测和 enrichment late sink
+等关键诊断节点调用 `disableChaining`，Flink UI、前端流程图和 benchmark 报告会按
+Flink REST 返回的 vertex 展示更细粒度节点。该模式用于定位反压和 busy 热点，不应和默认
+operator chaining 模式直接比较性能上限。
 
 ### 5.9 Result Sink 开关
 
@@ -1112,6 +1122,10 @@ cleanup.policy=compact
 |---|---|---|
 | `FDB_FLINK_PARALLELISM` | `4` | Flink 作业默认并发 |
 | `taskmanager.numberOfTaskSlots` | `4` | 本地 TaskManager slots |
+| `FDB_FLINK_ENRICHMENT_PARALLELISM` | `FDB_FLINK_PARALLELISM` | Enrichment 阶段独立并行度 |
+| `FDB_FLINK_USER_ANOMALY_PARALLELISM` | `FDB_FLINK_PARALLELISM` | 用户级异常检测阶段独立并行度 |
+| `FDB_FLINK_GRID_ANOMALY_PARALLELISM` | `FDB_FLINK_PARALLELISM` | 网格覆盖异常检测阶段独立并行度 |
+| `FDB_FLINK_KPI_PARALLELISM` | `FDB_FLINK_PARALLELISM` | CHR/PM 1m 聚合、KPI join、5m rollup 等 KPI 阶段独立并行度 |
 | `FDB_FLINK_CHECKPOINT_INTERVAL_MS` | `30000` | checkpoint 间隔；Hive/Iceberg result sink 不应超过 180000ms |
 | `FDB_DYNAMIC_BALANCING_ENABLED` | `false` | 是否启用动态均衡 |
 | `FDB_VBUCKET_COUNT` | `1024` | 动态均衡启用时的虚拟分片数 |
@@ -1122,6 +1136,8 @@ cleanup.policy=compact
 | `FDB_DLQ_ENABLED` | `true` | 是否启用 DLQ 兜底 topic |
 | `FDB_METRICS_ENABLED` | `true` | 是否启用 Flink metrics probe 上报 |
 | `FDB_METRICS_EMIT_INTERVAL_MS` | `5000` | metrics 采样输出间隔 |
+| `FDB_METRICS_SAMPLE_EVERY_RECORDS` | `1` | Stage probe 每 N 条记录计算一次业务延迟；Flink records counter 仍统计全量 |
+| `FDB_SINK_METRICS_SAMPLE_EVERY_RECORDS` | `1` | Sink probe 每 N 条记录计算一次业务延迟和估算 bytes；sink records 仍统计全量 |
 | `FDB_METRICS_HISTORY_ENABLED` | `true` | Observability API 是否写本地 JSONL 历史 |
 | `FDB_REPORT_ON_STOP` | `false` | stop 后是否自动生成压测报告 |
 | `FDB_BENCHMARK_SINKS` | `none starrocks kafka hive iceberg` | `benchmark-runner` 顺序执行的 sink 列表，支持空格或逗号分隔 |
@@ -1129,6 +1145,7 @@ cleanup.policy=compact
 | `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `30` | Target CHR EPS，每小区每秒 CHR 目标输出记录数；Global CHR EPS = cellLevel * epsPerCell |
 | `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒 PM 目标输出记录数；Global PM EPS = cellLevel * epsPerCell |
 | `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
+| `FDB_BENCHMARK_DIAGNOSTIC_CHAINING` | `true` | benchmark-runner 默认开启诊断拆链，并向 Flink 作业注入 `FDB_FLINK_DIAGNOSTIC_CHAINING`；普通 Flink 作业不设置时默认关闭 |
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | 压测异常注入比例；5% cell 和 5% user 进入确定性异常 cohort |
 | `FDB_BENCHMARK_MIN_PRODUCER_DELIVERY_RATIO` | `0.98` | producer 实际交付率低于目标 EPS 的比例阈值时，本轮 unstable |
 | `FDB_BENCHMARK_MAX_SOURCE_BACKLOG_RECORDS` | `0` | source backlog 容忍阈值；持续增长或超过阈值时，本轮 unstable |
@@ -1471,6 +1488,18 @@ DLQ：
   作为稳定性指标。
 - 运行态判断优先使用 Flink REST API，结合 Observability API 的业务语义
   metrics 和 Kafka/StarRocks/Hive/Iceberg storage probes。
+- benchmark-runner 默认 `FDB_BENCHMARK_DIAGNOSTIC_CHAINING=true`，提交前注入
+  `FDB_FLINK_DIAGNOSTIC_CHAINING=true`，便于 Flink UI 和单轮报告把 enrichment
+  及异常检测链路拆成更细 vertex；单轮报告的 Run Summary 展示“诊断拆链 ON/OFF”。
+- 反压优化遵循“先定位、再扩容、再降观测开销”的顺序。诊断拆链打开时，
+  enrichment、用户异常、网格异常和 KPI 关键阶段会尽量拆成独立 vertex；用户级异常
+  从 `evaluation -> keyBy -> dedup` 合并为 `keyBy(imsi) -> user-event-anomaly-detect`，
+  用维度级 MapState 保持连续异常语义，减少中间流膨胀。Coverage 空洞检测只在自己的
+  分支先过滤低 RSRP CHR，不影响主 enriched 流继续进入用户异常和 KPI 链路。
+- 压测时可以通过 `FDB_METRICS_SAMPLE_EVERY_RECORDS` 和
+  `FDB_SINK_METRICS_SAMPLE_EVERY_RECORDS` 将业务延迟 probe 改为 N 条采样；采样不影响
+  Flink REST 的 records、busy、反压和 checkpoint 原生指标，也不改变 sink records
+  的总量统计。
 - 稳定性判定输出 `stable`、`unstable`、`failed` 三类状态；上一档
   `stable` 作为该 sink 的稳定上限，首个非稳定档作为失败点。
 - 报告固定写入 `benchmark-runner/output/benchmark-runs/<benchmarkId>/`，

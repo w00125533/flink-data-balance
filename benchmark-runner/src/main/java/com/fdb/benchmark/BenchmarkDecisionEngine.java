@@ -25,7 +25,7 @@ public final class BenchmarkDecisionEngine {
     if (!source.hasChrMetrics()) {
       return result(plan, BenchmarkStatus.UNSTABLE, "CHR source metrics missing", observation);
     }
-    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, fdb);
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, fdb, flink);
     if (windows.applicable() && !windows.healthy()) {
       return result(plan, BenchmarkStatus.UNSTABLE, windows.bottleneckReason(), observation);
     }

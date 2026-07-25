@@ -118,6 +118,60 @@ class BenchmarkDecisionEngineTest {
   }
 
   @Test
+  void six_minute_run_without_kpi_five_minute_output_marks_unstable() {
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300_000, 108_000_000, 300_000.0, 360_000, 0, 0,
+        10_000, 3_600_000, 10_000.0, 360_000, 0, 0,
+        10_000, 10_000, 0.0, 0, 0, 0);
+    FlinkSnapshot flink = new FlinkSnapshot("RUNNING", 0, 30_000, 0, 310_000, 310_000,
+        126_000_000, 126_000_000, 1, 6, List.of(
+            new FlinkOperatorSnapshot("kpi-5m", "kpi-5m-rollup -> kpi-5m-metrics", 6,
+                10_000, 0, 0, 0, 8_192, 0, 0.2, 0.8, 0.0)));
+
+    BenchmarkRunResult result = engine.decide(plan10000(), healthy()
+        .withSource(source)
+        .withFlink(flink)
+        .withFdb(new FdbMetricsSnapshot(2_000, 40_000, 45_000, 5_000, 0, 20_000,
+            List.of(), List.of(
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@60000", 10_000),
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@120000", 10_000),
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@180000", 10_000),
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@240000", 10_000),
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@300000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@60000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@120000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@180000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@240000", 10_000),
+                windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@300000", 10_000),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@60000", 10_000),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@120000", 10_000),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@180000", 10_000),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@240000", 10_000),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@300000", 10_000)))));
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.UNSTABLE);
+    assertThat(result.bottleneckReason()).contains("5m KPI window materialization");
+  }
+
+  @Test
+  void six_minute_run_with_kpi_five_minute_probe_input_is_stable() {
+    SourceMetricsSnapshot source = new SourceMetricsSnapshot(true, 300_000, 108_000_000, 300_000.0, 360_000, 0, 0,
+        10_000, 3_600_000, 10_000.0, 360_000, 0, 0,
+        10_000, 10_000, 0.0, 0, 0, 0);
+    FlinkSnapshot flink = new FlinkSnapshot("RUNNING", 0, 30_000, 0, 310_000, 310_000,
+        126_000_000, 126_000_000, 1, 6, List.of(
+            new FlinkOperatorSnapshot("kpi-5m", "kpi-5m-rollup -> kpi-5m-metrics", 6,
+                10_000, 0, 10_000, 0, 8_192, 0, 0.2, 0.8, 0.0)));
+
+    BenchmarkRunResult result = engine.decide(plan10000(), healthy()
+        .withSource(source)
+        .withFlink(flink)
+        .withFdb(new FdbMetricsSnapshot(2_000, 40_000, 45_000, 5_000, 0, 20_000,
+            List.of(), healthyOneMinuteWindowMetrics())));
+
+    assertThat(result.status()).isEqualTo(BenchmarkStatus.STABLE);
+  }
+
+  @Test
   void high_kpi_or_sink_latency_marks_unstable() {
     assertThat(engine.decide(plan(), healthy().withFdb(healthy().fdb().withKpi1mP95Ms(181_000))).status())
         .isEqualTo(BenchmarkStatus.UNSTABLE);
@@ -208,5 +262,24 @@ class BenchmarkDecisionEngineTest {
       String sinkName, String dataset, String windowKind, long records) {
     return new SinkLatencySnapshot(
         sinkName, "window-materialization", dataset, windowKind, records, 0, 0, 0, 0, 0);
+  }
+
+  private static List<SinkLatencySnapshot> healthyOneMinuteWindowMetrics() {
+    return List.of(
+        windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@60000", 10_000),
+        windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@120000", 10_000),
+        windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@180000", 10_000),
+        windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@240000", 10_000),
+        windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@300000", 10_000),
+        windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@60000", 10_000),
+        windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@120000", 10_000),
+        windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@180000", 10_000),
+        windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@240000", 10_000),
+        windowMaterialization("window-pm-1m", "pm-1m", "MIN_1@300000", 10_000),
+        windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@60000", 10_000),
+        windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@120000", 10_000),
+        windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@180000", 10_000),
+        windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@240000", 10_000),
+        windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@300000", 10_000));
   }
 }

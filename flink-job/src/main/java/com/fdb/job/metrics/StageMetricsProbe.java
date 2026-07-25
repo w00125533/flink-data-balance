@@ -105,7 +105,9 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> implements Check
         if (eventCounter != null) {
             eventCounter.inc();
         }
-        recordLatency(value, nowMs);
+        if (shouldSample(eventsSinceLastEmit, metricConfig.stageSampleEveryRecords())) {
+            recordLatency(value, nowMs);
+        }
         if (currentWatermarkMs != Long.MIN_VALUE && currentWatermarkMs != Long.MAX_VALUE) {
             latestWatermarkLagMs = Math.max(0L, nowMs - currentWatermarkMs);
         }
@@ -165,6 +167,11 @@ public class StageMetricsProbe<T> extends ProcessFunction<T, T> implements Check
                 log.warn("Failed to publish stage metric sample for {}", sample.stageId(), e);
             }
         }
+    }
+
+    private static boolean shouldSample(long records, long everyRecords) {
+        long effectiveEveryRecords = everyRecords > 0L ? everyRecords : 1L;
+        return records % effectiveEveryRecords == 0L;
     }
 
     private int runtimeSubtaskIndex() {

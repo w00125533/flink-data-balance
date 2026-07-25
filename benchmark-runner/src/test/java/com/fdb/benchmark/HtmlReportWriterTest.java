@@ -54,6 +54,7 @@ class HtmlReportWriterTest {
         .contains("<tr><th>目标 PM EPS</th><td>1 条/小区/s</td></tr>")
         .contains("<tr><th>全局 PM EPS</th><td>1000 条/s</td></tr>")
         .contains("<tr><th>Checkpoint 间隔</th><td>60000 ms</td></tr>")
+        .contains("<tr><th>诊断拆链</th><td>ON</td></tr>")
         .contains("<tr><th>Checkpoint 耗时</th><td>10000 ms</td></tr>")
         .contains("算子流程与指标")
         .contains("累计延迟")
@@ -514,14 +515,62 @@ class HtmlReportWriterTest {
         .contains("1m 窗口诊断")
         .contains("<td>1m 窗口物化</td><td>CHR=0, PM=4, KPI=0 closed minutes</td><td>&gt;= 4 closed minutes</td><td><span class=\"health health-warn\">UNSTABLE</span></td>")
         .contains("<thead><tr><th>阶段</th><th>输入总记录</th><th>输出总记录</th><th>已关闭分钟窗口</th><th>预期关闭分钟窗口</th><th>健康状态</th></tr></thead>")
-        .contains("<tr><td>CHR 1m</td><td>0</td><td>0</td><td>0</td><td>4</td>")
+        .contains("<tr><td>CHR 1m</td><td>17422480</td><td>0</td><td>0</td><td>4</td>")
         .contains("<tr><td>PM 1m</td><td>0</td><td>40000</td><td>4</td><td>4</td>")
-        .contains("<tr><td>KPI 1m</td><td>0</td><td>0</td><td>0</td><td>4</td>");
+        .contains("<tr><td>KPI 1m</td><td>50000</td><td>0</td><td>0</td><td>4</td>")
+        .contains("<tr><td>KPI 5m</td><td>0</td><td>0</td><td>0</td><td>0</td>");
+  }
+
+  @Test
+  void operator_table_prefers_window_materialization_probe_over_grouped_stage_probe() throws Exception {
+    BenchmarkConfig config = BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_ID", "bench-window-probe-priority",
+        "FDB_BENCHMARK_SINKS", "starrocks",
+        "FDB_BENCHMARK_CELL_LEVELS", "1000"));
+    BenchmarkRunPlan plan = BenchmarkMatrix.expand(config).get(0);
+    BenchmarkRunResult result = new BenchmarkRunResult(plan, BenchmarkStatus.STABLE,
+        "all thresholds healthy",
+        new FlinkSnapshot("RUNNING", 0, 10_000, 0, 300, 300, 1_200, 1_200, 1, 4, List.of(
+            new FlinkOperatorSnapshot("chr-1m-op",
+                "chr-1m-fact -> window-chr-1m-materialization -> to-chr-minute-fact-env", 4,
+                100, 100, 1_000, 1_000, 2_048, 2_048, 0.1, 0.9, 0.0),
+            new FlinkOperatorSnapshot("kpi-1m-op",
+                "kpi-1m-full-join -> window-kpi-1m-materialization -> kpi-1m-metrics", 4,
+                100, 100, 1_000, 1_000, 2_048, 2_048, 0.1, 0.9, 0.0)),
+            List.of(new FlinkOperatorEdge("chr-1m-op", "kpi-1m-op"))),
+        new FdbMetricsSnapshot(1, 140, -1, -1, 0, 0, List.of(
+            new StageLatencySnapshot("kpi-1m", 100, 140, 150, 0)),
+            List.of(
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@0", 217, 20),
+                windowMaterialization("window-chr-1m", "chr-1m", "MIN_1@60000", 217, 217),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@0", 218, 19),
+                windowMaterialization("window-kpi-1m", "kpi-1m", "MIN_1@60000", 218, 218))),
+        new StorageSnapshot(true, "starrocks rows=350", 350, 0, 0),
+        TopologyMetricsSnapshot.empty(),
+        new SourceMetricsSnapshot(true, 30_000, 90_000, 30_000.0, 3_000, 0, 0,
+            1_000, 3_000, 1_000.0, 3_000, 0, 0,
+            1_000, 1_000, 0.0, 0, 0, 0));
+
+    new HtmlReportWriter(tempDir).write(config, List.of(result));
+
+    String html = Files.readString(tempDir.resolve("bench-window-probe-priority/runs/" + plan.runId()
+        + "/report.html"));
+    assertThat(html)
+        .contains("<td>kpi-1m-full-join -&gt; window-kpi-1m-materialization -&gt; kpi-1m-metrics</td>")
+        .contains("<td>218 ms</td><td>1 ms</td>")
+        .contains("<td>stage:window-kpi-1m</td>")
+        .doesNotContain("<td>stage:kpi-1m</td>");
   }
 
   private static SinkLatencySnapshot windowMaterialization(
       String sinkName, String dataset, String windowKind, long records) {
     return new SinkLatencySnapshot(
         sinkName, "window-materialization", dataset, windowKind, records, 0, 0, 0, 0, 0);
+  }
+
+  private static SinkLatencySnapshot windowMaterialization(
+      String sinkName, String dataset, String windowKind, long records, long latencyP95Ms) {
+    return new SinkLatencySnapshot(
+        sinkName, "window-materialization", dataset, windowKind, records, 0, 0, latencyP95Ms, latencyP95Ms, 0);
   }
 }

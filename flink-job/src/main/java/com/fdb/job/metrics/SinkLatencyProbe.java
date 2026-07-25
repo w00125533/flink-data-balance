@@ -77,8 +77,10 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
             startedAtNanos = System.nanoTime();
         }
         records++;
-        approxBytes += estimateBytes(value);
-        latencyStats.recordObservedAt(nowMs, latencyBaseTimestamp(value));
+        if (shouldSample(records, metricConfig.sinkSampleEveryRecords())) {
+            approxBytes += estimateBytes(value);
+            latencyStats.recordObservedAt(nowMs, latencyBaseTimestamp(value));
+        }
         if (shouldEmit()) {
             log.info(summaryLine());
         }
@@ -119,6 +121,11 @@ public final class SinkLatencyProbe<T> extends ProcessFunction<T, T> {
 
     private boolean shouldEmit() {
         return records == 1L || records % emitEveryRecords == 0L;
+    }
+
+    private static boolean shouldSample(long records, long everyRecords) {
+        long effectiveEveryRecords = everyRecords > 0L ? everyRecords : 1L;
+        return records % effectiveEveryRecords == 0L;
     }
 
     private int runtimeSubtaskIndex() {

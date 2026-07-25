@@ -72,6 +72,18 @@ class BenchmarkConfigTest {
     assertThat(config.pmEpsPerCell()).isEqualTo(1.0);
     assertThat(config.targetChrTotalEps(1000)).isEqualTo(30_000);
     assertThat(config.targetPmTotalEps(1000)).isEqualTo(1_000);
+    assertThat(config.diagnosticChaining()).isTrue();
+  }
+
+  @Test
+  void parses_diagnostic_chaining_overrides() {
+    assertThat(BenchmarkConfig.from("local", Map.of(
+        "FDB_BENCHMARK_DIAGNOSTIC_CHAINING", "false")).diagnosticChaining()).isFalse();
+    assertThat(BenchmarkConfig.from("local", Map.of(
+        "FDB_FLINK_DIAGNOSTIC_CHAINING", "false")).diagnosticChaining()).isFalse();
+    assertThat(BenchmarkConfig.from("local", Map.of(
+        "FDB_FLINK_DIAGNOSTIC_CHAINING", "false",
+        "FDB_BENCHMARK_DIAGNOSTIC_CHAINING", "true")).diagnosticChaining()).isTrue();
   }
 
   @Test

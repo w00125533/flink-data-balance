@@ -227,6 +227,7 @@ Benchmark-specific environment variables:
 | `FDB_BENCHMARK_CHR_EPS_PER_CELL` | `30` | Target CHR EPS，每小区每秒生成的 CHR 条数；Global CHR EPS = `cellLevel * FDB_BENCHMARK_CHR_EPS_PER_CELL` |
 | `FDB_BENCHMARK_PM_EPS_PER_CELL` | `1` | Target PM EPS，每小区每秒生成的 PM 条数；Global PM EPS = `cellLevel * FDB_BENCHMARK_PM_EPS_PER_CELL` |
 | `FDB_CHR_PRODUCER_THREADS` | `6` | CHR simulator 单进程内 producer worker 线程数；`FDB_RATE_EPS` 是全局目标，各线程均分 |
+| `FDB_BENCHMARK_DIAGNOSTIC_CHAINING` | `true` | 压测默认开启诊断拆链，并向 Flink 注入 `FDB_FLINK_DIAGNOSTIC_CHAINING`；正常 Flink 作业不设置时默认关闭 |
 | `FDB_BENCHMARK_ANOMALY_INJECTION_RATIO` | `0.05` | Ratio of generated cells/users assigned to deterministic anomaly cohorts; anomalous CHR records also converge to stable geohash6 hotspots for grid coverage-hole output |
 | `FDB_BENCHMARK_WARMUP_SEC` | `60` | Flink job warmup time after submit and before simulator startup |
 | `FDB_BENCHMARK_DURATION_SEC` | `300` | Backward-compatible default for simulation duration when `FDB_BENCHMARK_SIMULATION_DURATION_SEC` is not set |
@@ -256,6 +257,12 @@ Benchmark-specific environment variables:
 | `FDB_CHR_WATERMARK_OUT_OF_ORDER_MS` | `2000` | Flink CHR watermark bounded out-of-orderness |
 | `FDB_PM_WATERMARK_OUT_OF_ORDER_MS` | `2000` | Flink PM watermark bounded out-of-orderness |
 | `FDB_KPI_JOIN_WAIT_MS` | `10000` | KPI 1m CHR/PM/CFG join wait after minute end |
+| `FDB_FLINK_ENRICHMENT_PARALLELISM` | `FDB_FLINK_PARALLELISM` | Enrichment 阶段独立并行度；压测定位反压时可单独调高 |
+| `FDB_FLINK_USER_ANOMALY_PARALLELISM` | `FDB_FLINK_PARALLELISM` | 用户级异常检测阶段独立并行度 |
+| `FDB_FLINK_GRID_ANOMALY_PARALLELISM` | `FDB_FLINK_PARALLELISM` | 网格覆盖异常检测阶段独立并行度 |
+| `FDB_FLINK_KPI_PARALLELISM` | `FDB_FLINK_PARALLELISM` | CHR/PM 1m 聚合、KPI join、5m rollup 等 KPI 阶段独立并行度 |
+| `FDB_METRICS_SAMPLE_EVERY_RECORDS` | `1` | Stage probe 每 N 条记录计算一次业务延迟；Flink records counter 仍统计全量 |
+| `FDB_SINK_METRICS_SAMPLE_EVERY_RECORDS` | `1` | Sink probe 每 N 条记录计算一次业务延迟和估算 bytes；sink records 仍统计全量 |
 
 ## 实时观测控制台
 
@@ -306,6 +313,17 @@ Latency metrics use three lightweight runtime probes:
 - Sink probe delay: `processing_time - result window end/detection time` at the
   point where the record is handed to the selected connector branch. This is a
   connector handoff/probe latency, not a backend commit or query-visible latency.
+
+高吞吐压测时可以通过 `FDB_METRICS_SAMPLE_EVERY_RECORDS` 和
+`FDB_SINK_METRICS_SAMPLE_EVERY_RECORDS` 降低观测开销。采样只影响业务延迟和
+bytes 估算，Flink REST 的 Records In/Out、busy、反压和 checkpoint 指标仍来自
+Flink 原生 counter。
+
+反压定位时建议开启 `FDB_BENCHMARK_DIAGNOSTIC_CHAINING=true`，并按瓶颈阶段单独调
+`FDB_FLINK_ENRICHMENT_PARALLELISM`、`FDB_FLINK_USER_ANOMALY_PARALLELISM`、
+`FDB_FLINK_GRID_ANOMALY_PARALLELISM`、`FDB_FLINK_KPI_PARALLELISM`。Coverage
+空洞检测只在自己的分支先过滤低 RSRP CHR，主 enriched 流仍继续进入用户异常和 KPI
+链路。
 
 The flow overview page reads `/api/flow/runtime` and filters the graph, stage
 panel and sink panel to the active known result sink. If the runtime endpoint is

@@ -281,7 +281,7 @@ public final class HtmlReportWriter {
             runSummaryTable(config, result),
             stabilityGateTable(config, result),
             sourceDensity(result.source(), plan.cellLevel()),
-            windowDiagnosticsTable(plan, result.source(), fdb),
+            windowDiagnosticsTable(plan, result.source(), fdb, result.flink()),
             runNotes(result),
             topologyTable(result.topology()),
             flinkResourcesTable(result),
@@ -306,7 +306,7 @@ public final class HtmlReportWriter {
     SourceMetricsSnapshot source = result.source();
     StorageSnapshot storage = result.storage();
     long kpiAvailabilityP95Ms = maxAvailableLatency(fdb.kpi1mP95Ms(), fdb.kpi5mP95Ms());
-    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(result.plan(), source, fdb);
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(result.plan(), source, fdb, flink);
     boolean operatorMetricsTrusted = operatorMetricsTrusted(result);
 
     List<HealthGateRow> rows = List.of(
@@ -325,7 +325,9 @@ public final class HtmlReportWriter {
                 ? health(source.producerDeliveryRatio() >= thresholds.minProducerDeliveryRatio())
                 : GateHealth.NA),
         gate("1m 窗口物化", windows.observedClosedMinutes(), windows.thresholdText(),
-            windows.applicable() ? health(windows.healthy()) : GateHealth.NA),
+            windows.oneMinuteApplicable() ? health(windows.oneMinuteHealthy()) : GateHealth.NA),
+        gate("KPI 5m 窗口物化", windows.observedClosedFiveMinuteWindows(), windows.fiveMinuteThresholdText(),
+            windows.fiveMinuteApplicable() ? health(windows.fiveMinuteHealthy()) : GateHealth.NA),
         gate("Source 算子积压", operatorMetricsTrusted ? flink.sourceBacklogRecords() + " 条" : "N/A",
             "<= " + thresholds.maxSourceBacklogRecords() + " 条",
             operatorMetricsTrusted
@@ -397,7 +399,8 @@ public final class HtmlReportWriter {
     BenchmarkRunPlan plan = result.plan();
     FlinkSnapshot flink = result.flink();
     SourceMetricsSnapshot source = result.source();
-    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, result.fdb());
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, result.fdb(),
+        result.flink());
     return twoColumnTable(List.of(
         row("压测 ID", config.benchmarkId()),
         row("目标环境", config.target()),
@@ -414,6 +417,8 @@ public final class HtmlReportWriter {
         row("Source 吞吐达成率", formatRatio(source.producerDeliveryRatio())),
         row("Source 积压", source.chrBacklogRecords() + " 条 CHR"),
         row("预期 1m 关闭窗口", String.valueOf(windows.expectedClosedMinuteWindows())),
+        row("预期 KPI 5m 关闭窗口", String.valueOf(windows.expectedClosedFiveMinuteWindows())),
+        row("诊断拆链", config.diagnosticChaining() ? "ON" : "OFF"),
         row("Checkpoint 间隔", formatMs(effectiveCheckpointIntervalMs(plan.sink(), config.checkpointIntervalMs()))),
         row("Checkpoint 耗时", formatMs(flink.checkpointDurationMs())),
         row("Checkpoint 失败数", String.valueOf(flink.consecutiveCheckpointFailures()))));
@@ -477,13 +482,18 @@ public final class HtmlReportWriter {
   }
 
   private static String windowDiagnosticsTable(BenchmarkRunPlan plan, SourceMetricsSnapshot source,
-      FdbMetricsSnapshot fdb) {
-    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, fdb);
+      FdbMetricsSnapshot fdb, FlinkSnapshot flink) {
+    WindowMaterializationSnapshot windows = WindowMaterializationSnapshot.from(plan, source, fdb, flink);
     WindowDiagnosticColumns columns = windowDiagnosticColumns(windows);
     StringBuilder rows = new StringBuilder();
-    appendWindowStageRow(rows, windows.chr(), windows.expectedClosedMinuteWindows(), windows.applicable(), columns);
-    appendWindowStageRow(rows, windows.pm(), windows.expectedClosedMinuteWindows(), windows.applicable(), columns);
-    appendWindowStageRow(rows, windows.kpi(), windows.expectedClosedMinuteWindows(), windows.applicable(), columns);
+    appendWindowStageRow(rows, windows.chr(), windows.expectedClosedMinuteWindows(), windows.oneMinuteApplicable(),
+        columns);
+    appendWindowStageRow(rows, windows.pm(), windows.expectedClosedMinuteWindows(), windows.oneMinuteApplicable(),
+        columns);
+    appendWindowStageRow(rows, windows.kpi(), windows.expectedClosedMinuteWindows(), windows.oneMinuteApplicable(),
+        columns);
+    appendWindowStageRow(rows, windows.kpi5m(), windows.expectedClosedFiveMinuteWindows(),
+        windows.fiveMinuteApplicable(), columns);
     return """
         <table>
           %s
@@ -525,9 +535,9 @@ public final class HtmlReportWriter {
   private static WindowDiagnosticColumns windowDiagnosticColumns(WindowMaterializationSnapshot windows) {
     return new WindowDiagnosticColumns(
         hasWindowInputWatermark(windows.chr()) || hasWindowInputWatermark(windows.pm())
-            || hasWindowInputWatermark(windows.kpi()),
+            || hasWindowInputWatermark(windows.kpi()) || hasWindowInputWatermark(windows.kpi5m()),
         hasWindowOutputWatermark(windows.chr()) || hasWindowOutputWatermark(windows.pm())
-            || hasWindowOutputWatermark(windows.kpi()));
+            || hasWindowOutputWatermark(windows.kpi()) || hasWindowOutputWatermark(windows.kpi5m()));
   }
 
   private static boolean hasWindowInputWatermark(WindowMaterializationSnapshot.WindowStage stage) {
@@ -762,13 +772,13 @@ public final class HtmlReportWriter {
     if (sinkLatency.available()) {
       return sinkLatency;
     }
-    StageLatencySnapshot stage = explicitStageLatency(fdb, operator);
-    if (stage != null) {
-      return OperatorLatency.stage(stage);
-    }
     SinkLatencySnapshot windowMaterialization = explicitWindowMaterializationLatency(fdb, operator);
     if (windowMaterialization != null) {
       return OperatorLatency.windowMaterialization(windowMaterialization);
+    }
+    StageLatencySnapshot stage = explicitStageLatency(fdb, operator);
+    if (stage != null) {
+      return OperatorLatency.stage(stage);
     }
     return OperatorLatency.empty();
   }
@@ -784,6 +794,7 @@ public final class HtmlReportWriter {
 
   private static SinkLatencySnapshot explicitWindowMaterializationLatency(FdbMetricsSnapshot fdb,
       FlinkOperatorSnapshot operator) {
+    SinkLatencySnapshot best = null;
     for (SinkLatencySnapshot sink : fdb.sinkLatencies()) {
       if (!"window-materialization".equals(lower(sink.scope())) && !"window-materialization".equals(lower(sink.sinkType()))) {
         continue;
@@ -791,10 +802,10 @@ public final class HtmlReportWriter {
       if (matchesExplicitStageToken(operator, sink.sinkName())
           || matchesExactOperatorToken(operator, sink.dataset() + "-fact")
           || matchesExactOperatorToken(operator, sink.sinkName() + "-materialization")) {
-        return sink;
+        best = best == null || sink.latencyP95Ms() > best.latencyP95Ms() ? sink : best;
       }
     }
-    return null;
+    return best;
   }
 
   private static OperatorLatency rawSinkOperatorLatency(BenchmarkRunPlan plan, FdbMetricsSnapshot fdb,

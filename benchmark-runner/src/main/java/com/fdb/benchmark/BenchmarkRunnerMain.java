@@ -23,6 +23,7 @@ public final class BenchmarkRunnerMain {
       env.putAll(parsed.overrides());
       env.put("FDB_ENV_FILE", parsed.envFile().toString());
       BenchmarkConfig config = BenchmarkConfig.from(parsed.target(), env);
+      env.put("FDB_FLINK_DIAGNOSTIC_CHAINING", Boolean.toString(config.diagnosticChaining()));
       List<BenchmarkRunResult> results;
       if (parsed.dryRun()) {
         results = BenchmarkMatrix.expand(config).stream()
